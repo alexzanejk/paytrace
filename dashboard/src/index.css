@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+/* Colours follow the Material 3 baseline palette the Android app uses, so the
+   dashboard and the phone look like one product. */
+@theme {
+  --color-background: #fef7ff;
+  --color-foreground: #1d1b20;
+  --color-card: #ffffff;
+  --color-card-foreground: #1d1b20;
+  --color-muted: #e7e0ec;
+  --color-muted-foreground: #49454f;
+  --color-primary: #6750a4;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #e8def8;
+  --color-secondary-foreground: #1d192b;
+  --color-border: #cac4d0;
+  --color-input: #cac4d0;
+  --color-ring: #6750a4;
+  --color-destructive: #b3261e;
+  --color-destructive-foreground: #ffffff;
+
+  /* Payment status indicators, shared with the Android app's log rows. */
+  --color-status-ok: #146c43;
+  --color-status-ok-bg: #d7f2e3;
+  --color-status-warn: #8a5300;
+  --color-status-warn-bg: #ffe8c2;
+  --color-status-info: #0b5cab;
+  --color-status-info-bg: #d7e7fb;
+  --color-status-bad: #b3261e;
+  --color-status-bad-bg: #f9dedc;
+  --color-status-idle: #49454f;
+  --color-status-idle-bg: #e7e0ec;
+
+  --font-sans: "Roboto", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --radius-card: 0.75rem;
+}
+
+.dark {
+  --color-background: #141218;
+  --color-foreground: #e6e0e9;
+  --color-card: #1d1b20;
+  --color-card-foreground: #e6e0e9;
+  --color-muted: #2b2930;
+  --color-muted-foreground: #cac4d0;
+  --color-primary: #d0bcff;
+  --color-primary-foreground: #381e72;
+  --color-secondary: #4a4458;
+  --color-secondary-foreground: #e8def8;
+  --color-border: #49454f;
+  --color-input: #49454f;
+  --color-ring: #d0bcff;
+  --color-destructive: #f2b8b5;
+  --color-destructive-foreground: #601410;
+
+  --color-status-ok: #6fdfaa;
+  --color-status-ok-bg: #11351f;
+  --color-status-warn: #f0b35a;
+  --color-status-warn-bg: #3a2a10;
+  --color-status-info: #9ecaff;
+  --color-status-info-bg: #12263d;
+  --color-status-bad: #f2b8b5;
+  --color-status-bad-bg: #40131a;
+  --color-status-idle: #cac4d0;
+  --color-status-idle-bg: #2b2930;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html {
+    color-scheme: light dark;
+  }
+  body {
+    margin: 0;
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Money and counts line up column to column. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}

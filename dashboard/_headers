@@ -1,5 +1,0 @@
-/*
-  X-Content-Type-Options: nosniff
-  X-Frame-Options: DENY
-  Referrer-Policy: no-referrer
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://mkjcqwkfbamnuibmurcd.supabase.co wss://mkjcqwkfbamnuibmurcd.supabase.co; frame-ancestors 'none'; base-uri 'none'; form-action 'self'
