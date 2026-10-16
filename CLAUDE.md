@@ -42,6 +42,12 @@ and the deployed function identical.
   `ANDROID_KEY_PASSWORD`, made on the owner's own computer by `scripts/create-android-key.sh`. Claude cannot set
   GitHub secrets and must never hold the key. Without them CI signs with a throwaway key (it says so in the run
   summary); with them the run summary shows the key fingerprint, which must never change between builds.
+  The script only uses `gh secret set` if the logged-in account is an ADMIN of the repo (a different logged-in
+  account once would have created the key and then failed to save it); otherwise it falls back to the web page.
+  `--upload-only` re-loads an existing key; `--copy NAME` puts one value on the clipboard without printing it (needed
+  when run from a tool with no terminal). `scripts/test-create-android-key.sh` tests every path (not in CI: needs Java).
+  A different Claude working from a stale or separate copy once "re-wrote" this script (`.p12`, clipboard only): the
+  real one is on `main`; never accept a push that replaces it.
 - The publishable key in `dashboard/src/lib/supabase.ts` is public by design; RLS protects the data.
 - Admin login: one Supabase Auth user, listed in `public.admins`. Public sign-ups should be OFF in Supabase Auth.
 - **Two-step login (TOTP) is enforced in the database, lockout-safe.** `is_admin()` requires an `aal2` session only
