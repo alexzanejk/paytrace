@@ -1,4 +1,4 @@
-import { amountsEqual, authenticate, normalizeAmount, normalizeProvider, normalizeTrx, parseKeys } from "../supabase/functions/verify-transaction/logic.ts";
+import { amountsEqual, extractKey, normalizeAmount, normalizeProvider, normalizeTrx } from "../supabase/functions/verify-transaction/logic.ts";
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, extra?: unknown) {
@@ -6,23 +6,17 @@ function check(name: string, cond: boolean, extra?: unknown) {
   else { fail++; console.log("  FAIL", name, extra ?? ""); }
 }
 
-const A = "a".repeat(40), B = "b".repeat(40);
+const KEY = "ptk_" + "a1b2c3d4".repeat(8);
 
-// keys
-check("no secret: no keys", parseKeys(undefined).length === 0 && parseKeys("").length === 0);
-check("two keys are read, spaces ignored", parseKeys(` ${A} , ${B} `).length === 2);
-check("a short key is ignored, so a weak key never works", parseKeys("short," + A).length === 1);
-
-// auth
-const keys = [A, B];
-check("correct key (Bearer) is accepted", authenticate(`Bearer ${A}`, keys) === A);
-check("the second key works too", authenticate(`Bearer ${B}`, keys) === B);
-check("the bare key without 'Bearer' is accepted", authenticate(A, keys) === A);
-check("wrong key is refused", authenticate("Bearer " + "c".repeat(40), keys) === null);
-check("a prefix of a real key is refused", authenticate("Bearer " + A.slice(0, 39), keys) === null);
-check("a real key with extra characters is refused", authenticate("Bearer " + A + "x", keys) === null);
-check("no header is refused", authenticate(null, keys) === null && authenticate("", keys) === null);
-check("no configured keys: nothing is accepted", authenticate(`Bearer ${A}`, []) === null);
+// keys: only the exact shape the dashboard makes is looked up at all
+check("a dashboard-made key (Bearer) is accepted", extractKey(`Bearer ${KEY}`) === KEY);
+check("the bare key without 'Bearer' is accepted", extractKey(KEY) === KEY);
+check("surrounding spaces are tidied", extractKey(`  Bearer   ${KEY}  `) === KEY);
+check("no header is refused", extractKey(null) === null && extractKey("") === null && extractKey(undefined) === null);
+check("a key with the wrong prefix is refused", extractKey("Bearer xyz_" + "a1b2c3d4".repeat(8)) === null);
+check("a key that is too short or too long is refused", extractKey(KEY.slice(0, 60)) === null && extractKey(KEY + "ab") === null);
+check("upper-case or non-hex characters are refused", extractKey("ptk_" + "G".repeat(64)) === null && extractKey("ptk_" + "A1B2C3D4".repeat(8)) === null);
+check("the old shared-secret style is refused", extractKey("Bearer " + "a".repeat(40)) === null);
 
 // transaction IDs
 check("trims and upper-cases what a customer typed", normalizeTrx("  bk12ab34cd ") === "BK12AB34CD");

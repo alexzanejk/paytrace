@@ -21,7 +21,7 @@ contains no source code; everything here was written from scratch.
 | Tests | `tests/*.test.ts`, run all with `npm test` (parser, notify wording, phone health, watchdog, dashboard health thresholds, verify-API logic) |
 | CI | `.github/workflows/ci.yml` (tests + dashboard build + `deno check` of the function) and `android.yml` (signed APK). Both run on every push |
 | Owner guide | `docs/owner-setup.md` (plain language: Telegram, signing key, two-step login) |
-| Transaction check API | `supabase/functions/verify-transaction/` (`index.ts`, pure `logic.ts`), SQL `verify_transaction` + `verify_rate` (migration 008), developer guide `docs/verify-api.md` |
+| Transaction check API | `supabase/functions/verify-transaction/` (`index.ts`, pure `logic.ts`), SQL `verify_transaction` + `verify_rate` + `api_keys` (migrations 008-011), dashboard page `dashboard/src/pages/ApiAccess.tsx` (+ `lib/apiDocs.ts` developer text), developer guide `docs/verify-api.md` |
 | DB history | `supabase/migrations/` (apply in filename order) |
 
 Deployed edge function code is `supabase/functions/ingest/{index.ts,parser.ts}`. Redeploy after editing. Keep the repo
@@ -134,9 +134,11 @@ and the deployed function identical.
   super-admin servers: `POST {"transaction_id","provider"?}` with `Authorization: Bearer <key>` returns
   `{"found":true|false}`; when found it also returns `provider`, `amount` and `currency` (owner-approved), plus
   `amount_matches` if the caller sent an `amount`; `ambiguous:true` (no amount) if the same ID exists on two providers
-  and none was specified. Keys live in the Edge Function secret `VERIFY_API_KEYS` (comma separated,
-  each >= 32 chars; the owner types them in the Supabase prompt, Claude never sees them; with none set it answers
-  503). `found` = any stored transaction (payment, send money AND cash-out, per the owner) with status `unmatched`,
+  and none was specified. Keys are made and revoked by the owner on the dashboard's **API access** page (`create_api_key` /
+  `revoke_api_key`, admin-only, two-step rule applies): `ptk_` + 64 hex, shown once, only the SHA-256 hash is stored in
+  `api_keys` (admins can read name/prefix/dates, never the hash), 20 active at most, `last_used_at` is updated at most
+  once a minute. The function format-checks the bearer, hashes it and `verify_transaction` checks it is live (revoked
+  or unknown = 401, even for junk IDs). There is no environment secret any more. `found` = any stored transaction (payment, send money AND cash-out, per the owner) with status `unmatched`,
   `matched` or `tracked_only` (migration 009); `review` (could be a fake SMS) and `ignored` are NOT found, on purpose. 60 lookups/minute per
   key (`verify_rate`, counted in the same SQL call), timing-safe key compare, strings that cannot be a TrxID are
   answered `false` without a query. Non-200 means the caller shows "Pending check" and retries. The response is deliberately limited to
@@ -196,8 +198,12 @@ NOT yet verified (be honest about this):
     function pins the same version but does not call them either. **Do not bump `@supabase/supabase-js` blindly**:
     `mfa.enroll()` prefixes the QR code with `data:image/svg+xml;utf-8,` itself, so a version that changes that breaks
     two-step setup. Upgrade only together with a real enrolment test against Supabase Auth.
-11. Owner: set `VERIFY_API_KEYS` (docs/owner-setup.md step 5) and give each website server its key; then do one real
-    call with a known TrxID. Not yet verified end to end: only the SQL (rolled-back test rows) and the 401/503 paths.
+11. Owner: make one key per website server on the dashboard's API access page (docs/owner-setup.md step 5) and give each
+    its key; then one real call with a known TrxID. Verified live with a throwaway key (found/amount/mismatch/not found/
+    bad key/bad amount); the dashboard page was driven in a browser against a simulated Supabase; creating a key with the
+    owner's real login has not been done. NOTE: the Supabase MCP `execute_sql` hangs (60 s timeout) on DELETE/DROP,
+    probably a confirmation prompt the owner never sees; use UPDATE or ask the owner. A leftover test payment
+    `ZZLIVE9001` (status `ignored`) may still be in `payments` until the owner allows a delete.
 12. Auto-deploy of the Edge Function from GitHub is NOT set up (deploys are manual; repo must equal deployed). It would
     need a Supabase access token as a GitHub secret.
 

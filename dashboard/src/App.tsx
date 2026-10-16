@@ -12,6 +12,7 @@ import { Payments } from "@/pages/Payments";
 import { Orders } from "@/pages/Orders";
 import { Devices } from "@/pages/Devices";
 import { Logs } from "@/pages/Logs";
+import { ApiAccess } from "@/pages/ApiAccess";
 import { SettingsPage } from "@/pages/SettingsPage";
 
 type Phase = { name: "loading" } | { name: "login"; note?: string } | { name: "mfa" } | { name: "ready" };
@@ -73,6 +74,7 @@ export default function App() {
       {tab === "orders" && <Orders settings={settings} />}
       {tab === "devices" && <Devices />}
       {tab === "logs" && <Logs />}
+      {tab === "api" && <ApiAccess />}
       {tab === "settings" && <SettingsPage onSaved={setSettings} />}
     </AppShell>
   );

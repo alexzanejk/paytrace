@@ -28,6 +28,8 @@ const KINDS = [
   "phone_silent",
   "phone_recovered",
   "phone_problem",
+  "api_key_created",
+  "api_key_revoked",
   "error",
 ];
 

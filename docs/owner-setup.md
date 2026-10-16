@@ -65,18 +65,19 @@ Authentication, then Providers, then Email.
 
 ## 5. Let your website check transaction IDs
 
-Your website's admin and super-admin servers can ask PayTrace whether a customer's transaction ID really arrived.
-The technical details for your developer are in `docs/verify-api.md`. You need one **key** per server, so that one
-can be replaced without touching the other.
+Your website's admin and super-admin servers can ask PayTrace whether a customer's transaction ID really arrived, and
+for how much. Everything is done on the dashboard, nothing is typed into Supabase:
 
-1. On your computer, run this twice (it prints a random key each time; it only needs `openssl`, already on a Mac):
-   `openssl rand -hex 32`
-2. Ask Claude to open the secret prompt for `VERIFY_API_KEYS`, and type the two keys there **separated by a comma**
-   (no spaces). Only you see them. Do not paste them in chat.
-3. Give each key to the matching server's environment settings (as `PAYTRACE_VERIFY_KEY`). To replace a key later,
-   change the secret and the server together.
+1. Open the dashboard and go to **API access**.
+2. Type the name of the server (for example "Website admin") and press **Make key**. Do this once per server.
+3. The key is shown **once**. Press **Copy key**, or **Copy instructions with this key**, and send it to your developer
+   privately. If it is lost, revoke it and make a new one: PayTrace keeps only a scrambled version and cannot show it again.
+4. Press **Copy instructions for the developer** (no key inside) to give them the endpoint and what to show for each
+   answer. **Copy endpoint** copies just the address.
+5. To stop a server (or if a key leaks), press **Revoke** next to its key. It stops working immediately. The list shows
+   when each key was last used.
 
-Until step 2 is done, the check answers "not configured" and nothing can use it.
+The developer's guide is also in `docs/verify-api.md`.
 
 ## If a payment message arrives while the phone is off
 

@@ -1,7 +1,7 @@
 // PayTrace transaction check: "did this transaction ID really arrive in our payment account?"
 //
 //   POST /functions/v1/verify-transaction
-//   Authorization: Bearer <one of the keys in the VERIFY_API_KEYS secret>
+//   Authorization: Bearer <a key made on the dashboard's API access page>
 //   {"transaction_id": "ABC123XYZ9", "provider": "bkash", "amount": 500}     provider and amount are optional
 //   -> 200 {"found": false}
 //   -> 200 {"found": true, "provider": "bkash", "amount": 500, "currency": "BDT", "amount_matches": true}
@@ -12,12 +12,11 @@
 // 401 wrong or missing key, 429 too many lookups (try again in a minute), 503/500 not available. A caller that
 // gets anything but 200 should show "Pending check" and retry, not "Unverified".
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
-import { amountsEqual, authenticate, normalizeAmount, normalizeProvider, normalizeTrx, parseKeys } from "./logic.ts";
+import { amountsEqual, extractKey, normalizeAmount, normalizeProvider, normalizeTrx } from "./logic.ts";
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
   auth: { persistSession: false },
 });
-const KEYS = parseKeys(Deno.env.get("VERIFY_API_KEYS"));
 const LIMIT_PER_MINUTE = 60; // per key
 
 const json = (body: unknown, status = 200, extra: Record<string, string> = {}) =>
@@ -30,9 +29,8 @@ async function sha256hex(text: string): Promise<string> {
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "use POST" }, 405, { allow: "POST" });
-  if (KEYS.length === 0) return json({ error: "not configured" }, 503);
 
-  const key = authenticate(req.headers.get("authorization"), KEYS);
+  const key = extractKey(req.headers.get("authorization"));
   if (!key) return json({ error: "unauthorized" }, 401);
 
   let body: Record<string, unknown>;
@@ -52,23 +50,24 @@ Deno.serve(async (req) => {
   const claimed = normalizeAmount(body.amount);
   if (claimed === null) return json({ error: "amount must be a positive number, for example 500 or 500.50" }, 400);
 
-  // Whatever cannot be a transaction ID cannot have been paid, so it is answered without touching the database.
+  // Whatever cannot be a transaction ID cannot have been paid. It is still checked against the key (a revoked key
+  // always gets 401) and counted by the rate limit, but never matches a payment.
   const trx = normalizeTrx(body.transaction_id);
-  if (!trx) return json({ found: false });
 
-  const keyId = (await sha256hex(key)).slice(0, 8);
+  // Only a hash of the key is stored. The database checks it is a live (not revoked) key, then does the lookup.
   const { data, error } = await db.rpc("verify_transaction", {
-    p_trx: trx,
+    p_trx: trx ?? "-",
     p_provider: provider ?? null,
-    p_key_id: keyId,
+    p_key_id: await sha256hex(key),
     p_limit: LIMIT_PER_MINUTE,
   });
   if (error) {
     console.error("verify_transaction failed", error.code);
     return json({ error: "lookup failed, try again" }, 500);
   }
+  if (data?.unauthorized) return json({ error: "unauthorized" }, 401);
   if (data?.limited) return json({ error: "too many lookups, try again in a minute" }, 429, { "retry-after": "60" });
-  if (data?.found !== true) return json({ found: false });
+  if (!trx || data?.found !== true) return json({ found: false });
   // The same ID exists on two providers and the caller did not say which: do not guess an amount.
   if (data.ambiguous) return json({ found: true, ambiguous: true, message: "send provider to pick one" });
   const amount = Number(data.amount);

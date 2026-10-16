@@ -2,26 +2,14 @@
 
 export const PROVIDERS = ["bkash", "nagad", "rocket", "upay"] as const;
 
-/** Keys are listed in the VERIFY_API_KEYS secret, separated by commas (one per website server, so each can be
- *  replaced on its own). Anything shorter than 32 characters is ignored: a weak key must not work. */
-export function parseKeys(env: string | undefined | null): string[] {
-  return (env ?? "").split(",").map((k) => k.trim()).filter((k) => k.length >= 32);
-}
+/** Keys are made on the dashboard's API access page and look like ptk_ + 64 hex characters. */
+export const KEY_PATTERN = /^ptk_[0-9a-f]{64}$/;
 
-function safeEqual(a: string, b: string): boolean {
-  const ea = new TextEncoder().encode(a), eb = new TextEncoder().encode(b);
-  let diff = ea.length ^ eb.length;
-  for (let i = 0; i < Math.max(ea.length, eb.length); i++) diff |= (ea[i] ?? 0) ^ (eb[i] ?? 0);
-  return diff === 0;
-}
-
-/** The matching key, or null. Checks every key (no early exit), so timing does not reveal which one was close. */
-export function authenticate(header: string | null | undefined, keys: string[]): string | null {
-  const supplied = (header ?? "").replace(/^Bearer\s+/i, "").trim();
-  if (!supplied) return null;
-  let hit: string | null = null;
-  for (const k of keys) if (safeEqual(supplied, k)) hit = k;
-  return hit;
+/** The key from an "Authorization: Bearer ptk_..." header, or null if it is missing or cannot be one of ours. Junk is
+ *  turned away here, before any database work. */
+export function extractKey(header: string | null | undefined): string | null {
+  const supplied = (header ?? "").trim().replace(/^Bearer\s+/i, "").trim();
+  return KEY_PATTERN.test(supplied) ? supplied : null;
 }
 
 /** What customers type is tidied (spaces, lower case) the same way the server stores IDs. Anything that cannot be a
