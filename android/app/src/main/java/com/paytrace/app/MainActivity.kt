@@ -138,7 +138,7 @@ private fun StatCard(label: String, value: String, modifier: Modifier = Modifier
 fun Dashboard(settings: AppSettings, tick: Int) {
     val ctx = LocalContext.current
     val stats = remember(tick) { Db.get(ctx).todayStats() }
-    val configured = remember(tick) { settings.serverUrl.isNotBlank() && settings.secret.isNotBlank() }
+    val configured = remember(tick) { settings.ready }
     val smsOk = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
     var on by remember { mutableStateOf(settings.monitoring) }
 
@@ -160,7 +160,7 @@ fun Dashboard(settings: AppSettings, tick: Int) {
             }
         }
         if (!smsOk) item { Warning("SMS permission is off. Open the phone's app settings for PayTrace and allow SMS, or no payment can be detected.") }
-        if (!configured) item { Warning("Open the Settings tab and enter your server URL and secret key.") }
+        if (!configured) item { PairCard(settings) }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 StatCard("Received today", money(stats.receivedTotal), Modifier.weight(1f))
@@ -195,6 +195,57 @@ fun Dashboard(settings: AppSettings, tick: Int) {
                 "Tip: on Xiaomi, Oppo, Vivo, Realme and Samsung phones also set PayTrace to \"No restrictions\" / \"Autostart\" in the phone's app settings, or Android may stop it.",
                 style = MaterialTheme.typography.bodySmall,
             )
+        }
+    }
+}
+
+/** Shown until this phone is approved. Nothing to type: the admin approves the code in the web dashboard. */
+@Composable
+private fun PairCard(settings: AppSettings) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var status by remember { mutableStateOf(settings.deviceStatus) }
+    var note by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+
+    fun check() {
+        busy = true
+        scope.launch {
+            val r = withContext(Dispatchers.IO) {
+                if (settings.deviceStatus == "unpaired" || settings.deviceStatus == "revoked") Sender.pair(settings)
+                else Sender.test(settings)
+            }
+            busy = false
+            status = settings.deviceStatus
+            note = when {
+                status == "approved" -> { SendWorker.resumePending(ctx); "Approved. This phone is now connected." }
+                r.deviceStatus == null && !r.ok -> "Could not reach the server: " + (r.error ?: "unknown") + ". Check the internet and try again."
+                status == "pending" -> "Not approved yet."
+                else -> ""
+            }
+        }
+    }
+    // Ask to join automatically the first time, so the code is already waiting in the dashboard.
+    LaunchedEffect(Unit) { if (status != "approved") check() }
+
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Connect this phone", style = MaterialTheme.typography.titleMedium)
+            if (status == "revoked") {
+                Text("This phone was removed in the dashboard. Tap \"Ask again\" to request a new approval.")
+            } else {
+                Text("On a computer, open the PayTrace dashboard, go to Devices and tap Approve next to this code:")
+                Text(settings.pairCode, style = MaterialTheme.typography.headlineMedium)
+                Text(settings.deviceName, style = MaterialTheme.typography.bodySmall)
+            }
+            Button(enabled = !busy, onClick = {
+                if (status == "revoked") settings.resetDeviceKey()
+                check()
+            }) { Text(if (busy) "Checking…" else if (status == "revoked") "Ask again" else "I approved it, check now") }
+            if (note.isNotEmpty()) Text(note, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -269,6 +320,7 @@ fun SettingsScreen(settings: AppSettings) {
     var interval by remember { mutableStateOf(settings.retryMinutes.toString()) }
     var msg by remember { mutableStateOf("") }
     var testing by remember { mutableStateOf(false) }
+    var advanced by remember { mutableStateOf(false) }
 
     fun save() {
         settings.serverUrl = url
@@ -283,26 +335,38 @@ fun SettingsScreen(settings: AppSettings) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text("Server", style = MaterialTheme.typography.titleMedium)
-        OutlinedTextField(
-            value = url, onValueChange = { url = it }, label = { Text("Server URL") },
-            singleLine = true, modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+        Text("This phone", style = MaterialTheme.typography.titleMedium)
+        Text(
+            when (settings.deviceStatus) {
+                "approved" -> "Connected (approved in the dashboard). Code " + settings.pairCode
+                "pending" -> "Waiting for approval in the dashboard. Code " + settings.pairCode
+                "revoked" -> "Removed in the dashboard. Open the Dashboard tab to ask again."
+                else -> "Not connected yet. Open the Dashboard tab to connect."
+            } + if (settings.secret.isNotBlank()) "\nA shared secret key is set under Advanced and is used instead." else ""
         )
-        if (url.trim().startsWith("http://")) {
-            Text("This address is not encrypted (http). Use https:// so your secret key and payment data cannot be read on the way.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-        }
-        OutlinedTextField(
-            value = secret, onValueChange = { secret = it }, label = { Text("Secret key") },
-            singleLine = true, modifier = Modifier.fillMaxWidth(),
-            visualTransformation = PasswordVisualTransformation(),
-        )
-        Text("Request method", style = MaterialTheme.typography.titleSmall)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            RadioButton(selected = method == "POST", onClick = { method = "POST" })
-            Text("POST (recommended)")
-            RadioButton(selected = method == "GET", onClick = { method = "GET" })
-            Text("GET")
+
+        TextButton(onClick = { advanced = !advanced }) { Text(if (advanced) "Hide advanced" else "Advanced (normally not needed)") }
+        if (advanced) {
+            OutlinedTextField(
+                value = url, onValueChange = { url = it }, label = { Text("Server URL") },
+                singleLine = true, modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            )
+            if (url.trim().startsWith("http://")) {
+                Text("This address is not encrypted (http). Use https:// so your payment data cannot be read on the way.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            OutlinedTextField(
+                value = secret, onValueChange = { secret = it }, label = { Text("Shared secret key (leave empty)") },
+                singleLine = true, modifier = Modifier.fillMaxWidth(),
+                visualTransformation = PasswordVisualTransformation(),
+            )
+            Text("Request method", style = MaterialTheme.typography.titleSmall)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(selected = method == "POST", onClick = { method = "POST" })
+                Text("POST (recommended)")
+                RadioButton(selected = method == "GET", onClick = { method = "GET" })
+                Text("GET")
+            }
         }
 
         Text("Data to send", style = MaterialTheme.typography.titleMedium)

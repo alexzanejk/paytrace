@@ -26,6 +26,11 @@ class SendWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
         val attempts = row.attempts + 1
         when {
             res.ok -> db.mark(id, "SENT", attempts, null)
+            // Phone not approved yet: keep the message and try again later without using up its retries.
+            res.deviceStatus == "pending" -> {
+                db.mark(id, "PENDING", row.attempts, "Waiting for this phone to be approved in the dashboard")
+                enqueue(applicationContext, id, s.retryMinutes.toLong())
+            }
             attempts > s.maxRetries -> db.mark(id, "FAILED", attempts, res.error)
             else -> {
                 db.mark(id, "PENDING", attempts, res.error)

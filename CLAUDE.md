@@ -25,8 +25,12 @@ Deployed edge function code is `supabase/functions/ingest/{index.ts,parser.ts}`.
 and the deployed function identical.
 
 ## Secrets (never commit)
-- `INGEST_SECRET` is an Edge Function secret set by the owner in the Supabase dashboard (the tool prompts the owner,
-  Claude never sees it). The same value is typed into the Android app's Settings. If it must change, update both.
+- Phones connect by **pairing**, not a shared secret: the app has the ingest URL built in, makes its own random key,
+  sends only the key's SHA-256 hash (`action: "pair"`), and shows a code like `3F9A-01BC`. The owner approves that code
+  in the dashboard's Devices tab (`set_device_status`). The app then sends `Authorization: Device <key>`; the server
+  stores only the hash (`public.devices`). Each phone can be removed on its own. Max 10 pending requests per hour.
+- `INGEST_SECRET` (Edge Function secret, set by the owner in Supabase, Claude never sees it) is still accepted as an
+  optional fallback under the app's Settings → Advanced. Never build it into the APK: anyone with the APK could extract it.
 - The publishable key inside `dashboard/index.html` is public by design; RLS protects the data.
 - Admin login: one Supabase Auth user, listed in `public.admins`. Public sign-ups should be OFF in Supabase Auth.
 
@@ -57,7 +61,7 @@ NOT yet verified (be honest about this):
 
 ## Open items, in rough order
 1. Owner deploys dashboard on Cloudflare Workers (Workers Builds, import repo, deploy command `npx wrangler deploy`), signs in, reports back.
-2. Install APK on a phone, enter server URL + secret, run Test connection, then a small real payment.
+2. Install APK on a phone, approve its code under Devices in the dashboard, then make a small real payment.
 3. Get real redacted sample SMS (bKash/Nagad received, Send Money; Rocket/Upay) and fix parsers + tests.
 4. Order intake: owner has not said how orders are created (website / WhatsApp / store platform). Plan: an `orders`
    Edge Function with its own API key for create-order and claim-payment calls (`claim_order` already exists).

@@ -4,15 +4,19 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.os.Build
 import android.util.Base64
 import java.security.KeyStore
+import java.security.MessageDigest
+import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/** Keeps the secret key encrypted with a key that never leaves the phone's hardware-backed keystore. */
-class SecretStore(ctx: Context) {
+/** Keeps secrets encrypted with a key that never leaves the phone's hardware-backed keystore.
+ *  `slot` picks which secret: "v" is the optional shared secret, "device" is this phone's own key. */
+class SecretStore(ctx: Context, private val slot: String = "v") {
     private val alias = "paytrace_secret_key"
     private val prefs: SharedPreferences = ctx.getSharedPreferences("paytrace_secret", Context.MODE_PRIVATE)
 
@@ -31,7 +35,7 @@ class SecretStore(ctx: Context) {
     }
 
     fun get(): String {
-        val stored = prefs.getString("v", null) ?: return ""
+        val stored = prefs.getString(slot, null) ?: return ""
         return try {
             val raw = Base64.decode(stored, Base64.NO_WRAP)
             val iv = raw.copyOfRange(0, 12)
@@ -46,27 +50,66 @@ class SecretStore(ctx: Context) {
 
     fun set(value: String) {
         if (value.isEmpty()) {
-            prefs.edit().remove("v").apply()
+            prefs.edit().remove(slot).apply()
             return
         }
         val c = Cipher.getInstance("AES/GCM/NoPadding")
         c.init(Cipher.ENCRYPT_MODE, key())
         val data = c.doFinal(value.toByteArray(Charsets.UTF_8))
-        prefs.edit().putString("v", Base64.encodeToString(c.iv + data, Base64.NO_WRAP)).apply()
+        prefs.edit().putString(slot, Base64.encodeToString(c.iv + data, Base64.NO_WRAP)).apply()
     }
 }
 
 class AppSettings(ctx: Context) {
     private val p: SharedPreferences = ctx.applicationContext.getSharedPreferences("paytrace", Context.MODE_PRIVATE)
     private val store = SecretStore(ctx.applicationContext)
+    private val deviceStore = SecretStore(ctx.applicationContext, "device")
 
+    /** Built in, so a new phone needs no typing. Can still be changed under Settings → Advanced. */
     var serverUrl: String
-        get() = p.getString("url", "") ?: ""
+        get() = p.getString("url", null)?.takeIf { it.isNotBlank() } ?: DEFAULT_SERVER_URL
         set(v) { p.edit().putString("url", v.trim()).apply() }
 
+    /** Optional shared secret (older setup). When empty, the phone uses its own approved device key. */
     var secret: String
         get() = store.get()
         set(v) { store.set(v) }
+
+    /** This phone's own random key, made once on first use. Pairing sends only its hash; the server keeps only the hash. */
+    val deviceKey: String
+        get() {
+            val existing = deviceStore.get()
+            if (existing.isNotEmpty()) return existing
+            val bytes = ByteArray(32).also { SecureRandom().nextBytes(it) }
+            val key = Base64.encodeToString(bytes, Base64.NO_WRAP or Base64.URL_SAFE or Base64.NO_PADDING)
+            deviceStore.set(key)
+            return key
+        }
+
+    /** After the dashboard removed this phone, make a fresh key so it can ask for approval again. */
+    fun resetDeviceKey() {
+        deviceStore.set("")
+        deviceStatus = "unpaired"
+    }
+
+    val deviceKeyHash: String
+        get() = MessageDigest.getInstance("SHA-256").digest(deviceKey.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+
+    /** Same code the server and dashboard show, e.g. "3F9A-01BC". */
+    val pairCode: String
+        get() = deviceKeyHash.let { it.substring(0, 4).uppercase() + "-" + it.substring(4, 8).uppercase() }
+
+    val deviceName: String
+        get() = (Build.MANUFACTURER.replaceFirstChar { it.uppercase() } + " " + Build.MODEL).take(60)
+
+    /** Last answer from the server: "unpaired", "pending", "approved" or "revoked". */
+    var deviceStatus: String
+        get() = p.getString("device_status", "unpaired") ?: "unpaired"
+        set(v) { p.edit().putString("device_status", v).apply() }
+
+    val ready: Boolean
+        get() = serverUrl.isNotBlank() && (secret.isNotBlank() || deviceStatus == "approved")
 
     /** "POST" or "GET". */
     var method: String
@@ -96,6 +139,8 @@ class AppSettings(ctx: Context) {
     }
 
     companion object {
+        const val DEFAULT_SERVER_URL = "https://mkjcqwkfbamnuibmurcd.supabase.co/functions/v1/ingest"
+
         /** These two are always sent: the server needs the original text and the sender ID to verify a payment. */
         val LOCKED = setOf("raw_message", "sender_id")
         val DEFAULT_FIELDS = setOf(
