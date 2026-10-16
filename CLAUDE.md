@@ -112,6 +112,22 @@ and the deployed function identical.
   `startForeground` failures are caught instead of crashing; `BeatGap` counts a 5+ min gap with the phone still up
   (uptime clock, so a reboot is not counted) as "stopped by the phone", reported as `stopped_count`/`last_gap_min` and
   shown on the Devices page. It cannot be made 100% in software; Firebase push would be the next step if settings are not enough.
+- **Learned from analysing the owner's ZiniPay APK (static only, never run; its code was not copied):** it is a normal
+  SMS-forwarder to its own cloud (`api.zinipay.com`, API key + deviceId, raw SMS, weak regex parsing, no heartbeat,
+  plain SharedPreferences). Its survival tricks that PayTrace now also has: (1) optional **SMS app mode** (default SMS
+  app: `SmsDeliverReceiver` + `MmsDeliverReceiver` + `RespondViaMessageService` + SENDTO filter on `MainActivity` make the
+  app eligible; `DefaultSms` asks via RoleManager (API 29+) or ACTION_CHANGE_DEFAULT; while default, Android no longer
+  writes SMS itself so `SmsIntake.saveToInbox` writes EVERY message to the inbox FIRST, non-payment messages get a
+  notification via `notifyOther`, payments go through `SmsIntake.handlePayment`, which dedupes by sender+body so a second
+  copy via `SmsReceiver` is harmless; PayTrace cannot send SMS/MMS; reported as `default_sms` in the heartbeat and shown
+  as "SMS app mode" on the Devices page); (2) **one-tap vendor screens** (`OemSettings.candidates/open`, component names
+  for Vivo/iQOO, OnePlus, Oppo/Realme, Xiaomi, Huawei, Samsung, Transsion (Tecno/Infinix/itel), Asus; each is tried in
+  turn with try/catch, then falls back to app details; `brandSteps` has a HiOS list); (3) **send on reconnect**
+  (`MonitorService` registers a default `NetworkCallback`; `ReconnectGate` fires only when the network becomes
+  VALIDATED, at most every 5 s, so a flapping link cannot burn message retries; `Reconnect.onInternetBack` resets
+  recent FAILED messages that failed for network reasons (not `HTTP 4xx`), re-queues PENDING ones and sends a
+  heartbeat). `SendWorker.enqueue` now uses unique work per message (`send-<id>`, REPLACE) so a re-queue replaces the
+  delayed retry instead of piling up copies. None of this has run on a real phone yet.
 - **Required-permissions gate (Android).** `Setup.kt` (pure `missing()` is unit tested in `SetupTest`) lists what the
   app needs: RECEIVE_SMS, READ_SMS, notifications, battery-optimisation exemption, and (Vivo/OnePlus/Oppo/Xiaomi/
   Samsung and similar, `STRICT_MAKERS`) a hand-confirmed "auto-start" step, because Android cannot report OEM

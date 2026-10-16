@@ -154,6 +154,17 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "paytrace.db"
         writableDatabase.update("logs", v, "id = ?", arrayOf(id.toString()))
     }
 
+    /** Messages that ran out of retries only because of a network problem (not a server refusal such as HTTP 4xx), newer
+     *  than `since`. They get another go when the internet comes back. */
+    fun retryableFailedIds(since: Long): List<Long> {
+        val out = ArrayList<Long>()
+        readableDatabase.rawQuery(
+            "select id from logs where status = 'FAILED' and created_at >= ? and (error is null or error not like 'HTTP 4%') order by created_at",
+            arrayOf(since.toString()),
+        ).use { c -> while (c.moveToNext()) out.add(c.getLong(0)) }
+        return out
+    }
+
     /** Manual retry: back to PENDING with a fresh attempt count. */
     fun resetForRetry(id: Long) = mark(id, "PENDING", 0, null)
 

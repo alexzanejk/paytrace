@@ -70,6 +70,12 @@ object Setup {
                 "Same screen: switch OFF \"Put unused apps to sleep\".",
                 lockStep,
             )
+            m.contains("tecno") || m.contains("infinix") || m.contains("itel") || m.contains("transsion") -> listOf(
+                "Open the Phone Master app (or Settings > Battery) > Autostart manager (HiOS / XOS): switch PayTrace ON.",
+                "Settings > Apps > PayTrace > Battery > choose \"No restrictions\" (or \"Don't optimise\"), and allow background activity.",
+                "Phone Master > Battery / Power > App power management: set PayTrace to \"Allow\" or \"Always run\" if the phone lists it.",
+                lockStep,
+            )
             m.contains("huawei") || m.contains("honor") -> listOf(
                 "Settings > Battery > App launch > PayTrace: switch to \"Manage manually\" and turn ON auto-launch, secondary launch and run in background.",
                 lockStep,

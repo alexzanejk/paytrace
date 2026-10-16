@@ -11,6 +11,7 @@ export interface DeviceInfo {
   recovered?: number; // missed messages the inbox scan has picked up since the app was installed
   stopped_count?: number; // times the phone's power manager stopped the app (gap of 5+ min while the phone stayed on)
   last_gap_min?: number; // length of the most recent such stop
+  default_sms?: boolean; // PayTrace is the phone's default SMS app (optional "SMS app mode")
   notifications?: boolean; // notifications allowed (the app's always-on notice needs them)
   battery_exempt?: boolean; // Android's battery saver is told to leave the app alone
   setup_complete?: boolean; // every permission and setting the app requires is in place
@@ -48,6 +49,8 @@ export function cleanInfo(body: Record<string, unknown>, now: Date = new Date())
   if (stopped !== undefined) info.stopped_count = stopped;
   const gap = asCount(body.last_gap_min, 1_000_000);
   if (gap !== undefined) info.last_gap_min = gap;
+  const defaultSms = asBool(body.default_sms);
+  if (defaultSms !== undefined) info.default_sms = defaultSms;
   const notifications = asBool(body.notifications);
   if (notifications !== undefined) info.notifications = notifications;
   const batteryExempt = asBool(body.battery_exempt);

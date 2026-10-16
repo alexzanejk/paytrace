@@ -207,6 +207,7 @@ fun Dashboard(settings: AppSettings, tick: Int) {
                 ctx.startActivity(Intent(AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
             }) { Text("Allow running in background (battery)") }
         }
+        item { SmsAppModeCard(tick) }
         item {
             val stopped = remember(tick) { settings.stoppedCount }
             Card(Modifier.fillMaxWidth()) {
@@ -224,7 +225,44 @@ fun Dashboard(settings: AppSettings, tick: Int) {
                     Setup.brandSteps(Build.MANUFACTURER).forEachIndexed { i, step ->
                         Text("${i + 1}. $step", style = MaterialTheme.typography.bodySmall)
                     }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(onClick = { openAutostartPage(ctx) }) { Text("Open the autostart page") }
+                        OutlinedButton(onClick = { openAppDetails(ctx) }) { Text("App settings") }
+                    }
                 }
+            }
+        }
+    }
+}
+
+/** Optional: make PayTrace the phone's messaging app, which phone brands almost never stop. */
+@Composable
+private fun SmsAppModeCard(tick: Int) {
+    val ctx = LocalContext.current
+    val isDefault = remember(tick) { DefaultSms.isDefault(ctx) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(if (isDefault) "SMS app mode: ON" else "SMS app mode (optional)", style = MaterialTheme.typography.titleSmall)
+            if (isDefault) {
+                Text(
+                    "PayTrace is this phone's messaging app, so Android delivers payment messages to it first and the phone's battery manager almost never stops it. " +
+                        "Other messages (bank codes, friends) still arrive: they appear as notifications from PayTrace and in the phone's inbox, and you can read them in any other messaging app. " +
+                        "PayTrace cannot send messages or receive picture messages.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedButton(onClick = { ctx.startActivity(DefaultSms.settingsIntent()) }) { Text("Choose another messaging app (Default apps)") }
+            } else {
+                Text(
+                    "Recommended for a phone used only for payments. It makes this phone stop closing PayTrace when the screen is off. " +
+                        "Trade-off: PayTrace replaces the phone's messaging app. Other messages still arrive (as notifications from PayTrace and in the inbox of any other messaging app), " +
+                        "but you cannot send messages or receive picture messages from this phone. You can switch back any time.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Button(onClick = {
+                    val i = DefaultSms.requestIntent(ctx)
+                    if (i != null) launcher.launch(i) else ctx.startActivity(DefaultSms.settingsIntent())
+                }) { Text("Turn on SMS app mode") }
             }
         }
     }

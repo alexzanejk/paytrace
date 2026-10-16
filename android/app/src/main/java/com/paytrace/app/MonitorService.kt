@@ -10,6 +10,9 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.os.PowerManager
 import android.os.SystemClock
@@ -23,6 +26,8 @@ class MonitorService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var lastNotice = ""
+    private var netCallback: ConnectivityManager.NetworkCallback? = null
+    private val reconnectGate = ReconnectGate()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -100,6 +105,7 @@ class MonitorService : Service() {
             }
         }
         Keepalive.schedule(this)
+        watchNetwork()
         startBeating()
         return START_STICKY
     }
@@ -113,6 +119,32 @@ class MonitorService : Service() {
         } catch (e: Exception) {
         }
         super.onTaskRemoved(rootIntent)
+    }
+
+    /** The moment the internet is usable again, send everything that was waiting and tell the dashboard, instead of
+     *  waiting for the next scheduled retry. */
+    private fun watchNetwork() {
+        if (netCallback != null) return
+        try {
+            val cm = getSystemService(ConnectivityManager::class.java) ?: return
+            val cb = object : ConnectivityManager.NetworkCallback() {
+                override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+                    val usable = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                    if (reconnectGate.shouldFire(usable, SystemClock.elapsedRealtime())) {
+                        Thread({ Reconnect.onInternetBack(applicationContext) }, "paytrace-reconnect").start()
+                    }
+                }
+
+                override fun onLost(network: Network) {
+                    reconnectGate.shouldFire(false, SystemClock.elapsedRealtime())
+                }
+            }
+            cm.registerDefaultNetworkCallback(cb)
+            netCallback = cb
+        } catch (e: Exception) {
+            // Without it the regular retries and the 30-second loop still work.
+        }
     }
 
     private fun startBeating() {
@@ -145,6 +177,8 @@ class MonitorService : Service() {
     }
 
     override fun onDestroy() {
+        try { netCallback?.let { getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(it) } } catch (e: Exception) { }
+        netCallback = null
         running = false
         thread?.interrupt()
         thread = null
