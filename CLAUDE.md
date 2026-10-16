@@ -134,8 +134,8 @@ and the deployed function identical.
   super-admin servers: `POST {"transaction_id","provider"?}` with `Authorization: Bearer <key>` returns
   `{"found":true|false}` and nothing else. Keys live in the Edge Function secret `VERIFY_API_KEYS` (comma separated,
   each >= 32 chars; the owner types them in the Supabase prompt, Claude never sees them; with none set it answers
-  503). `found` = stored incoming payment (`payment_received`/`send_money_received`) with status `unmatched` or
-  `matched`: cash-outs, `review` (could be a fake SMS) and `ignored` are NOT found, on purpose. 60 lookups/minute per
+  503). `found` = any stored transaction (payment, send money AND cash-out, per the owner) with status `unmatched`,
+  `matched` or `tracked_only` (migration 009); `review` (could be a fake SMS) and `ignored` are NOT found, on purpose. 60 lookups/minute per
   key (`verify_rate`, counted in the same SQL call), timing-safe key compare, strings that cannot be a TrxID are
   answered `false` without a query. Non-200 means the caller shows "Pending check" and retries. Never add amounts or
   other detail to the response: it would turn this into a data leak for anyone holding a key.

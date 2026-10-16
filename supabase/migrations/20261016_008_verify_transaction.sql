@@ -1,6 +1,7 @@
 -- Read-only "was this transaction ID really paid to us?" lookup, for the website's admin and super-admin servers
 -- (Edge Function `verify-transaction`). It answers only true/false, never amounts or details.
 --
+-- (Superseded by migration 009: every transaction type now counts, including cash-out receipts.)
 -- What counts as found: an incoming payment (payment_received / send_money_received) that is stored and not held
 -- or ignored. Agent cash-out receipts are money going OUT and must never prove a customer paid; a payment held in
 -- `review` (for example a possibly forged SMS) is not trusted yet, so it is reported as not found.

@@ -34,10 +34,11 @@ must not be marked unpaid because of a network problem. Use a timeout of about 5
 
 ## What counts as "found"
 
-- An **incoming** payment (someone paid you) that PayTrace has stored.
-- **Not found:** an agent cash-out receipt (money going out), a payment PayTrace is holding for review (for example a
-  message that could be a fake), and a payment you marked as ignored. Those are not proof that a customer paid.
-- A payment that is stored but belongs to a different customer's order still counts as found. Blocking the same ID
+- **Any** transaction PayTrace has stored from a provider message: a payment received, a send-money receipt and an
+  agent cash-out receipt all count.
+- **Not found:** a transaction PayTrace is holding for review (for example a message that could be a fake) and one
+  you marked as ignored. A held transaction becomes found once you approve it in the dashboard.
+- A transaction that is stored but belongs to a different customer's order still counts as found. Blocking the same ID
   being used twice stays the job of your existing duplicate check.
 - A payment SMS that has not reached PayTrace yet (phone off or offline) is **not found** until it arrives. The app
   recovers missed messages when the phone comes back, so a retry later can turn Unverified into Verified.
