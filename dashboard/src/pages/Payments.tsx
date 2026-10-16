@@ -5,6 +5,7 @@ import { PROVIDERS, PROVIDER_LABEL, TYPE_LABEL, type Payment } from "@/lib/types
 import { useQuery } from "@/hooks/useQuery";
 import { Screen } from "@/components/Screen";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ChainBadge } from "@/components/ChainBadge";
 import { EmptyRow } from "@/components/Empty";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -94,11 +95,12 @@ export function Payments() {
             <TableHead className="text-right">Balance</TableHead>
             <TableHead>From</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Balance check</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {rows.length === 0 ? (
-            <EmptyRow cols={10} text="No payments match these filters." />
+            <EmptyRow cols={11} text="No payments match these filters." />
           ) : (
             rows.map((p) => (
               <TableRow key={p.id}>
@@ -113,6 +115,9 @@ export function Payments() {
                 <TableCell>{p.counterparty ?? "–"}</TableCell>
                 <TableCell>
                   <StatusBadge status={p.status} />
+                </TableCell>
+                <TableCell>
+                  <ChainBadge status={p.chain_status} delta={p.balance_delta} />
                 </TableCell>
               </TableRow>
             ))

@@ -30,6 +30,8 @@ export interface Payment {
   status: string;
   review_reason: string | null;
   raw_message: string;
+  balance_delta: number | null;
+  chain_status: string | null;
 }
 
 export interface Order {

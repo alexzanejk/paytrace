@@ -1,4 +1,4 @@
-// SMS parsers for bKash / Nagad (exact formats) and Rocket / Upay (generic, held for review).
+// SMS parsers for bKash / Nagad / Rocket (exact formats) and Upay (generic, held for review).
 // Pure functions, no I/O, so they can be unit tested anywhere.
 
 export type Provider = "bkash" | "nagad" | "rocket" | "upay";
@@ -48,15 +48,37 @@ function pick(text: string, re: RegExp): string | null {
   return m ? m[1] : null;
 }
 
-// "17/09/2026 18:04" -> "2026-09-17T18:04:00+06:00" (SMS times are Bangladesh local time)
+const MONTHS: Record<string, number> = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+};
+
+const iso = (y: number, mo: number, d: number, h: number, mi: number, s: number): string | null => {
+  if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59 || s > 59) return null;
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${y}-${p(mo)}-${p(d)}T${p(h)}:${p(mi)}:${p(s)}+06:00`;
+};
+
+// SMS times are Bangladesh local time. Two layouts are in use:
+//   bKash / Nagad  "17/09/2026 18:04"
+//   Rocket         "28-AUG-26 11:04:50 pm"
 function parseDate(text: string): string | null {
+  const named = text.match(/(\d{1,2})-([A-Za-z]{3})-(\d{2,4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?/i);
+  if (named) {
+    const [, dd, mon, yy, HH, MI, SS, ampm] = named;
+    const mo = MONTHS[mon.toLowerCase()];
+    if (mo) {
+      const year = yy.length === 2 ? 2000 + +yy : +yy;
+      let h = +HH;
+      const half = ampm?.toLowerCase();
+      if (half === "pm" && h < 12) h += 12;
+      if (half === "am" && h === 12) h = 0;
+      return iso(year, mo, +dd, h, +MI, SS ? +SS : 0);
+    }
+  }
   const m = text.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
   if (!m) return null;
   const [, dd, mm, yyyy, HH, MI, SS] = m;
-  const d = +dd, mo = +mm, h = +HH, mi = +MI, s = SS ? +SS : 0;
-  if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59 || s > 59) return null;
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${yyyy}-${p(mo)}-${p(d)}T${p(h)}:${p(mi)}:${p(s)}+06:00`;
+  return iso(+yyyy, +mm, +dd, +HH, +MI, SS ? +SS : 0);
 }
 
 const FAILURE_WORDS = /\b(failed|unsuccessful|reversed|reversal|refund(?:ed)?|cancell?ed|declined|insufficient|invalid|otp|verification code|pin)\b/i;
@@ -68,6 +90,7 @@ export function normalize(raw: string): string {
 export function detectProvider(text: string, hint?: string | null): Provider | null {
   const h = (hint ?? "").toLowerCase();
   if (h === "bkash" || h === "nagad" || h === "rocket" || h === "upay") return h;
+  if (/A\/C\s*Balance/i.test(text) && /TxnId\s*:/i.test(text)) return "rocket";
   if (/TxnID\s*:/i.test(text) && /Amount\s*:/i.test(text)) return "nagad";
   if (/TrxID\s+[A-Z0-9]{6,}/i.test(text)) return "bkash";
   return null;
@@ -99,7 +122,7 @@ function parseBkash(text: string): ParseResult {
       trxId: trx.toUpperCase(),
       amount,
       fee: num(pick(text, new RegExp(`Fee\\s+Tk\\s*${NUM}`, "i"))) ?? 0,
-      // bKash SMS does not state agent commission; it is 0 here and can be added from a rate later.
+      // bKash SMS does not state agent commission; the balance chain recovers it on the server.
       commission: 0,
       balance: num(pick(text, new RegExp(`Balance\\s+Tk\\s*${NUM}`, "i"))),
       counterparty: who,
@@ -138,12 +161,42 @@ function parseNagad(text: string): ParseResult {
   };
 }
 
-// Rocket / Upay: no verified samples yet. Best-effort extraction; the server holds these for review.
+// Rocket (sender 16216), confirmed against a real agent receipt:
+//   "B2C: Cash-Out from A/C: ***460 Tk500.00 Comm:Tk2.10; A/C Balance: Tk36,068.90.
+//    TxnId: 6889402212 Date:28-AUG-26 11:04:50 pm"
+function parseRocket(text: string): ParseResult | null {
+  const m = text.match(
+    new RegExp(`Cash[\\s-]*Out\\s+from\\s+A/C\\s*:?\\s*([*\\dXx]+)\\s+Tk\\.?\\s*${NUM}`, "i"),
+  );
+  if (!m) return null;
+  const [, account, rawAmount] = m;
+  const amount = num(rawAmount);
+  if (amount == null) return null;
+  const trx = pick(text, /TxnId\s*:?\s*([A-Z0-9]{6,})/i);
+  if (!trx) return { kind: "failed", reason: "rocket: no TxnId" };
+  return {
+    kind: "parsed",
+    data: {
+      provider: "rocket",
+      txnType: "cash_out",
+      trxId: trx.toUpperCase(),
+      amount,
+      fee: num(pick(text, new RegExp(`Fee\\s*:?\\s*Tk\\.?\\s*${NUM}`, "i"))) ?? 0,
+      commission: num(pick(text, new RegExp(`Comm(?:ission)?\\s*:?\\s*Tk\\.?\\s*${NUM}`, "i"))) ?? 0,
+      balance: num(pick(text, new RegExp(`A/C\\s*Balance\\s*:?\\s*Tk\\.?\\s*${NUM}`, "i"))),
+      counterparty: account,
+      occurredAt: parseDate(text),
+      confidence: "exact",
+    },
+  };
+}
+
+// Rocket (other layouts) / Upay: no verified samples yet. Best-effort extraction; the server holds these for review.
 function parseGeneric(provider: Provider, text: string): ParseResult {
   const trx = pick(text, /(?:Trx\s?ID|Txn\s?ID|TID|Transaction\s?ID)\s*[:\-]?\s*([A-Z0-9]{6,})/i);
   const amount = num(pick(text, new RegExp(`Tk\\.?\\s*${NUM}`, "i")));
   if (!trx || amount == null) return { kind: "failed", reason: `${provider}: could not find TrxID and amount` };
-  const isCashOut = /cash\s*out/i.test(text);
+  const isCashOut = /cash[\s-]*out/i.test(text);
   const received = /received|credited|cash\s*in/i.test(text);
   return {
     kind: "parsed",
@@ -172,5 +225,9 @@ export function parseSms(raw: string, providerHint?: string | null): ParseResult
   if (!provider) return { kind: "failed", reason: "unknown provider" };
   if (provider === "bkash") return parseBkash(text);
   if (provider === "nagad") return parseNagad(text);
+  if (provider === "rocket") {
+    const exact = parseRocket(text);
+    if (exact) return exact;
+  }
   return parseGeneric(provider, text);
 }

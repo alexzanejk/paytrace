@@ -20,6 +20,7 @@ const KINDS = [
   "parse_failed",
   "ignored",
   "rejected_sender",
+  "balance_unconfirmed",
   "test",
   "device_pair_request",
   "device_approved",
@@ -79,7 +80,13 @@ export function Logs() {
               <TableRow key={e.id}>
                 <TableCell>{when(e.at)}</TableCell>
                 <TableCell>
-                  <Badge tone={e.kind === "error" || e.kind === "parse_failed" ? "bad" : "idle"}>
+                  <Badge tone={
+                    e.kind === "error" || e.kind === "parse_failed" || e.kind === "rejected_sender"
+                      ? "bad"
+                      : e.kind === "balance_unconfirmed"
+                        ? "warn"
+                        : "idle"
+                  }>
                     {e.kind.replace(/_/g, " ")}
                   </Badge>
                 </TableCell>
