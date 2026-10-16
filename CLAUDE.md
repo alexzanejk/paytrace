@@ -107,8 +107,9 @@ and the deployed function identical.
   Offline) and OnePlus froze it while the screen was off (back online when the screen woke). The standard battery
   exemption does not stop that on Vivo/OnePlus/Oppo/Xiaomi/Samsung. Mitigations in the app: `Setup.brandSteps` (per-brand
   checklist on the gate, re-asked once via `autostart_confirmed_v2`, and repeated on the app's first screen);
-  `Keepalive` alarm (`setAndAllowWhileIdle`, pushed 2 min ahead on every beat, restarts the service if it dies; some
-  brands cancel alarms when they stop an app); `onTaskRemoved` restart; a Wi-Fi lock beside the CPU wake lock;
+  `Keepalive` alarm (`setAndAllowWhileIdle`, pushed 45 s ahead on every beat, restarts the service if it dies silently;
+  5 s ahead from `onDestroy`/`onTaskRemoved`, where the app is told it is stopping; some brands cancel alarms when they
+  stop an app; a hard kill gives no callback, so ~45 s is the floor there); a Wi-Fi lock beside the CPU wake lock;
   `startForeground` failures are caught instead of crashing; `BeatGap` counts a 5+ min gap with the phone still up
   (uptime clock, so a reboot is not counted) as "stopped by the phone", reported as `stopped_count`/`last_gap_min` and
   shown on the Devices page. It cannot be made 100% in software; Firebase push would be the next step if settings are not enough.
