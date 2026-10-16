@@ -37,6 +37,12 @@ You need Java on your computer. On a Mac, in Terminal: `brew install --cask temu
 
 The build page tells you whether a build used your permanent key or a temporary one.
 
+**If it says GitHub is signed in as a different account:** that is fine. Only the owner account (`alexzanejk`) may
+store secrets, so the script skips the automatic route and shows you GitHub's web page instead. Paste the four
+values there while signed in as the owner. If the key was made but not loaded, run
+`bash scripts/create-android-key.sh --upload-only`. To copy one value at a time without showing it:
+`bash scripts/create-android-key.sh --copy ANDROID_KEYSTORE_BASE64` (then the other three names).
+
 ## 3. Turn on two-step login for the dashboard (free)
 
 1. Install an authenticator app on your phone that **backs itself up**: Google Authenticator (signed in to your
