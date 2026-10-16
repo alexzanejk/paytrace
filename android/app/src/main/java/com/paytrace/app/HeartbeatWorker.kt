@@ -12,12 +12,20 @@ import androidx.work.Worker
 import androidx.work.WorkerParameters
 import java.util.concurrent.TimeUnit
 
-/** Tells the server "this phone is alive" every ~15 minutes, so a dead phone is noticed within the hour
+/** Every ~15 minutes: checks the SMS inbox for payment messages that were missed, then tells the server "this phone is alive", so a dead phone is noticed within the hour
  *  instead of when a customer complains. It also learns when the owner approves the phone, so the app
  *  connects by itself without having to be opened. */
 class HeartbeatWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
 
     override fun doWork(): Result {
+        // First, pick up anything the live listener missed (phone off, app frozen). This needs no internet and
+        // no approval: the messages are kept on the phone and sent as soon as the phone is allowed to.
+        try {
+            InboxScanner.run(applicationContext)
+        } catch (e: Exception) {
+            // Never let the safety net stop the heartbeat.
+        }
+
         val s = AppSettings(applicationContext)
         // Not asked to join yet (or removed): the app's own screen handles pairing.
         val waiting = s.deviceStatus == "pending" || s.deviceStatus == "approved"

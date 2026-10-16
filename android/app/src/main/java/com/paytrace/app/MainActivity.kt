@@ -142,6 +142,7 @@ fun Dashboard(settings: AppSettings, tick: Int) {
     val stats = remember(tick) { Db.get(ctx).todayStats() }
     val configured = remember(tick) { settings.ready }
     val smsOk = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
+    val readOk = ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
     var on by remember { mutableStateOf(settings.monitoring) }
 
     LazyColumn(
@@ -161,6 +162,20 @@ fun Dashboard(settings: AppSettings, tick: Int) {
                 })
             }
         }
+        item {
+            val last = remember(tick) { settings.inboxCheckedAt }
+            val recovered = remember(tick) { settings.recoveredTotal }
+            Text(
+                when {
+                    !readOk -> "Missed-message recovery is off."
+                    last == null -> "Missed-message recovery: not run yet."
+                    recovered == 0 -> "Inbox last checked " + timeText(last) + ". Nothing was missed."
+                    else -> "Inbox last checked " + timeText(last) + ". Recovered " + recovered + " missed message" + (if (recovered == 1) "" else "s") + "."
+                },
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        if (smsOk && !readOk) item { Warning("Reading old SMS is off. Allow it in the phone's app settings for PayTrace, or a payment message that arrives while the phone is off cannot be recovered.") }
         if (!smsOk) item { Warning("SMS permission is off. Open the phone's app settings for PayTrace and allow SMS, or no payment can be detected.") }
         if (!configured) item { PairCard(settings) }
         item {

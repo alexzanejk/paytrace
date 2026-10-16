@@ -27,6 +27,13 @@ i = cleanInfo({ app_version: "1.0.7<script>alert(1)</script>".repeat(5) }, at);
 check("version is stripped to safe characters and capped", /^[0-9A-Za-z._-]{1,20}$/.test(i.app_version ?? ""), i.app_version);
 check("a version of only junk is dropped", cleanInfo({ app_version: "<<>>" }, at).app_version === undefined);
 
+i = cleanInfo({ inbox_permission: false, recovered: 7 }, at);
+check("inbox permission and the recovered count are kept", i.inbox_permission === false && i.recovered === 7, i);
+i = cleanInfo({ inbox_permission: "true", recovered: "3" }, at);
+check("...also when sent as text", i.inbox_permission === true && i.recovered === 3, i);
+check("a negative recovered count is dropped", cleanInfo({ recovered: -2 }, at).recovered === undefined);
+check("a missing inbox permission is NOT a Telegram alert (it only shows on the dashboard)", healthProblem({ monitoring: true, sms_permission: true, inbox_permission: false }) === null);
+
 check("healthy phone has no problem", healthProblem({ monitoring: true, sms_permission: true }) === null);
 check("monitoring off is a problem", healthProblem({ monitoring: false, sms_permission: true }) === "monitoring_off");
 check("sms permission off is a problem", healthProblem({ monitoring: true, sms_permission: false }) === "sms_permission_off");

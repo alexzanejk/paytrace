@@ -14,6 +14,8 @@ export interface DeviceInfo {
   sms_permission?: boolean;
   pending?: number;
   failed?: number;
+  inbox_permission?: boolean;
+  recovered?: number;
   app_version?: string;
   reported_at?: string;
 }
@@ -53,12 +55,23 @@ export function agoText(minutes: number | null): string {
   return `${Math.floor(h / 24)} d ${h % 24} h ago`;
 }
 
-/** Problems a phone reports about itself, in words the owner can act on. Empty when all is well. */
-export function infoProblems(info: DeviceInfo | null | undefined): string[] {
+/** Things that stop payments being CAPTURED right now. These are worth a red banner on every page. */
+export function blockingProblems(info: DeviceInfo | null | undefined): string[] {
   const out: string[] = [];
   if (!info) return out;
   if (info.sms_permission === false) out.push("SMS permission is off, so it cannot see payment messages");
   if (info.monitoring === false) out.push("Monitoring is switched off in the app, so payments are not being forwarded");
+  return out;
+}
+
+/** Everything a phone reports that needs attention, in words the owner can act on. Empty when all is well.
+ *  Includes the blocking problems plus ones that are worth fixing but are not losing payments right now. */
+export function infoProblems(info: DeviceInfo | null | undefined): string[] {
+  if (!info) return [];
+  const out = blockingProblems(info);
+  if (info.inbox_permission === false) {
+    out.push("Reading old SMS is off, so a payment message that arrives while the phone is off cannot be recovered");
+  }
   if ((info.failed ?? 0) > 0) out.push(`${info.failed} message${info.failed === 1 ? "" : "s"} could not be sent`);
   return out;
 }

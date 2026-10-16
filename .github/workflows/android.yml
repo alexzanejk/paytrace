@@ -34,6 +34,11 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      # The missed-message recovery logic is plain Kotlin, tested here without a phone.
+      - name: Unit tests
+        working-directory: android
+        run: gradle testDebugUnitTest --no-daemon --stacktrace
+
       # One build path either way. With the permanent key (stored as GitHub secrets, never in the repo)
       # the APK can be installed over the previous one. Without it, a throwaway key is used: the build still
       # exercises exactly the same signing setup, but each build has a different signature, so Android will

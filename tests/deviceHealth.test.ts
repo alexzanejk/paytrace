@@ -1,5 +1,5 @@
 import {
-  agoText, deviceHealth, infoProblems, LATE_AFTER_MIN, minutesSince, SILENT_AFTER_MIN,
+  blockingProblems, agoText, deviceHealth, infoProblems, LATE_AFTER_MIN, minutesSince, SILENT_AFTER_MIN,
 } from "../dashboard/src/lib/deviceHealth.ts";
 import { readFileSync } from "node:fs";
 
@@ -46,6 +46,13 @@ check("sms permission off is flagged", infoProblems({ sms_permission: false }).s
 check("monitoring off is flagged", infoProblems({ monitoring: false }).some((p) => /not being forwarded/.test(p)));
 check("failed sends are counted, singular", infoProblems({ failed: 1 })[0] === "1 message could not be sent");
 check("failed sends are counted, plural", infoProblems({ failed: 4 })[0] === "4 messages could not be sent");
+
+check("no read-old-SMS permission is flagged", infoProblems({ inbox_permission: false }).some((p) => /Reading old SMS is off/.test(p)));
+check("...but it is not a red-banner problem, nothing is being lost right now", blockingProblems({ inbox_permission: false }).length === 0);
+check("failed sends are not a red-banner problem either", blockingProblems({ failed: 5 }).length === 0);
+check("sms permission and monitoring are red-banner problems", blockingProblems({ sms_permission: false, monitoring: false }).length === 2);
+check("blocking problems come first in the full list", infoProblems({ sms_permission: false, inbox_permission: false, failed: 2 })[0].startsWith("SMS permission"));
+check("no report: no blocking problems", blockingProblems(null).length === 0);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

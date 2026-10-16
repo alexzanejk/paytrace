@@ -57,6 +57,14 @@ Authentication, then Providers, then Email.
 
 ---
 
+## If a payment message arrives while the phone is off
+
+You don't need to do anything. Every 15 minutes, and whenever the app opens or the phone restarts, PayTrace looks
+through the phone's own message inbox for payment messages it missed and sends them. It needs the **"Read SMS"**
+permission: when the app first asks for SMS permissions, allow all of them. The phone's screen shows
+"Inbox last checked ... Recovered N missed messages", and so does the Devices page. A phone that has been off for a
+long time catches up with up to 7 days of messages.
+
 ## When the dashboard says a phone is Late or Silent
 
 - **Late** (no word for 40+ minutes): usually Android delaying things. Open PayTrace on the phone.

@@ -133,6 +133,21 @@ class AppSettings(ctx: Context) {
         get() = (p.getStringSet("fields", DEFAULT_FIELDS) ?: DEFAULT_FIELDS).toSet()
         set(v) { p.edit().putStringSet("fields", v).apply() }
 
+    /** Where the next inbox scan continues from (null = never scanned). See CatchUp.resumeFrom. */
+    var inboxResumeFrom: Long?
+        get() = p.getLong("inbox_resume", -1L).takeIf { it >= 0 }
+        set(v) { p.edit().apply { if (v == null) remove("inbox_resume") else putLong("inbox_resume", v) }.apply() }
+
+    /** When the inbox was last read successfully, for showing on screen. */
+    var inboxCheckedAt: Long?
+        get() = p.getLong("inbox_checked", -1L).takeIf { it >= 0 }
+        set(v) { p.edit().apply { if (v == null) remove("inbox_checked") else putLong("inbox_checked", v) }.apply() }
+
+    /** How many missed messages the inbox scan has picked up since the app was installed. */
+    var recoveredTotal: Int
+        get() = p.getInt("recovered_total", 0)
+        set(v) { p.edit().putInt("recovered_total", v).apply() }
+
     fun providerEnabled(provider: String): Boolean = p.getBoolean("prov_$provider", true)
     fun setProviderEnabled(provider: String, on: Boolean) {
         p.edit().putBoolean("prov_$provider", on).apply()

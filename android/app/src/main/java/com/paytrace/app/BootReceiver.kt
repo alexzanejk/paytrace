@@ -10,5 +10,6 @@ class BootReceiver : BroadcastReceiver() {
         if (AppSettings(context).monitoring) MonitorService.start(context)
         SendWorker.resumePending(context)
         HeartbeatWorker.schedule(context)
+        HeartbeatWorker.now(context) // includes the inbox catch-up, so a restart recovers what arrived while it was off
     }
 }

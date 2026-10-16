@@ -89,8 +89,14 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "paytrace.db"
     private fun sha(s: String): String =
         MessageDigest.getInstance("SHA-256").digest(s.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 
-    /** Returns the new row id, or -1 if this exact message was already stored (duplicate). */
-    fun insertIfNew(provider: String, sender: String, body: String, q: Providers.Quick): Long {
+    /** True if a message with exactly this text from this provider is already stored, however its sender was spelled. */
+    fun hasMessage(provider: String, body: String): Boolean =
+        readableDatabase.rawQuery("select 1 from logs where provider = ? and body = ? limit 1", arrayOf(provider, body))
+            .use { it.moveToFirst() }
+
+    /** Returns the new row id, or -1 if this exact message was already stored (duplicate).
+     *  receivedAt is when the SMS really arrived (for messages picked up later from the inbox); default is now. */
+    fun insertIfNew(provider: String, sender: String, body: String, q: Providers.Quick, receivedAt: Long? = null): Long {
         val now = System.currentTimeMillis()
         val v = ContentValues()
         v.put("provider", provider)
@@ -107,7 +113,7 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "paytrace.db"
         v.put("cash_out", if (q.cashOut) 1 else 0)
         v.put("status", "PENDING")
         v.put("attempts", 0)
-        v.put("created_at", now)
+        v.put("created_at", receivedAt ?: now)
         v.put("updated_at", now)
         return writableDatabase.insertWithOnConflict("logs", null, v, SQLiteDatabase.CONFLICT_IGNORE)
     }

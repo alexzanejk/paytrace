@@ -1,4 +1,4 @@
-import { BatteryMedium, TriangleAlert } from "lucide-react";
+import { BatteryMedium, LifeBuoy, TriangleAlert } from "lucide-react";
 import { infoProblems, type DeviceInfo } from "@/lib/deviceHealth";
 
 /** What the phone reported about itself: battery, app version, and anything stopping it capturing payments. */
@@ -17,6 +17,12 @@ export function DeviceDetails({ info }: { info: DeviceInfo | null | undefined })
         {info.pending ? <span>{info.pending} waiting to send</span> : null}
         {info.app_version ? <span>v{info.app_version}</span> : null}
       </div>
+      {info.recovered ? (
+        <span className="inline-flex items-start gap-1 text-status-ok">
+          <LifeBuoy className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          {info.recovered} missed message{info.recovered === 1 ? "" : "s"} recovered
+        </span>
+      ) : null}
       {problems.map((p) => (
         <span key={p} className="inline-flex items-start gap-1 text-status-bad">
           <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
