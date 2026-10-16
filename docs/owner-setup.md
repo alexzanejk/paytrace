@@ -63,6 +63,21 @@ Authentication, then Providers, then Email.
 
 ---
 
+## 5. Let your website check transaction IDs
+
+Your website's admin and super-admin servers can ask PayTrace whether a customer's transaction ID really arrived.
+The technical details for your developer are in `docs/verify-api.md`. You need one **key** per server, so that one
+can be replaced without touching the other.
+
+1. On your computer, run this twice (it prints a random key each time; it only needs `openssl`, already on a Mac):
+   `openssl rand -hex 32`
+2. Ask Claude to open the secret prompt for `VERIFY_API_KEYS`, and type the two keys there **separated by a comma**
+   (no spaces). Only you see them. Do not paste them in chat.
+3. Give each key to the matching server's environment settings (as `PAYTRACE_VERIFY_KEY`). To replace a key later,
+   change the secret and the server together.
+
+Until step 2 is done, the check answers "not configured" and nothing can use it.
+
 ## If a payment message arrives while the phone is off
 
 You don't need to do anything. Every 15 minutes (and when the app opens or the phone restarts) PayTrace looks

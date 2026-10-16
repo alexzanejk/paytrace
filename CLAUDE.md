@@ -18,9 +18,10 @@ contains no source code; everything here was written from scratch.
 | Receiving endpoint | `https://mkjcqwkfbamnuibmurcd.supabase.co/functions/v1/ingest` (Edge Function, `verify_jwt=false`, own secret check) |
 | Dashboard | React + TypeScript + Vite in `dashboard/` (source in `dashboard/src`), Tailwind CSS v4, shadcn/ui components in `dashboard/src/components/ui`, Lucide icons. `npm run build` → `dist/`. Cloudflare Workers static assets (`wrangler.jsonc`, worker `paytrace-dashboard`, build command `npm ci && npm run build`) |
 | Android app | `android/` (Kotlin, Compose, SQLite, WorkManager). GitHub Actions builds a **signed release** APK (artifact `paytrace-apk`, file `paytrace.apk`) |
-| Tests | `tests/*.test.ts`, run all with `npm test` (parser, notify wording, phone health, watchdog, dashboard health thresholds) |
+| Tests | `tests/*.test.ts`, run all with `npm test` (parser, notify wording, phone health, watchdog, dashboard health thresholds, verify-API logic) |
 | CI | `.github/workflows/ci.yml` (tests + dashboard build + `deno check` of the function) and `android.yml` (signed APK). Both run on every push |
 | Owner guide | `docs/owner-setup.md` (plain language: Telegram, signing key, two-step login) |
+| Transaction check API | `supabase/functions/verify-transaction/` (`index.ts`, pure `logic.ts`), SQL `verify_transaction` + `verify_rate` (migration 008), developer guide `docs/verify-api.md` |
 | DB history | `supabase/migrations/` (apply in filename order) |
 
 Deployed edge function code is `supabase/functions/ingest/{index.ts,parser.ts}`. Redeploy after editing. Keep the repo
@@ -129,6 +130,15 @@ and the deployed function identical.
   `recovered`; a missing READ_SMS shows on the Devices page, not in the red banner or Telegram (nothing is being lost
   *yet*). Recovered messages keep their real arrival time as `created_at`/`timestamp`.
 - The balance-chain `mismatch` is NOT alerted (cash-outs break it innocently); only payments that go to `review` are.
+- **Transaction check API** (`verify-transaction`, `verify_jwt=false`, own auth). For the owner's website admin and
+  super-admin servers: `POST {"transaction_id","provider"?}` with `Authorization: Bearer <key>` returns
+  `{"found":true|false}` and nothing else. Keys live in the Edge Function secret `VERIFY_API_KEYS` (comma separated,
+  each >= 32 chars; the owner types them in the Supabase prompt, Claude never sees them; with none set it answers
+  503). `found` = stored incoming payment (`payment_received`/`send_money_received`) with status `unmatched` or
+  `matched`: cash-outs, `review` (could be a fake SMS) and `ignored` are NOT found, on purpose. 60 lookups/minute per
+  key (`verify_rate`, counted in the same SQL call), timing-safe key compare, strings that cannot be a TrxID are
+  answered `false` without a query. Non-200 means the caller shows "Pending check" and retries. Never add amounts or
+  other detail to the response: it would turn this into a data leak for anyone holding a key.
 - A claim is limited to 5 attempts per order to stop TrxID guessing.
 - SMS text is untrusted: the dashboard renders it as React children only. Never use `dangerouslySetInnerHTML`.
 - Times: SMS times are read as Bangladesh time (+06:00); totals group by Asia/Dhaka.
@@ -183,7 +193,9 @@ NOT yet verified (be honest about this):
     function pins the same version but does not call them either. **Do not bump `@supabase/supabase-js` blindly**:
     `mfa.enroll()` prefixes the QR code with `data:image/svg+xml;utf-8,` itself, so a version that changes that breaks
     two-step setup. Upgrade only together with a real enrolment test against Supabase Auth.
-11. Auto-deploy of the Edge Function from GitHub is NOT set up (deploys are manual; repo must equal deployed). It would
+11. Owner: set `VERIFY_API_KEYS` (docs/owner-setup.md step 5) and give each website server its key; then do one real
+    call with a known TrxID. Not yet verified end to end: only the SQL (rolled-back test rows) and the 401/503 paths.
+12. Auto-deploy of the Edge Function from GitHub is NOT set up (deploys are manual; repo must equal deployed). It would
     need a Supabase access token as a GitHub secret.
 
 ## Known limits to repeat to the owner
