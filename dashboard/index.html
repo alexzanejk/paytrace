@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>PayTrace Dashboard</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#14181f;--mut:#5d6675;--line:#e3e6eb;--acc:#0b6e4f;--acc-ink:#fff;--warn:#b45309;--bad:#b42318;--ok:#0b6e4f;--chip:#eef1f5}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0e1116;--card:#171b22;--ink:#e8ebf0;--mut:#9aa4b2;--line:#2a313b;--acc:#2fbf8f;--acc-ink:#04140e;--warn:#f0b35a;--bad:#ff8a80;--ok:#2fbf8f;--chip:#222833}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+h1{font-size:17px;margin:0}
+nav{display:flex;flex-wrap:wrap;gap:6px}
+button,select,input{font:inherit;color:inherit}
+nav button{background:var(--chip);border:0;padding:7px 12px;border-radius:8px;cursor:pointer}
+nav button.on{background:var(--acc);color:var(--acc-ink)}
+main{max-width:1150px;margin:0 auto;padding:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.card .k{color:var(--mut);font-size:13px}
+.card .v{font-size:24px;font-weight:650;margin-top:2px;font-variant-numeric:tabular-nums}
+.card .s{color:var(--mut);font-size:13px;margin-top:2px}
+.tablewrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:12px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:top}
+th{font-size:12px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+td.n,th.n{text-align:right}
+tr:last-child td{border-bottom:0}
+.tag{display:inline-block;padding:2px 8px;border-radius:99px;background:var(--chip);font-size:12px}
+.tag.matched,.tag.paid{color:var(--ok)}.tag.review{color:var(--warn)}.tag.unmatched,.tag.pending{color:var(--mut)}
+.tag.cancelled,.tag.expired,.tag.ignored{color:var(--bad)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px;align-items:center}
+select,input{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+.btn{background:var(--acc);color:var(--acc-ink);border:0;border-radius:8px;padding:7px 14px;cursor:pointer}
+.btn.ghost{background:var(--chip);color:var(--ink)}
+.btn.sm{padding:4px 10px;font-size:13px}
+.mut{color:var(--mut)}.err{color:var(--bad)}.ok{color:var(--ok)}
+.login{max-width:340px;margin:12vh auto;padding:0 16px}
+.login input{width:100%;margin:6px 0 12px}
+h2{font-size:16px;margin:20px 0 8px}
+pre{white-space:pre-wrap;word-break:break-word;margin:0;font:12px/1.4 ui-monospace,Menlo,monospace}
+td.wrap{white-space:normal;max-width:360px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+"use strict";
+const SUPABASE_URL = "https://mkjcqwkfbamnuibmurcd.supabase.co";
+const SUPABASE_KEY = "sb_publishable_faG5Xm4u4Dp9ObPP10oaSQ_Ocye9262"; // public key; data is protected by database rules
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const app = document.getElementById("app");
+const PROVIDERS = ["bkash", "nagad", "rocket", "upay"];
+const TYPE_LABEL = { payment_received: "Payment received", send_money_received: "Send Money received", cash_out: "Agent Cash Out", unknown: "Unknown" };
+let tab = "overview", timer = null, settings = null, range = 1;
+
+// ---------- helpers (all text goes through textContent: SMS content is untrusted) ----------
+function h(tag, props, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (k === "class") el.className = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (v !== false && v != null) el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+  return el;
+}
+const tk = (n) => n == null ? "–" : "Tk " + Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const when = (t) => t ? new Date(t).toLocaleString("en-GB", { timeZone: "Asia/Dhaka", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }) : "–";
+const dhakaDate = (d = new Date()) => d.toLocaleDateString("en-CA", { timeZone: "Asia/Dhaka" });
+const tag = (s) => h("span", { class: "tag " + s }, s);
+const card = (k, v, s) => h("div", { class: "card" }, h("div", { class: "k" }, k), h("div", { class: "v" }, v), s ? h("div", { class: "s" }, s) : null);
+function table(head, rows) {
+  return h("div", { class: "tablewrap" }, h("table", {}, h("thead", {}, h("tr", {}, head.map((c) => h("th", { class: c.n ? "n" : "" }, c.t)))),
+    h("tbody", {}, rows.length ? rows : h("tr", {}, h("td", { colspan: head.length, class: "mut" }, "Nothing here yet.")))));
+}
+const msg = (el, text, cls) => { el.textContent = text; el.className = cls || "mut"; };
+
+// ---------- auth ----------
+async function boot() {
+  const { data } = await sb.auth.getSession();
+  if (!data.session) return showLogin();
+  const { data: adm } = await sb.from("admins").select("user_id").maybeSingle();
+  if (!adm) { await sb.auth.signOut(); return showLogin("This account is not an admin."); }
+  const { data: st } = await sb.from("settings").select("*").maybeSingle();
+  settings = st;
+  showApp();
+}
+function showLogin(note) {
+  clearInterval(timer);
+  const email = h("input", { type: "email", autocomplete: "username", required: true });
+  const pass = h("input", { type: "password", autocomplete: "current-password", required: true });
+  const out = h("div", { class: note ? "err" : "mut" }, note || "");
+  const form = h("form", { class: "login", onsubmit: async (e) => {
+    e.preventDefault(); msg(out, "Signing in…");
+    const { error } = await sb.auth.signInWithPassword({ email: email.value.trim(), password: pass.value });
+    if (error) return msg(out, "Sign-in failed. Check your email and password.", "err");
+    boot();
+  } }, h("h1", {}, "PayTrace"), h("p", { class: "mut" }, "Admin sign-in"), h("label", {}, "Email", email), h("label", {}, "Password", pass), h("button", { class: "btn", type: "submit" }, "Sign in"), h("p", {}, out));
+  app.replaceChildren(form);
+}
+
+// ---------- shell ----------
+const TABS = [["overview", "Overview"], ["review", "Review"], ["payments", "Payments"], ["orders", "Orders"], ["logs", "Logs"], ["settings", "Settings"]];
+function showApp() {
+  const nav = h("nav", {}, TABS.map(([id, label]) => h("button", { class: tab === id ? "on" : "", onclick: () => { tab = id; showApp(); } }, label)));
+  const main = h("main", { id: "main" });
+  app.replaceChildren(h("header", {}, h("h1", {}, "PayTrace"), nav, h("button", { class: "btn ghost sm", onclick: async () => { await sb.auth.signOut(); showLogin(); } }, "Sign out")), main);
+  render();
+  clearInterval(timer);
+  timer = setInterval(() => { if (!document.hidden && ["overview", "review", "payments", "logs"].includes(tab)) render(true); }, 20000);
+}
+async function render(quiet) {
+  const main = document.getElementById("main");
+  if (!main) return;
+  try {
+    const view = await VIEWS[tab]();
+    main.replaceChildren(view);
+  } catch (e) {
+    if (!quiet) main.replaceChildren(h("p", { class: "err" }, "Could not load: " + (e.message || e)));
+  }
+}
+const must = (r) => { if (r.error) throw r.error; return r.data; };
+
+// ---------- views ----------
+const VIEWS = {
+  async overview() {
+    const from = new Date(Date.now() - (range - 1) * 864e5);
+    const totals = must(await sb.from("payment_totals").select("*").gte("day", dhakaDate(from)));
+    const counts = await Promise.all(["review", "unmatched"].map((s) => sb.from("payments").select("id", { count: "exact", head: true }).eq("status", s)));
+    const sum = (rows, f) => rows.reduce((a, r) => a + Number(r[f] || 0), 0);
+    const inc = totals.filter((r) => r.txn_type === "payment_received" || r.txn_type === "send_money_received");
+    const co = totals.filter((r) => r.txn_type === "cash_out");
+    const label = range === 1 ? "Today" : "Last " + range + " days";
+    const rangeSel = h("select", { onchange: (e) => { range = +e.target.value; render(); } },
+      [[1, "Today"], [7, "7 days"], [30, "30 days"]].map(([v, t]) => h("option", { value: v, selected: v === range }, t)));
+    const rows = [...totals].sort((a, b) => (a.day < b.day ? 1 : -1)).map((r) => h("tr", {}, h("td", {}, r.day), h("td", {}, r.provider), h("td", {}, TYPE_LABEL[r.txn_type] || r.txn_type),
+      h("td", { class: "n" }, r.n), h("td", { class: "n" }, tk(r.amount)), h("td", { class: "n" }, tk(r.fee)), h("td", { class: "n" }, tk(r.commission))));
+    return h("div", {},
+      h("div", { class: "bar" }, h("strong", {}, label), rangeSel),
+      h("div", { class: "grid" },
+        card("Payments received", tk(sum(inc, "amount")), sum(inc, "n") + " payments · fees " + tk(sum(inc, "fee"))),
+        card("Agent Cash Out", tk(sum(co, "amount")), sum(co, "n") + " receipts"),
+        card("Commission earned", tk(sum(totals, "commission")), "fees on cash out " + tk(sum(co, "fee"))),
+        card("Needs review", String(counts[0].count ?? 0), "held, not credited"),
+        card("Unmatched", String(counts[1].count ?? 0), "waiting for an order")),
+      h("h2", {}, "Breakdown"),
+      table([{ t: "Day" }, { t: "Provider" }, { t: "Type" }, { t: "Count", n: 1 }, { t: "Amount", n: 1 }, { t: "Fee", n: 1 }, { t: "Commission", n: 1 }], rows));
+  },
+
+  async review() {
+    const pays = must(await sb.from("payments").select("*").in("status", ["review", "unmatched"]).neq("txn_type", "cash_out").order("received_at", { ascending: false }).limit(100));
+    const orders = must(await sb.from("orders").select("id,order_no,expected_amount,customer_name,status").in("status", ["pending", "review"]).order("created_at", { ascending: false }).limit(100));
+    const rows = pays.map((p) => {
+      const sel = h("select", {}, h("option", { value: "" }, "Match to order…"), orders.map((o) => h("option", { value: o.id }, `${o.order_no} · ${tk(o.expected_amount)}${o.customer_name ? " · " + o.customer_name : ""}`)));
+      const note = h("span", { class: "mut" });
+      return h("tr", {},
+        h("td", {}, when(p.occurred_at || p.received_at)), h("td", {}, p.provider), h("td", {}, p.trx_id), h("td", { class: "n" }, tk(p.amount)), h("td", {}, p.counterparty || "–"),
+        h("td", {}, tag(p.status), " ", p.review_reason ? h("span", { class: "mut" }, p.review_reason) : null),
+        h("td", {}, sel, " ",
+          h("button", { class: "btn sm", onclick: async () => {
+            if (!sel.value) return msg(note, "Pick an order first.", "err");
+            if (!confirm(`Credit ${p.trx_id} (${tk(p.amount)}) to this order? This cannot be undone.`)) return;
+            const { error } = await sb.rpc("manual_match", { p_payment_id: p.id, p_order_id: sel.value });
+            if (error) return msg(note, error.message, "err"); render();
+          } }, "Match"), " ",
+          h("button", { class: "btn ghost sm", onclick: async () => {
+            if (!confirm("Ignore this payment? It will never be credited.")) return;
+            const { error } = await sb.rpc("ignore_payment", { p_payment_id: p.id });
+            if (error) return msg(note, error.message, "err"); render();
+          } }, "Ignore"), " ", note));
+    });
+    return h("div", {}, h("p", { class: "mut" }, "Payments held for a person to decide: wrong amount, different payer number, expired order, or a format the system doesn't fully trust yet. Nothing here has been credited."),
+      table([{ t: "Time (BD)" }, { t: "Provider" }, { t: "TrxID" }, { t: "Amount", n: 1 }, { t: "From" }, { t: "Status" }, { t: "Action" }], rows));
+  },
+
+  async payments() {
+    const prov = h("select", { id: "fp" }, h("option", { value: "" }, "All providers"), PROVIDERS.map((p) => h("option", { value: p }, p)));
+    const stat = h("select", { id: "fs" }, h("option", { value: "" }, "All statuses"), ["matched", "unmatched", "review", "tracked_only", "ignored"].map((p) => h("option", { value: p }, p)));
+    const typ = h("select", { id: "ft" }, h("option", { value: "" }, "All types"), Object.entries(TYPE_LABEL).map(([v, t]) => h("option", { value: v }, t)));
+    const holder = h("div", {});
+    const load = async () => {
+      let q = sb.from("payments").select("*").eq("source", "app").order("received_at", { ascending: false }).limit(200);
+      if (prov.value) q = q.eq("provider", prov.value); if (stat.value) q = q.eq("status", stat.value); if (typ.value) q = q.eq("txn_type", typ.value);
+      const d = must(await q);
+      holder.replaceChildren(table([{ t: "Time (BD)" }, { t: "Provider" }, { t: "Type" }, { t: "TrxID" }, { t: "Amount", n: 1 }, { t: "Fee", n: 1 }, { t: "Commission", n: 1 }, { t: "Balance", n: 1 }, { t: "From" }, { t: "Status" }],
+        d.map((p) => h("tr", {}, h("td", {}, when(p.occurred_at || p.received_at)), h("td", {}, p.provider), h("td", {}, TYPE_LABEL[p.txn_type] || p.txn_type), h("td", {}, p.trx_id),
+          h("td", { class: "n" }, tk(p.amount)), h("td", { class: "n" }, tk(p.fee)), h("td", { class: "n" }, tk(p.commission)), h("td", { class: "n" }, tk(p.balance)), h("td", {}, p.counterparty || "–"), h("td", {}, tag(p.status))))));
+    };
+    [prov, stat, typ].forEach((s) => s.addEventListener("change", load));
+    await load();
+    return h("div", {}, h("div", { class: "bar" }, prov, stat, typ), holder);
+  },
+
+  async orders() {
+    const orders = must(await sb.from("orders").select("*").order("created_at", { ascending: false }).limit(200));
+    const name = h("input", { placeholder: "Customer name" }), phone = h("input", { placeholder: "Customer phone", inputmode: "tel" });
+    const amt = h("input", { placeholder: "Amount (Tk)", inputmode: "decimal", required: true });
+    const out = h("span", { class: "mut" });
+    const form = h("form", { class: "bar", onsubmit: async (e) => {
+      e.preventDefault();
+      const a = parseFloat(amt.value.replace(/,/g, ""));
+      if (!(a > 0)) return msg(out, "Enter a valid amount.", "err");
+      const mins = settings?.order_expiry_minutes || 60;
+      const no = "ORD-" + Date.now().toString(36).toUpperCase().slice(-6) + Math.floor(Math.random() * 36).toString(36).toUpperCase();
+      const { error } = await sb.from("orders").insert({ order_no: no, customer_name: name.value.trim() || null, customer_phone: phone.value.trim() || null, expected_amount: a, expires_at: new Date(Date.now() + mins * 60000).toISOString() });
+      if (error) return msg(out, error.message, "err"); render();
+    } }, name, phone, amt, h("button", { class: "btn", type: "submit" }, "Create order"), out);
+    const rows = orders.map((o) => {
+      const expired = o.status === "pending" && new Date(o.expires_at) < new Date();
+      return h("tr", {}, h("td", {}, o.order_no), h("td", {}, when(o.created_at)), h("td", {}, o.customer_name || "–"), h("td", {}, o.customer_phone || "–"), h("td", { class: "n" }, tk(o.expected_amount)),
+        h("td", {}, tag(expired ? "expired" : o.status)), h("td", {}, o.claimed_trx_id ? `${o.claimed_provider} ${o.claimed_trx_id}` : "–"),
+        h("td", {}, ["pending", "review"].includes(o.status) ? h("button", { class: "btn ghost sm", onclick: async () => {
+          if (!confirm("Cancel this order?")) return;
+          const { error } = await sb.from("orders").update({ status: "cancelled" }).eq("id", o.id).in("status", ["pending", "review"]);
+          if (error) alert(error.message); else render();
+        } }, "Cancel") : null));
+    });
+    return h("div", {}, h("h2", {}, "New order"), form, table([{ t: "Order" }, { t: "Created" }, { t: "Customer" }, { t: "Phone" }, { t: "Amount", n: 1 }, { t: "Status" }, { t: "Claimed TrxID" }, { t: "" }], rows));
+  },
+
+  async logs() {
+    const kind = h("select", {}, h("option", { value: "" }, "All events"), ["created", "duplicate", "matched", "review", "claim", "manual_match", "parse_failed", "ignored", "rejected_sender", "test", "error"].map((k) => h("option", { value: k }, k)));
+    const holder = h("div", {});
+    const load = async () => {
+      let q = sb.from("events").select("*").order("at", { ascending: false }).limit(200);
+      if (kind.value) q = q.eq("kind", kind.value);
+      const d = must(await q);
+      holder.replaceChildren(table([{ t: "Time (BD)" }, { t: "Event" }, { t: "Provider" }, { t: "Detail" }],
+        d.map((e) => h("tr", {}, h("td", {}, when(e.at)), h("td", {}, tag(e.kind)), h("td", {}, e.provider || "–"), h("td", { class: "wrap" }, h("pre", {}, JSON.stringify(e.detail)))))));
+    };
+    kind.addEventListener("change", load); await load();
+    return h("div", {}, h("div", { class: "bar" }, kind, h("span", { class: "mut" }, "“parse_failed” rows contain the original SMS text so the parser can be fixed.")), holder);
+  },
+
+  async settings() {
+    const st = must(await sb.from("settings").select("*").single()); settings = st;
+    const boxes = PROVIDERS.map((p) => h("label", { style: "margin-right:14px" }, h("input", { type: "checkbox", value: p, checked: st.enabled_providers.includes(p) }), " " + p));
+    const mins = h("input", { type: "number", min: "1", value: st.order_expiry_minutes, style: "width:90px" });
+    const out = h("span", { class: "mut" });
+    return h("div", {},
+      h("div", { class: "card" }, h("h2", { style: "margin-top:0" }, "Server settings"),
+        h("p", {}, "Providers the server accepts: "), h("p", {}, boxes),
+        h("p", {}, "Order expires after ", mins, " minutes"),
+        h("button", { class: "btn", onclick: async () => {
+          const enabled = boxes.map((b) => b.firstChild).filter((i) => i.checked).map((i) => i.value);
+          const { error } = await sb.from("settings").update({ enabled_providers: enabled, order_expiry_minutes: Math.max(1, +mins.value || 60), updated_at: new Date().toISOString() }).eq("id", true);
+          msg(out, error ? error.message : "Saved.", error ? "err" : "ok");
+        } }, "Save"), " ", out),
+      h("div", { class: "card", style: "margin-top:12px" }, h("h2", { style: "margin-top:0" }, "Connect the Android app"),
+        h("p", {}, "Server URL: ", h("code", {}, SUPABASE_URL + "/functions/v1/ingest")),
+        h("p", { class: "mut" }, "Auth header: Authorization = your INGEST_SECRET (set in Supabase → Edge Functions → Secrets). It is never shown here.")));
+  },
+};
+
+sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_OUT") showLogin(); });
+boot();
+</script>
+</body>
+</html>
