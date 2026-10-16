@@ -2,14 +2,17 @@
 //
 //   POST /functions/v1/verify-transaction
 //   Authorization: Bearer <one of the keys in the VERIFY_API_KEYS secret>
-//   {"transaction_id": "ABC123XYZ9", "provider": "bkash"}      provider is optional
-//   -> 200 {"found": true}  or  {"found": false}
+//   {"transaction_id": "ABC123XYZ9", "provider": "bkash", "amount": 500}     provider and amount are optional
+//   -> 200 {"found": false}
+//   -> 200 {"found": true, "provider": "bkash", "amount": 500, "currency": "BDT", "amount_matches": true}
 //
-// Read-only: it never changes anything and never returns amounts or other details. Errors: 400 bad request,
+// Read-only: it never changes anything. It returns the provider and amount of a found transaction (the owner chose
+// this, so a submitted ID can be checked against the amount the customer claims) and nothing else: no phone numbers,
+// balances or message text. "amount_matches" appears only when the caller sent an "amount". Errors: 400 bad request,
 // 401 wrong or missing key, 429 too many lookups (try again in a minute), 503/500 not available. A caller that
 // gets anything but 200 should show "Pending check" and retry, not "Unverified".
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
-import { authenticate, normalizeProvider, normalizeTrx, parseKeys } from "./logic.ts";
+import { amountsEqual, authenticate, normalizeAmount, normalizeProvider, normalizeTrx, parseKeys } from "./logic.ts";
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
   auth: { persistSession: false },
@@ -46,6 +49,9 @@ Deno.serve(async (req) => {
   const provider = normalizeProvider(body.provider);
   if (provider === null) return json({ error: "provider must be bkash, nagad, rocket or upay" }, 400);
 
+  const claimed = normalizeAmount(body.amount);
+  if (claimed === null) return json({ error: "amount must be a positive number, for example 500 or 500.50" }, 400);
+
   // Whatever cannot be a transaction ID cannot have been paid, so it is answered without touching the database.
   const trx = normalizeTrx(body.transaction_id);
   if (!trx) return json({ found: false });
@@ -62,5 +68,11 @@ Deno.serve(async (req) => {
     return json({ error: "lookup failed, try again" }, 500);
   }
   if (data?.limited) return json({ error: "too many lookups, try again in a minute" }, 429, { "retry-after": "60" });
-  return json({ found: data?.found === true });
+  if (data?.found !== true) return json({ found: false });
+  // The same ID exists on two providers and the caller did not say which: do not guess an amount.
+  if (data.ambiguous) return json({ found: true, ambiguous: true, message: "send provider to pick one" });
+  const amount = Number(data.amount);
+  const out: Record<string, unknown> = { found: true, provider: data.provider, amount, currency: "BDT" };
+  if (claimed !== undefined) out.amount_matches = amountsEqual(claimed, amount);
+  return json(out);
 });

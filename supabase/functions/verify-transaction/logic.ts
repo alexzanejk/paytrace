@@ -39,3 +39,15 @@ export function normalizeProvider(v: unknown): string | undefined | null {
   const p = v.trim().toLowerCase();
   return (PROVIDERS as readonly string[]).includes(p) ? p : null;
 }
+
+/** The amount a customer says they paid, as a number. undefined = none given, null = given but not a usable amount. */
+export function normalizeAmount(v: unknown): number | undefined | null {
+  if (v === undefined || v === null || v === "") return undefined;
+  const n = typeof v === "number" ? v : typeof v === "string" && /^\d{1,12}([.,]\d{1,2})?$/.test(v.trim()) ? Number(v.trim().replace(",", ".")) : NaN;
+  return Number.isFinite(n) && n > 0 && n < 1e10 ? n : null;
+}
+
+/** Equal to the paisa: 500, 500.0 and "500.00" all match a stored 500.00, but 500.01 does not. */
+export function amountsEqual(a: number, b: number): boolean {
+  return Math.abs(a - b) < 0.005;
+}

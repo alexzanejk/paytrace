@@ -1,4 +1,4 @@
-import { authenticate, normalizeProvider, normalizeTrx, parseKeys } from "../supabase/functions/verify-transaction/logic.ts";
+import { amountsEqual, authenticate, normalizeAmount, normalizeProvider, normalizeTrx, parseKeys } from "../supabase/functions/verify-transaction/logic.ts";
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, extra?: unknown) {
@@ -37,6 +37,16 @@ check("a number or object is not an ID", normalizeTrx(1234567890) === null && no
 check("no provider means search all", normalizeProvider(undefined) === undefined && normalizeProvider("") === undefined);
 check("known providers, any case", normalizeProvider("bKash") === "bkash" && normalizeProvider(" NAGAD ") === "nagad" && normalizeProvider("rocket") === "rocket" && normalizeProvider("upay") === "upay");
 check("an unknown provider is an error, not a silent search of everything", normalizeProvider("paypal") === null && normalizeProvider(5) === null);
+
+// amounts
+check("no amount means none given", normalizeAmount(undefined) === undefined && normalizeAmount("") === undefined && normalizeAmount(null) === undefined);
+check("a number or numeric text is accepted", normalizeAmount(500) === 500 && normalizeAmount("500.50") === 500.5 && normalizeAmount(" 1250 ") === 1250);
+check("a comma decimal is accepted", normalizeAmount("500,50") === 500.5);
+check("zero, negative and junk are refused", normalizeAmount(0) === null && normalizeAmount(-5) === null && normalizeAmount("abc") === null && normalizeAmount("1e9") === null && normalizeAmount(NaN) === null);
+check("thousands separators are refused rather than misread", normalizeAmount("1,250.50") === null);
+check("500, 500.0 and 500.00 are the same amount", amountsEqual(500, 500.0) && amountsEqual(500, Number("500.00")));
+check("one paisa off is a different amount", !amountsEqual(500, 500.01) && !amountsEqual(500.5, 500));
+check("floating point noise does not break a match", amountsEqual(0.1 + 0.2, 0.3));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

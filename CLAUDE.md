@@ -132,13 +132,16 @@ and the deployed function identical.
 - The balance-chain `mismatch` is NOT alerted (cash-outs break it innocently); only payments that go to `review` are.
 - **Transaction check API** (`verify-transaction`, `verify_jwt=false`, own auth). For the owner's website admin and
   super-admin servers: `POST {"transaction_id","provider"?}` with `Authorization: Bearer <key>` returns
-  `{"found":true|false}` and nothing else. Keys live in the Edge Function secret `VERIFY_API_KEYS` (comma separated,
+  `{"found":true|false}`; when found it also returns `provider`, `amount` and `currency` (owner-approved), plus
+  `amount_matches` if the caller sent an `amount`; `ambiguous:true` (no amount) if the same ID exists on two providers
+  and none was specified. Keys live in the Edge Function secret `VERIFY_API_KEYS` (comma separated,
   each >= 32 chars; the owner types them in the Supabase prompt, Claude never sees them; with none set it answers
   503). `found` = any stored transaction (payment, send money AND cash-out, per the owner) with status `unmatched`,
   `matched` or `tracked_only` (migration 009); `review` (could be a fake SMS) and `ignored` are NOT found, on purpose. 60 lookups/minute per
   key (`verify_rate`, counted in the same SQL call), timing-safe key compare, strings that cannot be a TrxID are
-  answered `false` without a query. Non-200 means the caller shows "Pending check" and retries. Never add amounts or
-  other detail to the response: it would turn this into a data leak for anyone holding a key.
+  answered `false` without a query. Non-200 means the caller shows "Pending check" and retries. The response is deliberately limited to
+  provider and amount (the owner chose to expose the amount): never add phone numbers, balances or message text. With
+  the amount exposed a key can be used to probe IDs, so it stays server-side only and the rate limit matters.
 - A claim is limited to 5 attempts per order to stop TrxID guessing.
 - SMS text is untrusted: the dashboard renders it as React children only. Never use `dangerouslySetInnerHTML`.
 - Times: SMS times are read as Bangladesh time (+06:00); totals group by Asia/Dhaka.
