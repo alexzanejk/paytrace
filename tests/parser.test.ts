@@ -76,5 +76,30 @@ check("sender random number rejected", !senderMatchesProvider("01712345678", "bk
 check("sender missing rejected", !senderMatchesProvider(undefined, "nagad"));
 check("rocket sender 16216", senderMatchesProvider("16216", "rocket"));
 
+
+// ---- Rocket agent receipt (real sample from sender 16216) ----
+const rocketCashOut =
+  `B2C: Cash-Out from A/C: ***460 Tk500.00 Comm:Tk2.10; A/C Balance: Tk36,068.90.` +
+  `TxnId: 6889402212 Date:28-AUG-26 11:04:50 pm. Download https://bit.ly/nexuspay`;
+p = parsed(rocketCashOut, "rocket");
+check("rocket cash out parsed", !!p, parseSms(rocketCashOut, "rocket"));
+check("rocket cash out type", p?.txnType === "cash_out");
+check("rocket amount 500 (no space after Tk)", p?.amount === 500);
+check("rocket commission 2.10", p?.commission === 2.1);
+check("rocket balance 36068.90", p?.balance === 36068.9);
+check("rocket trx id", p?.trxId === "6889402212");
+check("rocket account masked", p?.counterparty === "***460");
+check("rocket pm time -> 23:04:50 BD", p?.occurredAt === "2026-08-28T23:04:50+06:00", p?.occurredAt);
+check("rocket layout is trusted, not generic", p?.confidence === "exact");
+check("rocket auto-detected without hint", parsed(rocketCashOut)?.provider === "rocket");
+
+// An am time must not be pushed into the afternoon.
+const rocketAm = rocketCashOut.replace("11:04:50 pm", "11:40:00 am");
+check("rocket am time stays morning", parsed(rocketAm, "rocket")?.occurredAt === "2026-08-28T11:40:00+06:00", parsed(rocketAm, "rocket")?.occurredAt);
+
+// A Rocket message in an unknown layout still falls back to the cautious reader.
+const rocketOther = "Your Rocket account received Tk 300.00. TxnId: 6891223763. Balance Tk 100.00";
+check("unknown rocket layout stays generic", parsed(rocketOther, "rocket")?.confidence === "generic");
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

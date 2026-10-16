@@ -7,6 +7,7 @@ const PLAIN: [string, string][] = [
   ["unsupported_type", "This kind of message cannot credit an order"],
   ["unrecognized_type", "Could not tell what kind of payment this is"],
   ["unverified_format", "Message format not confirmed yet, held to be safe"],
+  ["balance_chain_mismatch", "Account balance does not follow the previous message — possibly a fake SMS"],
 ];
 
 export function reviewReasonText(reason: string | null): string | null {

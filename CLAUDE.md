@@ -48,10 +48,26 @@ and the deployed function identical.
   indexes. All matching goes through `reconcile_payment` / `claim_order` (advisory lock per TrxID, so races cannot
   double-credit). Do not credit orders any other way. `manual_match` is the only manual path and is admin-only.
 - Agent **Cash Out** receipts are stored as `tracked_only` and can never credit an order.
-- Amount, fee and commission are separate columns. Nagad states commission (`Comm:`); bKash SMS does not, so bKash
-  commission is 0 until a configurable rate is added.
+- Amount, fee and commission are separate columns. Nagad and Rocket state commission (`Comm:`); bKash does not, so
+  it is recovered from the balance chain (balance rise minus amount) and stored only when the chain checks out.
+  Measured from real messages: bKash 0.40%, Nagad 0.41%, Rocket 0.42%.
 - Mismatches (wrong amount, different payer phone digits, expired order) go to `review`, never auto-credited.
-- Rocket and Upay use a generic parser and are always held for `review` (`unverified_format`) until real samples exist.
+- **Fake-SMS defence, three layers.** (1) The phone only forwards SMS whose sender ID is `bkash`, `nagad`,
+  `16216` or `upay`, so a look-alike from a personal number never leaves the phone. (2) The server re-checks the
+  sender ID and now *requires* it: a payload without one is rejected 403. (3) Balance chain
+  (`balance_chain_check`): every provider SMS states the running balance, so genuine messages form a chain a forger
+  cannot predict. Verified against the owner's real messages — bKash, Nagad and Rocket all reconcile exactly.
+  Call the function BEFORE inserting the row, or it compares the row against itself; stored rows are judged by the
+  window-function backfill in migration 004.
+- A broken chain only *holds* a payment that could credit an order. An agent's balance also moves through cash-in,
+  send money and bill pay, which produce no stored message, so cash-out receipts are marked `chain_status =
+  'mismatch'` and left as `tracked_only` rather than flooding review. Confirmed with real data: of the owner's first
+  three real Nagad receipts, one broke the chain innocently.
+- The remaining hole is alphanumeric sender-ID spoofing, which no amount of text parsing can fix. The balance chain
+  is the mitigation; a provider API would be the real fix.
+- Rocket agent cash-out (sender `16216`, "B2C: Cash-Out from A/C: ... TxnId: ... Date:28-AUG-26 11:04:50 pm") is a
+  confirmed layout. Other Rocket layouts and all of Upay still use the generic parser and are held for `review`
+  (`unverified_format`) until real samples exist.
 - A claim is limited to 5 attempts per order to stop TrxID guessing.
 - SMS text is untrusted: the dashboard renders it as React children only. Never use `dangerouslySetInnerHTML`.
 - Times: SMS times are read as Bangladesh time (+06:00); totals group by Asia/Dhaka.
@@ -64,15 +80,20 @@ compiles in CI.
 Verified 2026-10-16: dashboard live at paytrace.ashkawser54.workers.dev (owner signed in); phone pairing worked end
 to end on a OnePlus LE2111 (pair request, approval in Devices tab, authenticated connection test).
 
+Real SMS capture is WORKING: three genuine Nagad agent cash-out receipts arrived from the paired phone on
+2026-10-16 (15:15, 16:33, 19:53 BD) and were parsed, stored and reconciled correctly.
+
 NOT yet verified (be honest about this):
-- Real SMS capture on the phone, background survival and reboot are untested; no real payment has gone through yet.
-- bKash/Nagad **received** and **Send Money** layouts were written from general knowledge, not real samples.
-- Endpoint was never called with the real secret (the sandbox could not reach Supabase).
+- Background survival over many hours and across a reboot.
+- No payment has yet been matched to an order; the ordering side is still unused.
+- bKash/Nagad **received** and **Send Money** layouts were written from general knowledge, not real samples. Only
+  cash-out receipts have been seen in the wild so far.
 
 ## Open items, in rough order
-1. Make a small real bKash/Nagad payment to the paired phone and confirm it appears in the dashboard.
-2. Check the phone keeps forwarding after hours in the background and after a reboot.
-3. Get real redacted sample SMS (bKash/Nagad received, Send Money; Rocket/Upay) and fix parsers + tests.
+1. Check the phone keeps forwarding after hours in the background and after a reboot.
+2. Get real redacted sample SMS for the layouts still unseen: bKash/Nagad **received** and **Send Money**, and Upay.
+3. Watch whether `chain_status = 'mismatch'` is rare or constant in practice. If a real order-crediting payment is
+   wrongly held often, revisit the rule rather than training the owner to ignore review.
 4. Order intake: owner has not said how orders are created (website / WhatsApp / store platform). Plan: an `orders`
    Edge Function with its own API key for create-order and claim-payment calls (`claim_order` already exists).
 5. Permanent Android signing key so updates install over older builds (store as GitHub secrets, never in the repo).

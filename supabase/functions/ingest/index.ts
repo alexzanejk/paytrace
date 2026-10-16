@@ -121,9 +121,10 @@ Deno.serve(async (req) => {
   }
   const d = result.data;
 
-  // ---- sender must really be the provider's SMS ID (blocks look-alike texts from normal numbers) ----
-  if (senderId && !senderMatchesProvider(senderId, d.provider as Provider)) {
-    await log("rejected_sender", d.provider, { sender_id: senderId, trx_id: d.trxId });
+  // ---- sender must really be the provider's SMS ID (blocks look-alike texts from normal numbers).
+  //      Required, not optional: a payload without one cannot be shown to be genuine. ----
+  if (!senderMatchesProvider(senderId, d.provider as Provider)) {
+    await log("rejected_sender", d.provider, { sender_id: senderId || null, trx_id: d.trxId });
     return json({ success: false, message: "sender not recognized" }, 403);
   }
 
@@ -134,6 +135,20 @@ Deno.serve(async (req) => {
     return json({ success: true, message: "provider disabled on server", ignored: true });
   }
 
+  // ---- balance chain: a forged SMS cannot know the live account balance ----
+  const { data: chain } = await db.rpc("balance_chain_check", {
+    p_provider: d.provider,
+    p_at: d.occurredAt ?? new Date().toISOString(),
+    p_balance: d.balance,
+    p_amount: d.amount,
+    p_fee: d.fee,
+    p_commission: d.commission,
+  });
+  const chainStatus: string = chain?.status ?? "unverified";
+  // bKash never states the agent commission; the balance does. Trust it only on a sound chain.
+  const commission =
+    d.commission > 0 ? d.commission : chainStatus === "ok" ? Number(chain?.commission ?? 0) : 0;
+
   // ---- status rules ----
   let status = "unmatched";
   let reviewReason: string | null = null;
@@ -141,14 +156,31 @@ Deno.serve(async (req) => {
   else if (d.txnType === "unknown") { status = "review"; reviewReason = "unrecognized_type"; }
   else if (d.confidence === "generic") { status = "review"; reviewReason = "unverified_format"; }
 
+  // A broken chain is only held back when this payment could actually credit an order.
+  // An agent's balance also moves through cash-in, send money and bill pay, none of which
+  // produce a message PayTrace stores, so a receipt that cannot pay for anything is marked
+  // unconfirmed and left alone rather than filling the review queue with false alarms.
+  if (chainStatus === "mismatch") {
+    await log("balance_unconfirmed", d.provider, {
+      trx_id: d.trxId, amount: d.amount, balance: d.balance,
+      observed_change: chain?.delta ?? null, expected_change: chain?.expected ?? null,
+      held: status !== "tracked_only",
+    });
+    if (status !== "tracked_only") {
+      status = "review";
+      reviewReason = "balance_chain_mismatch";
+    }
+  }
+
   // ---- insert; the unique (provider, trx_id) rule makes duplicates impossible ----
   const { data: inserted, error } = await db
     .from("payments")
     .insert({
       provider: d.provider, txn_type: d.txnType, trx_id: d.trxId,
-      amount: d.amount, fee: d.fee, commission: d.commission, balance: d.balance,
+      amount: d.amount, fee: d.fee, commission, balance: d.balance,
       counterparty: d.counterparty, occurred_at: d.occurredAt,
       raw_message: raw, status, review_reason: reviewReason,
+      balance_delta: chain?.delta ?? null, chain_status: chainStatus,
     })
     .select("id")
     .single();
@@ -162,7 +194,7 @@ Deno.serve(async (req) => {
     return json({ success: false, message: "could not save" }, 500); // app will retry
   }
 
-  await log("created", d.provider, { trx_id: d.trxId, type: d.txnType, amount: d.amount, device_id: deviceId }, inserted.id);
+  await log("created", d.provider, { trx_id: d.trxId, type: d.txnType, amount: d.amount, device_id: deviceId, chain: chainStatus }, inserted.id);
 
   // ---- try to match to an order that already claimed this TrxID ----
   let matchResult = status;
