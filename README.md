@@ -8,3 +8,6 @@ Automatic bKash / Nagad / Rocket / Upay payment verification from SMS.
 - `android/` – Android app (coming next)
 
 Secrets (INGEST_SECRET) live only in Supabase and the phone app. Never commit them.
+
+## Android app
+Source is in `android/`. GitHub Actions builds `app-debug.apk` on every change (Actions tab → latest run → Artifacts → `paytrace-apk`).
