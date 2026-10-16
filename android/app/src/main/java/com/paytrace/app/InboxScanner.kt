@@ -15,6 +15,7 @@ object InboxScanner {
         val app = ctx.applicationContext
         if (ContextCompat.checkSelfPermission(app, Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) return -1
         val settings = AppSettings(app)
+        if (!settings.monitoring) return -1 // paused: leave the resume point alone so nothing is skipped when it resumes
         val now = System.currentTimeMillis()
         val since = CatchUp.since(now, settings.inboxResumeFrom)
 

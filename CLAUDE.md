@@ -89,12 +89,27 @@ and the deployed function identical.
 - Rocket agent cash-out (sender `16216`, "B2C: Cash-Out from A/C: ... TxnId: ... Date:28-AUG-26 11:04:50 pm") is a
   confirmed layout. Other Rocket layouts and all of Upay still use the generic parser and are held for `review`
   (`unverified_format`) until real samples exist.
-- **Phone health and alerts.** Each approved phone sends `{"action":"heartbeat"}` every ~15 min (WorkManager) with
-  battery, monitoring on/off, SMS permission, waiting/failed counts and version. Any authenticated request also
-  refreshes `last_seen_at`. The dashboard shows Online / Late (40 min) / Silent (90 min) and a red banner on every
-  page. `SILENT_AFTER_MIN` is defined in BOTH `supabase/functions/ingest/index.ts` and
-  `dashboard/src/lib/deviceHealth.ts`; `tests/deviceHealth.test.ts` fails if they disagree.
-- A `pg_cron` job (`paytrace-watchdog`, every 10 min) calls the unauthenticated `{"action":"watchdog"}`. It is safe
+- **Phone health and alerts (fast offline detection).** The always-on foreground `MonitorService` sends
+  `{"action":"heartbeat"}` every 30 s (`MonitorService.BEAT_MS`; holds a partial wake lock; started by the app, boot and
+  update; the pause switch no longer stops it, it only makes `SmsReceiver`/`InboxScanner` ignore messages and is
+  reported as `monitoring:false`). `HeartbeatWorker` (15 min, WorkManager) remains the safety net: inbox catch-up, a
+  heartbeat, and a try at restarting the service. A heartbeat carries battery, monitoring, SMS/inbox permission,
+  notifications, battery-saver exemption, `setup_complete`, waiting/failed counts and version. Any authenticated
+  request also refreshes `last_seen_at`. The dashboard shows Online / Offline (`OFFLINE_AFTER_SEC` = 90, i.e. three
+  missed beats) and a red banner on every page. Telegram waits longer (`ALERT_AFTER_MIN` = 3) so a network blip does
+  not message the owner; that constant is defined in BOTH `supabase/functions/ingest/index.ts` and
+  `dashboard/src/lib/deviceHealth.ts`, and `tests/deviceHealth.test.ts` fails if they disagree. Cost: 2 phones at
+  30 s is ~175k Edge Function calls a month plus ~43k for the watchdog, against the free plan's 500k; about 5 phones
+  is the free-plan ceiling (ask before suggesting Pro). A phone cannot report that it is dying: "offline" is inferred
+  from silence, so a dead battery, no internet and a killed app look the same.
+- **Required-permissions gate (Android).** `Setup.kt` (pure `missing()` is unit tested in `SetupTest`) lists what the
+  app needs: RECEIVE_SMS, READ_SMS, notifications, battery-optimisation exemption, and (Vivo/OnePlus/Oppo/Xiaomi/
+  Samsung and similar, `STRICT_MAKERS`) a hand-confirmed "auto-start" step, because Android cannot report OEM
+  auto-start. `SetupScreen.kt` replaces the whole app until nothing is missing and re-checks every 2 s, so it unlocks
+  by itself on return from Settings. After one system prompt a runtime permission sends the owner to the app's
+  settings (Android will not ask twice). The service's notification text says "Action needed" if one is later taken
+  away. Install-time forcing is impossible on Android; the gate is at app open.
+- A `pg_cron` job (`paytrace-watchdog`, every minute, migration 007) calls the unauthenticated `{"action":"watchdog"}`. It is safe
   without a secret: it returns nothing and alerts each phone once (`devices.silent_alerted_at`, claimed before sending
   and released if Telegram fails; cleared when the phone speaks again, which sends "back online"). With Telegram not
   configured it deliberately leaves phones un-alerted so they are reported once it is.
@@ -131,8 +146,8 @@ phones, no credentials, a garbage token and the public key alone; the watchdog a
 
 NOT yet verified (be honest about this):
 - **Heartbeat from a real phone.** The server side is deployed; the Android side builds in CI but has not run on a
-  phone. The installed APK is the OLD one: until the owner installs the new build the dashboard will (correctly)
-  show that phone Silent after 90 min.
+  phone. Phones running an older build do not send the 30 s heartbeat, so the dashboard (correctly) shows them
+  Offline until the new build is installed. The setup screen and the 30 s service are also unrun on a real phone.
 - **Telegram has never sent a real message**: the owner has not created the bot. `test_alert`'s success path needs the
   owner's real login; only its refusal paths were checked live.
 - **Two-step login against real Supabase Auth**: the database rule was verified and the UI was verified against a

@@ -94,8 +94,8 @@ export function reviewMessage(p: {
 
 export function silentMessage(p: { name: string; code: string; minutes: number; dashboardUrl: string }): string {
   return [
-    "📵 A phone has gone quiet",
-    `${clean(p.name) || "Unnamed phone"} (code ${clean(p.code, 12)}) has not been heard from for ${duration(p.minutes)}.`,
+    "📵 A phone is offline",
+    `${clean(p.name) || "Unnamed phone"} (code ${clean(p.code, 12)}) has not been heard from for ${duration(p.minutes)}, so it is offline.`,
     "Payments sent to it may be missing. Check that it is on, has internet, and PayTrace is running.",
     `${p.dashboardUrl}/#/devices`,
   ].join("\n");

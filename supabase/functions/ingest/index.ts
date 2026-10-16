@@ -4,11 +4,11 @@
 //   `Authorization: <INGEST_SECRET>` (or "Bearer <secret>")  the shared secret (older setup, still accepted).
 // Pairing: POST {"action":"pair","token_hash":<sha256 hex of key>,"name":...} needs no auth; it only creates a
 // pending request that an admin must approve. Supports POST (JSON) and GET (query string).
-// Heartbeat: {"action":"heartbeat",...} from an approved phone every ~15 min; proves it is alive.
+// Heartbeat: {"action":"heartbeat",...} from an approved phone every 30 seconds; proves it is alive.
 // Test alert: {"action":"test_alert"} with the dashboard admin's own login token sends one Telegram message,
 // so the owner can confirm alerts are set up. Admins only (checked with the database's own is_admin()).
-// Watchdog: {"action":"watchdog"} is called by the database's scheduler (pg_cron) every 10 min. It needs no
-// auth because it returns nothing and only acts when real timestamps say a phone has gone quiet; each phone is
+// Watchdog: {"action":"watchdog"} is called by the database's scheduler (pg_cron) every minute. It needs no
+// auth because it returns nothing and only acts when real timestamps say a phone has gone offline; each phone is
 // alerted once, so calling it repeatedly cannot cause a flood.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import { parseSms, senderMatchesProvider, type Provider } from "./parser.ts";
@@ -56,9 +56,10 @@ const notify = makeNotifier({
 });
 const DASHBOARD_URL = (Deno.env.get("DASHBOARD_URL") ?? "https://paytrace.ashkawser54.workers.dev").replace(/\/+$/, "");
 
-// A phone is "silent" after this long without a word. Keep in step with SILENT_AFTER_MIN in
-// dashboard/src/lib/deviceHealth.ts, so the dashboard and Telegram agree.
-const SILENT_AFTER_MIN = 90;
+// The owner is told on Telegram when a phone has been offline this long. The dashboard shows "Offline" sooner
+// (after 90 seconds); the wait here keeps a brief network blip from sending a message. Keep in step with
+// ALERT_AFTER_MIN in dashboard/src/lib/deviceHealth.ts.
+const ALERT_AFTER_MIN = 3;
 
 async function log(kind: string, provider: string | null, detail: Record<string, unknown>, paymentId?: string) {
   await db.from("events").insert({ kind, provider, payment_id: paymentId ?? null, detail });
@@ -91,7 +92,7 @@ async function watchdog(): Promise<Response> {
       record: (kind, detail) => log(kind, null, detail),
     },
     notify,
-    { now: Date.now(), silentAfterMin: SILENT_AFTER_MIN, dashboardUrl: DASHBOARD_URL },
+    { now: Date.now(), alertAfterMin: ALERT_AFTER_MIN, dashboardUrl: DASHBOARD_URL },
   );
   return json({ success: true });
 }
