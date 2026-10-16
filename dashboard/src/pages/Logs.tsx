@@ -25,6 +25,9 @@ const KINDS = [
   "device_pair_request",
   "device_approved",
   "device_revoked",
+  "phone_silent",
+  "phone_recovered",
+  "phone_problem",
   "error",
 ];
 
@@ -81,11 +84,13 @@ export function Logs() {
                 <TableCell>{when(e.at)}</TableCell>
                 <TableCell>
                   <Badge tone={
-                    e.kind === "error" || e.kind === "parse_failed" || e.kind === "rejected_sender"
+                    e.kind === "error" || e.kind === "parse_failed" || e.kind === "rejected_sender" || e.kind === "phone_silent"
                       ? "bad"
-                      : e.kind === "balance_unconfirmed"
+                      : e.kind === "balance_unconfirmed" || e.kind === "phone_problem"
                         ? "warn"
-                        : "idle"
+                        : e.kind === "phone_recovered"
+                          ? "ok"
+                          : "idle"
                   }>
                     {e.kind.replace(/_/g, " ")}
                   </Badge>

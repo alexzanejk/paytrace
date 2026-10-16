@@ -4,6 +4,8 @@ import type { Settings } from "@/lib/types";
 import { isTabId, type TabId } from "@/lib/nav";
 import { AppShell } from "@/components/AppShell";
 import { Login } from "@/components/Login";
+import { MfaChallenge } from "@/components/MfaChallenge";
+import { needsSecondStep } from "@/lib/mfa";
 import { Overview } from "@/pages/Overview";
 import { Review } from "@/pages/Review";
 import { Payments } from "@/pages/Payments";
@@ -12,7 +14,7 @@ import { Devices } from "@/pages/Devices";
 import { Logs } from "@/pages/Logs";
 import { SettingsPage } from "@/pages/SettingsPage";
 
-type Phase = { name: "loading" } | { name: "login"; note?: string } | { name: "ready" };
+type Phase = { name: "loading" } | { name: "login"; note?: string } | { name: "mfa" } | { name: "ready" };
 
 const tabFromHash = (): TabId => {
   const raw = window.location.hash.replace(/^#\/?/, "");
@@ -27,6 +29,8 @@ export default function App() {
   const boot = useCallback(async () => {
     const { data } = await sb.auth.getSession();
     if (!data.session) return setPhase({ name: "login" });
+    // Password accepted, but two-step login is on and the code has not been entered yet.
+    if (await needsSecondStep()) return setPhase({ name: "mfa" });
     const { data: admin } = await sb.from("admins").select("user_id").maybeSingle();
     if (!admin) {
       await sb.auth.signOut();
@@ -59,6 +63,7 @@ export default function App() {
 
   if (phase.name === "loading") return <main className="p-6 text-muted-foreground">Loading…</main>;
   if (phase.name === "login") return <Login note={phase.note} onSignedIn={boot} />;
+  if (phase.name === "mfa") return <MfaChallenge onVerified={boot} />;
 
   return (
     <AppShell tab={tab} onTab={openTab} onSignOut={() => void sb.auth.signOut()}>

@@ -70,6 +70,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         if (AppSettings(this).monitoring) MonitorService.start(this)
         SendWorker.resumePending(this)
+        HeartbeatWorker.schedule(this)
+        HeartbeatWorker.now(this)
         setContent {
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 Surface(Modifier.fillMaxSize()) { App() }

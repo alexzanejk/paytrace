@@ -7,6 +7,8 @@ import { useQuery } from "@/hooks/useQuery";
 import { Screen } from "@/components/Screen";
 import { EmptyRow } from "@/components/Empty";
 import { Confirm } from "@/components/Confirm";
+import { DeviceHealthBadge } from "@/components/DeviceHealthBadge";
+import { DeviceDetails } from "@/components/DeviceDetails";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -112,21 +114,27 @@ export function Devices() {
           <TableRow>
             <TableHead>Code</TableHead>
             <TableHead>Phone</TableHead>
+            <TableHead>Health</TableHead>
+            <TableHead>Reported by the phone</TableHead>
             <TableHead>Approved (BD)</TableHead>
-            <TableHead>Last seen (BD)</TableHead>
             <TableHead />
           </TableRow>
         </TableHeader>
         <TableBody>
           {approved.length === 0 ? (
-            <EmptyRow cols={5} text="No phone is connected yet." />
+            <EmptyRow cols={6} text="No phone is connected yet." />
           ) : (
             approved.map((d) => (
               <TableRow key={d.id}>
                 <TableCell className="font-mono text-xs">{d.pair_code}</TableCell>
                 <TableCell>{d.name || "–"}</TableCell>
+                <TableCell>
+                  <DeviceHealthBadge device={d} />
+                </TableCell>
+                <TableCell>
+                  <DeviceDetails info={d.info} />
+                </TableCell>
                 <TableCell>{when(d.approved_at)}</TableCell>
-                <TableCell>{when(d.last_seen_at)}</TableCell>
                 <TableCell>
                   <div className="flex flex-wrap items-center gap-2">
                     <Confirm

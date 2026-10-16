@@ -1,5 +1,10 @@
 package com.paytrace.app
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.BatteryManager
+import androidx.core.content.ContextCompat
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -86,6 +91,31 @@ object Sender {
         } finally {
             conn?.disconnect()
         }
+    }
+
+    /** "I am alive", plus what this phone can see about itself. The server shows it on the Devices page and
+     *  alerts the owner if payments cannot be captured (monitoring off, SMS permission off). */
+    fun heartbeat(ctx: Context, s: AppSettings): JSONObject {
+        val o = JSONObject().put("action", "heartbeat")
+        o.put("monitoring", s.monitoring)
+        o.put("sms_permission", ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED)
+        try {
+            val (pending, failed) = Db.get(ctx).backlog()
+            o.put("pending", pending).put("failed", failed)
+        } catch (e: Exception) {
+            // The counts are optional; a heartbeat without them still proves the phone is alive.
+        }
+        try {
+            val battery = (ctx.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager)
+                ?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+            if (battery != null && battery in 0..100) o.put("battery", battery)
+        } catch (e: Exception) {
+        }
+        try {
+            ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName?.let { o.put("app_version", it) }
+        } catch (e: Exception) {
+        }
+        return o
     }
 
     /** Asks the server to add this phone. Nothing is trusted until an admin approves the code in the dashboard. */

@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { LogOut, Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { DeviceAlertBar } from "@/components/DeviceAlertBar";
 import type { TabId } from "@/lib/nav";
 import { TABS } from "@/lib/nav";
 
@@ -73,6 +74,7 @@ export function AppShell({
           </nav>
         ) : null}
       </header>
+      <DeviceAlertBar onOpen={() => onTab("devices")} />
       <main className="mx-auto max-w-7xl px-4 py-5">{children}</main>
     </div>
   );

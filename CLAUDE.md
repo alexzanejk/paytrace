@@ -17,8 +17,10 @@ contains no source code; everything here was written from scratch.
 | Database + API | Supabase project `paytrace-payments`, ref `mkjcqwkfbamnuibmurcd` (Tokyo, `ap-northeast-1`) |
 | Receiving endpoint | `https://mkjcqwkfbamnuibmurcd.supabase.co/functions/v1/ingest` (Edge Function, `verify_jwt=false`, own secret check) |
 | Dashboard | React + TypeScript + Vite in `dashboard/` (source in `dashboard/src`), Tailwind CSS v4, shadcn/ui components in `dashboard/src/components/ui`, Lucide icons. `npm run build` → `dist/`. Cloudflare Workers static assets (`wrangler.jsonc`, worker `paytrace-dashboard`, build command `npm ci && npm run build`) |
-| Android app | `android/` (Kotlin, Compose, SQLite, WorkManager). GitHub Actions builds `app-debug.apk` (artifact `paytrace-apk`) |
-| Parser tests | `tests/parser.test.ts`, run `node --experimental-strip-types tests/parser.test.ts` |
+| Android app | `android/` (Kotlin, Compose, SQLite, WorkManager). GitHub Actions builds a **signed release** APK (artifact `paytrace-apk`, file `paytrace.apk`) |
+| Tests | `tests/*.test.ts`, run all with `npm test` (parser, notify wording, phone health, watchdog, dashboard health thresholds) |
+| CI | `.github/workflows/ci.yml` (tests + dashboard build + `deno check` of the function) and `android.yml` (signed APK). Both run on every push |
+| Owner guide | `docs/owner-setup.md` (plain language: Telegram, signing key, two-step login) |
 | DB history | `supabase/migrations/` (apply in filename order) |
 
 Deployed edge function code is `supabase/functions/ingest/{index.ts,parser.ts}`. Redeploy after editing. Keep the repo
@@ -31,8 +33,21 @@ and the deployed function identical.
   stores only the hash (`public.devices`). Each phone can be removed on its own. Max 10 pending requests per hour.
 - `INGEST_SECRET` (Edge Function secret, set by the owner in Supabase, Claude never sees it) is still accepted as an
   optional fallback under the app's Settings → Advanced. Never build it into the APK: anyone with the APK could extract it.
-- The publishable key inside `dashboard/index.html` is public by design; RLS protects the data.
+- **The GitHub repo is PUBLIC.** Never print a secret in a workflow log or commit one. Secrets live only in
+  Supabase Edge Function secrets and GitHub Actions secrets.
+- Telegram alerts: Edge Function secrets `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` (optional `DASHBOARD_URL`). The
+  owner sets them (the `create_edge_function_secret` tool opens a prompt where only the owner types the value;
+  Claude never sees it). Everything works without them; alerts are simply off.
+- Android signing: GitHub Actions secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`,
+  `ANDROID_KEY_PASSWORD`, made on the owner's own computer by `scripts/create-android-key.sh`. Claude cannot set
+  GitHub secrets and must never hold the key. Without them CI signs with a throwaway key (it says so in the run
+  summary); with them the run summary shows the key fingerprint, which must never change between builds.
+- The publishable key in `dashboard/src/lib/supabase.ts` is public by design; RLS protects the data.
 - Admin login: one Supabase Auth user, listed in `public.admins`. Public sign-ups should be OFF in Supabase Auth.
+- **Two-step login (TOTP) is enforced in the database, lockout-safe.** `is_admin()` requires an `aal2` session only
+  once the admin has a *verified* authenticator factor; before that, nothing changes. Recovery if the authenticator is
+  lost: `delete from auth.mfa_factors where user_id = '<admin id>';` (SQL editor or MCP).
+- Leaked-password protection is a **Pro plan** feature ($25/mo) and is NOT on. Do not describe it as free.
 
 ## Frontend stack (fixed)
 - Dashboard: React + TypeScript + Vite, Tailwind CSS v4 (`@theme` tokens in `dashboard/src/index.css`, no JS config),
@@ -68,37 +83,66 @@ and the deployed function identical.
 - Rocket agent cash-out (sender `16216`, "B2C: Cash-Out from A/C: ... TxnId: ... Date:28-AUG-26 11:04:50 pm") is a
   confirmed layout. Other Rocket layouts and all of Upay still use the generic parser and are held for `review`
   (`unverified_format`) until real samples exist.
+- **Phone health and alerts.** Each approved phone sends `{"action":"heartbeat"}` every ~15 min (WorkManager) with
+  battery, monitoring on/off, SMS permission, waiting/failed counts and version. Any authenticated request also
+  refreshes `last_seen_at`. The dashboard shows Online / Late (40 min) / Silent (90 min) and a red banner on every
+  page. `SILENT_AFTER_MIN` is defined in BOTH `supabase/functions/ingest/index.ts` and
+  `dashboard/src/lib/deviceHealth.ts`; `tests/deviceHealth.test.ts` fails if they disagree.
+- A `pg_cron` job (`paytrace-watchdog`, every 10 min) calls the unauthenticated `{"action":"watchdog"}`. It is safe
+  without a secret: it returns nothing and alerts each phone once (`devices.silent_alerted_at`, claimed before sending
+  and released if Telegram fails; cleared when the phone speaks again, which sends "back online"). With Telegram not
+  configured it deliberately leaves phones un-alerted so they are reported once it is.
+- Telegram text is plain (no `parse_mode`) and built from our own wording; anything from outside (phone names, TrxIDs)
+  goes through `clean()`. Sending never throws, never blocks saving a payment (`EdgeRuntime.waitUntil`), and never
+  logs the token (a fetch error message can contain it). `{"action":"test_alert"}` lets the signed-in admin send one
+  message; it verifies the caller by asking the database `is_admin()` with the caller's own JWT.
+- The balance-chain `mismatch` is NOT alerted (cash-outs break it innocently); only payments that go to `review` are.
 - A claim is limited to 5 attempts per order to stop TrxID guessing.
 - SMS text is untrusted: the dashboard renders it as React children only. Never use `dangerouslySetInnerHTML`.
 - Times: SMS times are read as Bangladesh time (+06:00); totals group by Asia/Dhaka.
 
 ## Status (2026-10-16)
-Done and tested: schema, matching logic (10 abuse scenarios, rolled back), parsers (32 tests, including the owner's real
-bKash and Nagad Cash Out messages), endpoint deployed and confirmed to reject unauthenticated calls, Android app
-compiles in CI.
+Done and tested: schema, matching logic, parsers (44 tests incl. the owner's real bKash, Nagad and Rocket receipts),
+balance-chain fraud check, device pairing, phone heartbeat + health display, Telegram alert code and watchdog,
+two-step login code, CI. `npm test` = 5 files, ~130 checks. The dashboard UI was driven in a real browser against a
+simulated Supabase (health states, banner, two-step prompt, wrong code, setup flow, test-message outcomes).
 
-Verified 2026-10-16: dashboard live at paytrace.ashkawser54.workers.dev (owner signed in); phone pairing worked end
-to end on a OnePlus LE2111 (pair request, approval in Devices tab, authenticated connection test).
-
-Real SMS capture is WORKING: three genuine Nagad agent cash-out receipts arrived from the paired phone on
-2026-10-16 (15:15, 16:33, 19:53 BD) and were parsed, stored and reconciled correctly.
+Verified live 2026-10-16: dashboard at paytrace.ashkawser54.workers.dev; phone pairing end to end on a OnePlus
+LE2111; three real Nagad cash-out receipts captured, parsed and reconciled; the endpoint answers 401 to unknown
+phones, no credentials, a garbage token and the public key alone; the watchdog answers 200 via pg_cron/pg_net;
+`is_admin()` two-step rule checked against a throwaway admin (rolled back).
 
 NOT yet verified (be honest about this):
-- Background survival over many hours and across a reboot.
-- No payment has yet been matched to an order; the ordering side is still unused.
-- bKash/Nagad **received** and **Send Money** layouts were written from general knowledge, not real samples. Only
-  cash-out receipts have been seen in the wild so far.
+- **Heartbeat from a real phone.** The server side is deployed; the Android side builds in CI but has not run on a
+  phone. The installed APK is the OLD one: until the owner installs the new build the dashboard will (correctly)
+  show that phone Silent after 90 min.
+- **Telegram has never sent a real message**: the owner has not created the bot. `test_alert`'s success path needs the
+  owner's real login; only its refusal paths were checked live.
+- **Two-step login against real Supabase Auth**: the database rule was verified and the UI was verified against a
+  simulated auth server (the library adds the `data:image/svg+xml` prefix to the QR itself; the real server sends raw
+  SVG). The first real enrolment is the true test.
+- **Signing with the permanent key**: the signing path itself runs on every build (throwaway key), but no permanent
+  key exists yet; the owner must run `scripts/create-android-key.sh` and add the 4 GitHub secrets.
+- Background survival over many hours and across a reboot; a missed SMS is still lost (no inbox catch-up yet).
+- No payment has yet been matched to an order; only cash-out receipts have been seen in the wild.
+- bKash/Nagad **received** and **Send Money** layouts were written from general knowledge, not real samples.
 
 ## Open items, in rough order
-1. Check the phone keeps forwarding after hours in the background and after a reboot.
-2. Get real redacted sample SMS for the layouts still unseen: bKash/Nagad **received** and **Send Money**, and Upay.
-3. Watch whether `chain_status = 'mismatch'` is rare or constant in practice. If a real order-crediting payment is
-   wrongly held often, revisit the rule rather than training the owner to ignore review.
-4. Order intake: owner has not said how orders are created (website / WhatsApp / store platform). Plan: an `orders`
-   Edge Function with its own API key for create-order and claim-payment calls (`claim_order` already exists).
-5. Permanent Android signing key so updates install over older builds (store as GitHub secrets, never in the repo).
-6. Optional: bKash commission rate setting; Supabase Pro ($25/mo) so the project never pauses; custom domain.
-7. Run Supabase security advisors after any schema change.
+1. Owner: create the Telegram bot and set the two secrets, press "Send a test message" (docs/owner-setup.md step 1).
+2. Owner: run `scripts/create-android-key.sh`, add the 4 GitHub secrets, install the signed build (step 2).
+3. Owner: turn on two-step login in Settings (step 3). Then confirm `auth.mfa_factors` has one verified row.
+4. **Inbox catch-up in the app** (READ_SMS is already granted): scan the SMS inbox on start/boot and every few hours
+   for provider messages not yet sent, so a missed broadcast is not lost. The server already ignores duplicates.
+   This is the biggest remaining reliability gap.
+5. Get real redacted sample SMS for layouts still unseen (bKash/Nagad received + Send Money, Upay).
+6. Watch whether `chain_status = 'mismatch'` is rare or constant; revisit the rule if real payments are wrongly held.
+7. Order intake: owner has not said how orders are created (website / WhatsApp / store platform), or whether they
+   want agent-business tracking only. Plan: an `orders` Edge Function with its own API key (`claim_order` exists).
+8. Optional, costs money: Supabase Pro ($25/mo; stops idle pausing and enables leaked-password protection); a second
+   phone for redundancy; custom domain. Ask before spending.
+9. Run Supabase security advisors after any schema change.
+10. Auto-deploy of the Edge Function from GitHub is NOT set up (deploys are manual; repo must equal deployed). It would
+    need a Supabase access token as a GitHub secret.
 
 ## Known limits to repeat to the owner
 Unofficial approach, may breach bKash/Nagad terms (wallet freeze risk); SMS can be spoofed or delayed; phone must stay
