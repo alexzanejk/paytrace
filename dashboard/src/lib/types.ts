@@ -1,3 +1,5 @@
+import type { DeviceInfo } from "@/lib/deviceHealth";
+
 export const PROVIDERS = ["bkash", "nagad", "rocket", "upay"] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
@@ -55,6 +57,7 @@ export interface Device {
   created_at: string;
   approved_at: string | null;
   last_seen_at: string | null;
+  info: DeviceInfo | null;
 }
 
 export interface EventRow {

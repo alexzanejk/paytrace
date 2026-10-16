@@ -10,6 +10,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # Each build is numbered higher than the last, so it can be installed over the previous one.
+      PAYTRACE_VERSION_CODE: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
 
@@ -31,12 +34,58 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Build debug APK
+      # One build path either way. With the permanent key (stored as GitHub secrets, never in the repo)
+      # the APK can be installed over the previous one. Without it, a throwaway key is used: the build still
+      # exercises exactly the same signing setup, but each build has a different signature, so Android will
+      # make you uninstall the old app first.
+      - name: Build signed release APK
         working-directory: android
-        run: gradle assembleDebug --no-daemon --stacktrace
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KS="$RUNNER_TEMP/release.jks"
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            for v in ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+              if [ -z "${!v}" ]; then echo "::error::The signing key is set up but the secret $v is missing."; exit 1; fi
+            done
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KS"
+            KIND=permanent
+          else
+            PW="$(openssl rand -hex 16)"
+            echo "::add-mask::$PW"
+            keytool -genkeypair -keystore "$KS" -storetype PKCS12 -alias throwaway -keyalg RSA -keysize 2048 \
+              -validity 30 -storepass "$PW" -dname "CN=PayTrace throwaway build"
+            export ANDROID_KEYSTORE_PASSWORD="$PW" ANDROID_KEY_ALIAS=throwaway ANDROID_KEY_PASSWORD="$PW"
+            KIND=throwaway
+          fi
+          export ANDROID_KEYSTORE_PATH="$KS"
+          gradle assembleRelease --no-daemon --stacktrace
+
+          APK=app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/sig.txt"
+          FP="$(grep -m1 'certificate SHA-256 digest' "$RUNNER_TEMP/sig.txt" | sed 's/.*: //')"
+          mkdir -p app/build/outputs/final && cp "$APK" app/build/outputs/final/paytrace.apk
+          rm -f "$KS"
+
+          {
+            echo "### PayTrace APK build $PAYTRACE_VERSION_CODE"
+            echo "- Signing key: **$KIND**"
+            echo "- Key fingerprint: \`$FP\`"
+            if [ "$KIND" = throwaway ]; then
+              echo "- ⚠️ No permanent key is set up yet, so Android will **not** install this over an older build."
+              echo "  Uninstall the old app first (the phone will need approving again). See the README."
+            else
+              echo "- ✅ Same key as every earlier permanent build: this installs over the previous version."
+              echo "  If the fingerprint ever changes, updates will stop installing."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:
           name: paytrace-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/outputs/final/paytrace.apk
           if-no-files-found: error

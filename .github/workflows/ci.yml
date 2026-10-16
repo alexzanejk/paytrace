@@ -1,0 +1,40 @@
+name: CI
+
+# Runs on every push and pull request, so a mistake is caught before it reaches the server or your phones.
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # SMS reading (bKash, Nagad, Rocket), Telegram wording, phone health and the silent-phone watchdog.
+      - name: Tests
+        run: npm test
+
+      # Type-checks the dashboard and builds exactly what Cloudflare will serve.
+      - name: Build the dashboard
+        run: npm run build
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.1.4
+
+      # The receiving endpoint runs on Deno. This catches type mistakes before it is deployed.
+      - name: Type-check the server function
+        run: deno check supabase/functions/ingest/index.ts

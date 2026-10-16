@@ -4,11 +4,27 @@
 //   `Authorization: <INGEST_SECRET>` (or "Bearer <secret>")  the shared secret (older setup, still accepted).
 // Pairing: POST {"action":"pair","token_hash":<sha256 hex of key>,"name":...} needs no auth; it only creates a
 // pending request that an admin must approve. Supports POST (JSON) and GET (query string).
+// Heartbeat: {"action":"heartbeat",...} from an approved phone every ~15 min; proves it is alive.
+// Test alert: {"action":"test_alert"} with the dashboard admin's own login token sends one Telegram message,
+// so the owner can confirm alerts are set up. Admins only (checked with the database's own is_admin()).
+// Watchdog: {"action":"watchdog"} is called by the database's scheduler (pg_cron) every 10 min. It needs no
+// auth because it returns nothing and only acts when real timestamps say a phone has gone quiet; each phone is
+// alerted once, so calling it repeatedly cannot cause a flood.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import { parseSms, senderMatchesProvider, type Provider } from "./parser.ts";
+import { cleanInfo, healthProblem, type DeviceInfo } from "./health.ts";
+import { makeNotifier, problemMessage, recoveredMessage, reviewMessage, testMessage } from "./notify.ts";
+import { runWatchdog } from "./watchdog.ts";
+
+// Supabase's runtime lets work finish after the response is sent. Absent when run elsewhere (tests).
+declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
+const defer = (p: Promise<unknown>) => {
+  if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(p);
+};
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const INGEST_SECRET = Deno.env.get("INGEST_SECRET") ?? "";
 const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
@@ -32,8 +48,69 @@ const pairCode = (hash: string) => hash.slice(0, 4).toUpperCase() + "-" + hash.s
 
 const MAX_PENDING_PER_HOUR = 10;
 
+// Telegram alerts. Both secrets are set by the owner in Supabase (Edge Functions -> Secrets).
+// Without them everything still works; the owner just is not messaged.
+const notify = makeNotifier({
+  token: Deno.env.get("TELEGRAM_BOT_TOKEN"),
+  chatId: Deno.env.get("TELEGRAM_CHAT_ID"),
+});
+const DASHBOARD_URL = (Deno.env.get("DASHBOARD_URL") ?? "https://paytrace.ashkawser54.workers.dev").replace(/\/+$/, "");
+
+// A phone is "silent" after this long without a word. Keep in step with SILENT_AFTER_MIN in
+// dashboard/src/lib/deviceHealth.ts, so the dashboard and Telegram agree.
+const SILENT_AFTER_MIN = 90;
+
 async function log(kind: string, provider: string | null, detail: Record<string, unknown>, paymentId?: string) {
   await db.from("events").insert({ kind, provider, payment_id: paymentId ?? null, detail });
+}
+
+/** Alerts once for each approved phone that has gone quiet. Called by pg_cron. */
+async function watchdog(): Promise<Response> {
+  await runWatchdog(
+    {
+      async candidates() {
+        const { data } = await db
+          .from("devices")
+          .select("id,name,pair_code,last_seen_at,approved_at")
+          .eq("status", "approved")
+          .is("silent_alerted_at", null);
+        return data ?? [];
+      },
+      async claim(id) {
+        const { data } = await db
+          .from("devices")
+          .update({ silent_alerted_at: new Date().toISOString() })
+          .eq("id", id)
+          .is("silent_alerted_at", null)
+          .select("id");
+        return !!data?.length;
+      },
+      async release(id) {
+        await db.from("devices").update({ silent_alerted_at: null }).eq("id", id);
+      },
+      record: (kind, detail) => log(kind, null, detail),
+    },
+    notify,
+    { now: Date.now(), silentAfterMin: SILENT_AFTER_MIN, dashboardUrl: DASHBOARD_URL },
+  );
+  return json({ success: true });
+}
+
+/** Sends one Telegram message if the caller is the signed-in dashboard admin. */
+async function testAlert(authHeader: string): Promise<Response> {
+  const jwt = authHeader.match(/^Bearer\s+(\S+)$/i)?.[1];
+  if (!jwt) return json({ success: false, message: "sign in to the dashboard first" }, 401);
+  if (!ANON_KEY) return json({ success: false, message: "server not configured" }, 500);
+  // Ask the database itself, as this user, so the same admin and two-step rules apply as everywhere else.
+  const asUser = createClient(SUPABASE_URL, ANON_KEY, {
+    global: { headers: { Authorization: `Bearer ${jwt}` } },
+    auth: { persistSession: false },
+  });
+  const { data: isAdmin, error } = await asUser.rpc("is_admin");
+  if (error) return json({ success: false, message: "not signed in" }, 401);
+  if (isAdmin !== true) return json({ success: false, message: "admins only" }, 403);
+  if (!notify.enabled) return json({ success: true, configured: false, sent: false });
+  return json({ success: true, configured: true, sent: await notify.send(testMessage()) });
 }
 
 Deno.serve(async (req) => {
@@ -73,26 +150,59 @@ Deno.serve(async (req) => {
     return json({ success: true, device_status: "pending", code: pairCode(hash) });
   }
 
+  // ---- watchdog: no auth, no data returned (see header) ----
+  if (req.method === "POST" && body.action === "watchdog") return await watchdog();
+
   // ---- auth ----
   const authHeader = (req.headers.get("authorization") ?? "").trim();
+  if (req.method === "POST" && body.action === "test_alert") return await testAlert(authHeader);
   const deviceKey = authHeader.match(/^Device\s+(\S{32,200})$/i)?.[1];
   let deviceId: string | null = null;
+  let device: { id: string; name: string; pair_code: string; info: DeviceInfo | null } | null = null;
   if (deviceKey) {
     const hash = await sha256hex(deviceKey);
-    const { data: dev } = await db.from("devices").select("id,status").eq("token_hash", hash).maybeSingle();
+    const { data: dev } = await db
+      .from("devices")
+      .select("id,status,name,pair_code,info,silent_alerted_at")
+      .eq("token_hash", hash)
+      .maybeSingle();
     if (!dev) return json({ success: false, message: "this phone is not paired", device_status: "unknown" }, 401);
     if (dev.status === "pending") {
       return json({ success: false, message: "waiting for approval in the dashboard (code " + pairCode(hash) + ")", device_status: "pending" }, 403);
     }
     if (dev.status !== "approved") return json({ success: false, message: "this phone was removed in the dashboard", device_status: dev.status }, 403);
     deviceId = dev.id;
-    await db.from("devices").update({ last_seen_at: new Date().toISOString() }).eq("id", dev.id);
+    device = { id: dev.id, name: dev.name, pair_code: dev.pair_code, info: dev.info };
+    // Any word from the phone counts as proof of life.
+    const wasSilent = !!dev.silent_alerted_at;
+    await db
+      .from("devices")
+      .update(wasSilent ? { last_seen_at: new Date().toISOString(), silent_alerted_at: null } : { last_seen_at: new Date().toISOString() })
+      .eq("id", dev.id);
+    if (wasSilent) {
+      await log("phone_recovered", null, { device_id: dev.id, name: dev.name });
+      defer(notify.send(recoveredMessage({ name: dev.name, code: dev.pair_code })));
+    }
   } else {
     if (!INGEST_SECRET || INGEST_SECRET.length < 16) return json({ success: false, message: "unauthorized" }, 401);
     const supplied = authHeader.replace(/^Bearer\s+/i, "").trim();
     if (!supplied || !safeEqual(supplied, INGEST_SECRET)) {
       return json({ success: false, message: "unauthorized" }, 401);
     }
+  }
+
+  // ---- heartbeat: "I am alive", plus what the phone can see about itself ----
+  if (body.action === "heartbeat") {
+    if (!device) return json({ success: true, message: "heartbeat ok" }); // shared-secret setups have no phone record
+    const info = cleanInfo(body);
+    await db.from("devices").update({ info }).eq("id", device.id);
+    const problem = healthProblem(info);
+    // Tell the owner when a problem appears, not on every heartbeat while it lasts.
+    if (problem && problem !== healthProblem(device.info)) {
+      await log("phone_problem", null, { device_id: device.id, name: device.name, problem });
+      defer(notify.send(problemMessage({ name: device.name, code: device.pair_code, problem, dashboardUrl: DASHBOARD_URL })));
+    }
+    return json({ success: true, message: "heartbeat ok", device_status: "approved" });
   }
 
   const str = (k: string) => (body[k] == null ? "" : String(body[k]).slice(0, 2000));
@@ -201,6 +311,16 @@ Deno.serve(async (req) => {
   if (status === "unmatched") {
     const { data: r } = await db.rpc("reconcile_payment", { p_payment_id: inserted.id });
     if (typeof r === "string") matchResult = r;
+  }
+
+  // Tell the owner when a payment is being held, whether that happened on arrival or while matching.
+  if (matchResult === "review") {
+    let reason = reviewReason;
+    if (!reason) {
+      const { data: row } = await db.from("payments").select("review_reason").eq("id", inserted.id).maybeSingle();
+      reason = row?.review_reason ?? null;
+    }
+    defer(notify.send(reviewMessage({ provider: d.provider, amount: d.amount, trxId: d.trxId, reason, dashboardUrl: DASHBOARD_URL })));
   }
   return json({ success: true, message: "Payment received", payment_id: inserted.id, status: matchResult });
 });

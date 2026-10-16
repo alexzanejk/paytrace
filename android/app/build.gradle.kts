@@ -12,13 +12,31 @@ android {
         applicationId = "com.paytrace.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        // Each build gets a higher number (the CI run number). Android refuses to install a build over
+        // a newer one, so a fixed number would block updates.
+        val code = System.getenv("PAYTRACE_VERSION_CODE")?.toIntOrNull() ?: 1
+        versionCode = code
+        versionName = "1.0.$code"
+    }
+
+    // The signing key comes from the environment (GitHub secrets in CI), never from the repository.
+    // The same key must sign every build, or Android will not install a new build over an old one.
+    val keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+    signingConfigs {
+        if (!keystorePath.isNullOrBlank()) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (!keystorePath.isNullOrBlank()) signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {

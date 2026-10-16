@@ -174,6 +174,17 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "paytrace.db"
         }
     }
 
+    /** Messages still waiting to be sent, and messages that ran out of retries. All time, not just today. */
+    fun backlog(): Pair<Int, Int> {
+        val sql = "select " +
+            "coalesce(sum(case when status = 'PENDING' then 1 else 0 end), 0), " +
+            "coalesce(sum(case when status = 'FAILED' then 1 else 0 end), 0) from logs"
+        readableDatabase.rawQuery(sql, null).use { c ->
+            c.moveToFirst()
+            return c.getInt(0) to c.getInt(1)
+        }
+    }
+
     companion object {
         @Volatile private var inst: Db? = null
         fun get(ctx: Context): Db =

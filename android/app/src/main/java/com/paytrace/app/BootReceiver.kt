@@ -9,5 +9,6 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (AppSettings(context).monitoring) MonitorService.start(context)
         SendWorker.resumePending(context)
+        HeartbeatWorker.schedule(context)
     }
 }

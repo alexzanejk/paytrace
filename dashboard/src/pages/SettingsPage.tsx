@@ -3,6 +3,8 @@ import { INGEST_URL, must, sb } from "@/lib/supabase";
 import { PROVIDERS, PROVIDER_LABEL, type Settings } from "@/lib/types";
 import { useQuery } from "@/hooks/useQuery";
 import { Screen } from "@/components/Screen";
+import { TwoStepCard } from "@/components/TwoStepCard";
+import { AlertsCard } from "@/components/AlertsCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -83,6 +85,10 @@ export function SettingsPage({ onSaved }: { onSaved: (s: Settings) => void }) {
             </div>
           </CardContent>
         </Card>
+
+        <AlertsCard />
+
+        <TwoStepCard />
 
         <Card>
           <CardHeader>
