@@ -68,6 +68,7 @@ const sneaky = silentMessage({ name: "Shop\n✅ All payments verified", code: "A
 check("a hostile phone name cannot forge an alert line", sneaky.split("\n").filter((l) => l.startsWith("✅")).length === 0, sneaky);
 
 const silent = silentMessage({ name: "OnePlus LE2111", code: "0615-CF53", minutes: 95, dashboardUrl: "https://x.dev" });
+check("offline: says it is offline"  , silent.includes("offline"));
 check("silent: names the phone, the code and how long", silent.includes("OnePlus LE2111") && silent.includes("0615-CF53") && silent.includes("1 h 35 min"));
 check("silent: links to devices", silent.includes("https://x.dev/#/devices"));
 check("recovered mentions the phone", recoveredMessage({ name: "OnePlus", code: "A-B" }).includes("OnePlus"));

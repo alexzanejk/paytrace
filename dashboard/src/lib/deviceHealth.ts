@@ -1,12 +1,13 @@
 // How healthy a phone looks, from when it last spoke and what it reported about itself.
 // Dependency-free on purpose, so it can be unit tested on its own.
 
-/** Slower than expected: a heartbeat is due every 15 minutes, and Android sometimes delays them. */
-export const LATE_AFTER_MIN = 40;
-/** Gone quiet. Keep equal to SILENT_AFTER_MIN in supabase/functions/ingest/index.ts, so this page and the Telegram alert agree. */
-export const SILENT_AFTER_MIN = 90;
+/** The phone sends a heartbeat every 30 seconds. After 90 seconds of silence (three missed) it is shown as Offline. */
+export const OFFLINE_AFTER_SEC = 90;
+/** Telegram tells the owner after this long offline, so a brief network blip does not send a message.
+ *  Keep equal to ALERT_AFTER_MIN in supabase/functions/ingest/index.ts. */
+export const ALERT_AFTER_MIN = 3;
 
-export type HealthLevel = "online" | "late" | "silent";
+export type HealthLevel = "online" | "offline";
 
 export interface DeviceInfo {
   battery?: number;
@@ -16,6 +17,9 @@ export interface DeviceInfo {
   failed?: number;
   inbox_permission?: boolean;
   recovered?: number;
+  notifications?: boolean;
+  battery_exempt?: boolean;
+  setup_complete?: boolean;
   app_version?: string;
   reported_at?: string;
 }
@@ -37,18 +41,14 @@ export function deviceHealth(d: HealthInput, now: number = Date.now()) {
   const neverSpoke = !d.last_seen_at;
   // A phone that has not spoken yet is judged from the moment it was approved.
   const minutes = minutesSince(d.last_seen_at ?? d.approved_at, now);
-  let level: HealthLevel = "online";
-  if (minutes !== null) {
-    if (minutes >= SILENT_AFTER_MIN) level = "silent";
-    else if (minutes >= LATE_AFTER_MIN) level = "late";
-  }
+  const level: HealthLevel = minutes !== null && minutes * 60 >= OFFLINE_AFTER_SEC ? "offline" : "online";
   return { level, minutes, neverSpoke };
 }
 
 export function agoText(minutes: number | null): string {
   if (minutes === null) return "never";
+  if (minutes < 1) return "just now";
   const m = Math.round(minutes);
-  if (m < 1) return "just now";
   if (m < 60) return `${m} min ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return m % 60 ? `${h} h ${m % 60} min ago` : `${h} h ago`;
@@ -71,6 +71,12 @@ export function infoProblems(info: DeviceInfo | null | undefined): string[] {
   const out = blockingProblems(info);
   if (info.inbox_permission === false) {
     out.push("Reading old SMS is off, so a payment message that arrives while the phone is off cannot be recovered");
+  }
+  if (info.notifications === false) {
+    out.push("Notifications are off, so Android may stop PayTrace running in the background");
+  }
+  if (info.battery_exempt === false) {
+    out.push("Battery saver is allowed to stop PayTrace, so the phone may go offline");
   }
   if ((info.failed ?? 0) > 0) out.push(`${info.failed} message${info.failed === 1 ? "" : "s"} could not be sent`);
   return out;

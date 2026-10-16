@@ -16,6 +16,7 @@ class SmsReceiver : BroadcastReceiver() {
         val provider = Providers.fromSender(sender) ?: return
         val settings = AppSettings(context)
         if (!settings.providerEnabled(provider)) return
+        if (!settings.monitoring) return // paused by the owner; the inbox scan picks these up when monitoring resumes
 
         // Long messages arrive in several parts; join them back together.
         val body = parts.joinToString("") { it.messageBody ?: "" }

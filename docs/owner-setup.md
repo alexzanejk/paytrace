@@ -65,15 +65,24 @@ Authentication, then Providers, then Email.
 
 ## If a payment message arrives while the phone is off
 
-You don't need to do anything. Every 15 minutes, and whenever the app opens or the phone restarts, PayTrace looks
+You don't need to do anything. Every 15 minutes (and when the app opens or the phone restarts) PayTrace looks
 through the phone's own message inbox for payment messages it missed and sends them. It needs the **"Read SMS"**
 permission: when the app first asks for SMS permissions, allow all of them. The phone's screen shows
 "Inbox last checked ... Recovered N missed messages", and so does the Devices page. A phone that has been off for a
 long time catches up with up to 7 days of messages.
 
-## When the dashboard says a phone is Late or Silent
+## When the dashboard says a phone is Offline
 
-- **Late** (no word for 40+ minutes): usually Android delaying things. Open PayTrace on the phone.
-- **Silent** (90+ minutes): payments sent to it may be missing. Check the phone is on, has internet, and PayTrace
-  is open. On OnePlus, Xiaomi, Oppo, Vivo, Realme and Samsung also set PayTrace to "No restrictions" / "Autostart".
+Each phone tells the dashboard "I'm online" every 30 seconds. If three in a row are missed (about a minute and a half),
+the phone shows **Offline** and a red strip appears on every page. If it stays offline for 3 minutes, you also get a
+Telegram message (once set up). The dashboard cannot tell *why* a phone is offline: switched off, battery dead, no
+internet, or the app was stopped all look the same.
+
+- Check the phone is on, has internet, and PayTrace is open. Payments sent to it may be missing meanwhile.
+- When you first open the app, it shows a **setup page** that lists every permission and setting it needs (read and
+  receive SMS, notifications, "run in the background without limits", and on Vivo, OnePlus, Oppo, Xiaomi, Samsung and
+  similar phones, "auto-start"). The app stays locked until all are done. If one is later switched off, the app's
+  notification says "Action needed".
+- Keep the phone **plugged in**: checking in every 30 seconds uses more battery than before.
 - The red strip also appears if **monitoring is switched off** or **SMS permission was removed**.
+- The free Supabase plan covers about 5 phones at this check-in rate. More than that would need the paid plan; ask first.

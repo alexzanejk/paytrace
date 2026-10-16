@@ -30,33 +30,33 @@ function setup(rows: WatchRow[], opts: { sendOk?: boolean; enabled?: boolean; cl
     enabled: opts.enabled ?? true,
     send: (t) => { sent.push(t); return Promise.resolve(opts.sendOk ?? true); },
   };
-  const run = () => runWatchdog(store, notify, { now: NOW, silentAfterMin: 90, dashboardUrl: "https://x.dev" });
+  const run = () => runWatchdog(store, notify, { now: NOW, alertAfterMin: 3, dashboardUrl: "https://x.dev" });
   return { run, sent, events, alerted };
 }
 
 // a phone heard from recently is left alone
-let t = setup([row("a", minsAgo(10))]);
+let t = setup([row("a", minsAgo(1))]);
 check("recent phone: no alert", (await t.run()).alerted === 0 && t.sent.length === 0);
 
-// quiet for longer than 90 minutes is reported, once
+// offline for 3 minutes or more is reported, once
 t = setup([row("a", minsAgo(120))]);
 check("quiet phone: one alert", (await t.run()).alerted === 1 && t.sent.length === 1);
-check("alert names the phone and how long", t.sent[0].includes("Phone a") && t.sent[0].includes("2 h"), t.sent[0]);
+check("alert names the phone and how long", t.sent[0].includes("Phone a") && t.sent[0].includes("2 h") && t.sent[0].includes("offline"), t.sent[0]);
 check("alert is recorded in the log", t.events.includes("phone_silent"));
 await t.run();
 check("a second run does not repeat the alert", t.sent.length === 1);
 
 // exactly on the line counts as silent; just under does not
-check("89 min: not yet", (await setup([row("a", minsAgo(89))]).run()).alerted === 0);
-check("90 min: silent", (await setup([row("a", minsAgo(90))]).run()).alerted === 1);
+check("2 min: not yet (a brief blip is not an alert)", (await setup([row("a", minsAgo(2))]).run()).alerted === 0);
+check("3 min: offline", (await setup([row("a", minsAgo(3))]).run()).alerted === 1);
 
 // a phone approved but never heard from is judged from its approval time
 check("never spoke, approved long ago: alert", (await setup([row("a", null, minsAgo(300))]).run()).alerted === 1);
-check("never spoke, approved just now: wait", (await setup([row("a", null, minsAgo(3))]).run()).alerted === 0);
+check("never spoke, approved just now: wait", (await setup([row("a", null, minsAgo(1))]).run()).alerted === 0);
 check("no timestamps at all: skipped, not alerted", (await setup([row("a", null, null)]).run()).alerted === 0);
 
 // several phones
-t = setup([row("a", minsAgo(200)), row("b", minsAgo(5)), row("c", minsAgo(500))]);
+t = setup([row("a", minsAgo(200)), row("b", minsAgo(1)), row("c", minsAgo(500))]);
 check("only the quiet ones are alerted", (await t.run()).alerted === 2 && t.sent.length === 2);
 
 // Telegram down: nothing is lost, the next run tries again

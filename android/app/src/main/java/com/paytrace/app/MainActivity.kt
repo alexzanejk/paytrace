@@ -68,7 +68,7 @@ import java.util.Locale
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (AppSettings(this).monitoring) MonitorService.start(this)
+        MonitorService.start(this) // always on: it also tells the dashboard this phone is online
         SendWorker.resumePending(this)
         HeartbeatWorker.schedule(this)
         HeartbeatWorker.now(this)
@@ -78,12 +78,6 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-}
-
-private fun requiredPermissions(): Array<String> {
-    val list = arrayListOf(Manifest.permission.RECEIVE_SMS, Manifest.permission.READ_SMS)
-    if (Build.VERSION.SDK_INT >= 33) list.add(Manifest.permission.POST_NOTIFICATIONS)
-    return list.toTypedArray()
 }
 
 private fun money(v: Double): String = String.format(Locale.US, "Tk %,.2f", v)
@@ -101,8 +95,15 @@ fun App() {
             tick++
         }
     }
-    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
-    LaunchedEffect(Unit) { permLauncher.launch(requiredPermissions()) }
+
+    // Until every permission and setting PayTrace needs is in place, nothing else can be used. `tick` re-checks every
+    // couple of seconds, so coming back from the phone's settings unlocks the app by itself.
+    var confirmed by remember { mutableStateOf(settings.autostartConfirmed) }
+    val missing = remember(tick, confirmed) { Setup.missing(ctx, settings) }
+    if (missing.isNotEmpty()) {
+        SetupScreen(settings, missing, onAutostartConfirmed = { settings.autostartConfirmed = true; confirmed = true })
+        return
+    }
 
     Column(Modifier.fillMaxSize().systemBarsPadding()) {
         TabRow(selectedTabIndex = tab) {
@@ -158,7 +159,6 @@ fun Dashboard(settings: AppSettings, tick: Int) {
                 Switch(checked = on, onCheckedChange = {
                     on = it
                     settings.monitoring = it
-                    if (it) MonitorService.start(ctx) else MonitorService.stop(ctx)
                 })
             }
         }

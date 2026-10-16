@@ -1,4 +1,4 @@
-// Decides which phones have gone quiet and alerts the owner once for each. The database access is
+// Decides which phones are offline and alerts the owner once for each. The database access is
 // passed in (WatchStore), so the claim / send / release logic can be tested without a database.
 import { silentMessage, type Notifier } from "./notify.ts";
 
@@ -23,7 +23,7 @@ export interface WatchStore {
 export async function runWatchdog(
   store: WatchStore,
   notify: Notifier,
-  opts: { now: number; silentAfterMin: number; dashboardUrl: string },
+  opts: { now: number; alertAfterMin: number; dashboardUrl: string },
 ): Promise<{ alerted: number }> {
   // Nobody to tell: leave the phones un-alerted, so they are reported once Telegram is set up.
   if (!notify.enabled) return { alerted: 0 };
@@ -34,7 +34,7 @@ export async function runWatchdog(
     const since = d.last_seen_at ?? d.approved_at;
     if (!since) continue;
     const minutes = (opts.now - new Date(since).getTime()) / 60000;
-    if (!(minutes >= opts.silentAfterMin)) continue;
+    if (!(minutes >= opts.alertAfterMin)) continue;
 
     // Claim first, so two overlapping runs cannot both send the same alert.
     if (!(await store.claim(d.id))) continue;

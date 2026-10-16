@@ -3,9 +3,10 @@ import { must, sb } from "@/lib/supabase";
 import type { Device } from "@/lib/types";
 import { agoText, blockingProblems, deviceHealth } from "@/lib/deviceHealth";
 import { useQuery } from "@/hooks/useQuery";
+import { useNow } from "@/hooks/useNow";
 
-/** A red strip on every page when a phone has gone quiet or cannot capture payments.
- *  A silent phone means payments may be missing, so this is not something to find by chance. */
+/** A red strip on every page when a phone is offline or cannot capture payments.
+ *  An offline phone means payments may be missing, so this is not something to find by chance. */
 export function DeviceAlertBar({ onOpen }: { onOpen: () => void }) {
   const { data } = useQuery(
     async () =>
@@ -13,14 +14,15 @@ export function DeviceAlertBar({ onOpen }: { onOpen: () => void }) {
         await sb.from("devices").select("id,name,pair_code,status,last_seen_at,approved_at,info").eq("status", "approved"),
       ) as Pick<Device, "id" | "name" | "pair_code" | "status" | "last_seen_at" | "approved_at" | "info">[],
     [],
-    { refreshMs: 60000 },
+    { refreshMs: 15000 },
   );
+  const now = useNow(5000);
 
   const lines: string[] = [];
   for (const d of data ?? []) {
     const name = d.name || d.pair_code;
-    const h = deviceHealth(d);
-    if (h.level === "silent") lines.push(`${name} has not been heard from for ${agoText(h.minutes).replace(" ago", "")}. Payments sent to it may be missing.`);
+    const h = deviceHealth(d, now);
+    if (h.level === "offline") lines.push(`${name} is offline (last heard ${agoText(h.minutes)}). Payments sent to it may be missing.`);
     // Failed sends and a missing "read old SMS" permission are shown on the Devices page. The strip is only for
     // things that stop payments being captured right now.
     for (const p of blockingProblems(d.info)) lines.push(`${name}: ${p}.`);

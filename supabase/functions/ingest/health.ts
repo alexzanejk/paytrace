@@ -9,6 +9,9 @@ export interface DeviceInfo {
   failed?: number; // messages that ran out of retries
   inbox_permission?: boolean; // Android's permission to read old SMS, which missed-message recovery needs
   recovered?: number; // missed messages the inbox scan has picked up since the app was installed
+  notifications?: boolean; // notifications allowed (the app's always-on notice needs them)
+  battery_exempt?: boolean; // Android's battery saver is told to leave the app alone
+  setup_complete?: boolean; // every permission and setting the app requires is in place
   app_version?: string;
   reported_at?: string;
 }
@@ -39,6 +42,12 @@ export function cleanInfo(body: Record<string, unknown>, now: Date = new Date())
   if (inbox !== undefined) info.inbox_permission = inbox;
   const recovered = asCount(body.recovered, 1_000_000);
   if (recovered !== undefined) info.recovered = recovered;
+  const notifications = asBool(body.notifications);
+  if (notifications !== undefined) info.notifications = notifications;
+  const batteryExempt = asBool(body.battery_exempt);
+  if (batteryExempt !== undefined) info.battery_exempt = batteryExempt;
+  const setupComplete = asBool(body.setup_complete);
+  if (setupComplete !== undefined) info.setup_complete = setupComplete;
   if (typeof body.app_version === "string") {
     const v = body.app_version.replace(/[^0-9A-Za-z._-]/g, "").slice(0, 20);
     if (v) info.app_version = v;

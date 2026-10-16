@@ -12,9 +12,9 @@ import androidx.work.Worker
 import androidx.work.WorkerParameters
 import java.util.concurrent.TimeUnit
 
-/** Every ~15 minutes: checks the SMS inbox for payment messages that were missed, then tells the server "this phone is alive", so a dead phone is noticed within the hour
- *  instead of when a customer complains. It also learns when the owner approves the phone, so the app
- *  connects by itself without having to be opened. */
+/** Every ~15 minutes (Android's shortest schedule for background work): checks the SMS inbox for payment messages
+ *  that were missed, and sends a heartbeat. This is the safety net behind [MonitorService], which sends a heartbeat
+ *  every 30 seconds while it is running; if Android ever stops the service, this still keeps the phone reporting. */
 class HeartbeatWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
 
     override fun doWork(): Result {
@@ -25,22 +25,26 @@ class HeartbeatWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
         } catch (e: Exception) {
             // Never let the safety net stop the heartbeat.
         }
-
-        val s = AppSettings(applicationContext)
-        // Not asked to join yet (or removed): the app's own screen handles pairing.
-        val waiting = s.deviceStatus == "pending" || s.deviceStatus == "approved"
-        if (s.serverUrl.isBlank() || !(waiting || s.secret.isNotBlank())) return Result.success()
-
-        // A failed heartbeat is fine: the next one is only 15 minutes away, and the server notices the silence.
-        val before = s.deviceStatus
-        Sender.send(s, Sender.heartbeat(applicationContext, s))
-        // The moment the owner approves this phone, send whatever was waiting. Not on every heartbeat:
-        // that would queue the same messages again and again.
-        if (before != "approved" && s.deviceStatus == "approved") SendWorker.resumePending(applicationContext)
+        beat(applicationContext)
+        // If Android stopped the always-on service, try to bring it back. It may refuse from the background; that is fine.
+        MonitorService.start(applicationContext)
         return Result.success()
     }
 
     companion object {
+        /** One heartbeat to the server. Does nothing until this phone has asked to join; a failure is fine, the next one is soon. */
+        fun beat(ctx: Context) {
+            val s = AppSettings(ctx)
+            // Not asked to join yet (or removed): the app's own screen handles pairing.
+            val waiting = s.deviceStatus == "pending" || s.deviceStatus == "approved"
+            if (s.serverUrl.isBlank() || !(waiting || s.secret.isNotBlank())) return
+            val before = s.deviceStatus
+            Sender.send(s, Sender.heartbeat(ctx, s))
+            // The moment the owner approves this phone, send whatever was waiting. Not on every heartbeat:
+            // that would queue the same messages again and again.
+            if (before != "approved" && s.deviceStatus == "approved") SendWorker.resumePending(ctx)
+        }
+
         private const val PERIODIC = "heartbeat"
         private const val ONCE = "heartbeat-now"
 

@@ -148,6 +148,16 @@ class AppSettings(ctx: Context) {
         get() = p.getInt("recovered_total", 0)
         set(v) { p.edit().putInt("recovered_total", v).apply() }
 
+    /** The owner ticked "I did this" for the phone-brand auto-start setting, which Android does not let an app read. */
+    var autostartConfirmed: Boolean
+        get() = p.getBoolean("autostart_confirmed", false)
+        set(v) { p.edit().putBoolean("autostart_confirmed", v).apply() }
+
+    /** Permissions the app has already asked for once. After that Android will not show the question again, so the
+     *  setup screen sends the owner to the phone's app settings instead. */
+    fun wasAsked(permission: String): Boolean = p.getBoolean("asked_$permission", false)
+    fun markAsked(permission: String) { p.edit().putBoolean("asked_$permission", true).apply() }
+
     fun providerEnabled(provider: String): Boolean = p.getBoolean("prov_$provider", true)
     fun setProviderEnabled(provider: String, on: Boolean) {
         p.edit().putBoolean("prov_$provider", on).apply()
