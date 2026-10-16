@@ -135,8 +135,10 @@ fun SetupScreen(settings: AppSettings, missing: List<Setup.Req>, onAutostartConf
         if (Setup.needsAutostartConfirm(Build.MANUFACTURER) || Setup.Req.AUTOSTART in missing) {
             Item(
                 title = "Allow auto-start (" + Build.MANUFACTURER.replaceFirstChar { it.uppercase() } + ")",
-                why = "This phone brand has its own power manager. Open PayTrace's settings and turn on \"Auto-start\" / \"Allow background activity\", " +
-                    "and set battery to \"No restrictions\" or \"Don't optimise\". Android cannot check this for us, so tap the second button once you have done it.",
+                why = "This phone brand has its own power manager that stops apps when the screen is off, even after the normal battery setting is allowed. " +
+                    "Do ALL of these, then tap the second button. Android cannot check them for us, so please do not tap it until they are done:\n" +
+                    Setup.brandSteps(Build.MANUFACTURER).mapIndexed { i, step -> "${i + 1}. $step" }.joinToString("\n") +
+                    "\n(Wording differs a little between models.)",
                 done = Setup.Req.AUTOSTART !in missing,
                 button = "Open settings",
                 second = "I have done this",

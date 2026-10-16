@@ -95,6 +95,15 @@ Telegram message (once set up). The dashboard cannot tell *why* a phone is offli
 internet, or the app was stopped all look the same.
 
 - Check the phone is on, has internet, and PayTrace is open. Payments sent to it may be missing meanwhile.
+- **A phone that goes offline when its screen turns off** (and comes back when you wake it) is being stopped by the
+  phone brand's own battery manager. Allowing "no battery limit" is not enough on Vivo, OnePlus, Oppo, Realme, Xiaomi
+  and Samsung. The app's setup page lists the extra steps for your brand, and the app's first screen repeats them
+  under "Does this phone keep going offline?". For **Vivo**: Settings > Battery > Background power consumption
+  management > PayTrace > "Allow high background power consumption", turn on Autostart, and lock PayTrace in the
+  recent-apps screen. For **OnePlus**: Battery optimization > Don't optimize, App > Battery usage > Allow background
+  activity, switch off "Sleep standby optimization" and "Deep optimization", and lock PayTrace in recent apps.
+- The Devices page shows "The phone stopped PayTrace N times (last time for X min)" when this has happened, so you can
+  see whether the settings fixed it (the number should stop growing).
 - When you first open the app, it shows a **setup page** that lists every permission and setting it needs (read and
   receive SMS, notifications, "run in the background without limits", and on Vivo, OnePlus, Oppo, Xiaomi, Samsung and
   similar phones, "auto-start"). The app stays locked until all are done. If one is later switched off, the app's

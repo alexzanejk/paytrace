@@ -9,6 +9,7 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         MonitorService.start(context) // always on: it is also what tells the dashboard this phone is online
         SendWorker.resumePending(context)
+        Keepalive.schedule(context)
         HeartbeatWorker.schedule(context)
         HeartbeatWorker.now(context) // includes the inbox catch-up, so a restart recovers what arrived while it was off
     }
