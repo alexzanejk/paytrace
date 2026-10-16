@@ -16,6 +16,7 @@ export function DeviceDetails({ info }: { info: DeviceInfo | null | undefined })
         ) : null}
         {info.pending ? <span>{info.pending} waiting to send</span> : null}
         {info.app_version ? <span>v{info.app_version}</span> : null}
+        {info.default_sms ? <span title="PayTrace is this phone's messaging app, which phone brands rarely stop">SMS app mode</span> : null}
       </div>
       {info.recovered ? (
         <span className="inline-flex items-start gap-1 text-status-ok">

@@ -66,6 +66,14 @@ class SetupTest {
         }
     }
 
+    @Test fun tecnoAndInfinixGetTheirOwnHiOsSteps() {
+        for (m in listOf("TECNO", "Infinix", "itel")) {
+            val steps = Setup.brandSteps(m)
+            assertTrue("autostart manager for $m", steps.any { it.contains("Autostart manager") })
+            assertTrue("lock step for $m", steps.any { it.contains("LOCK PayTrace") })
+        }
+    }
+
     @Test fun anUnknownMakerStillGetsSomething() = assertTrue(Setup.brandSteps("Acme").isNotEmpty())
 
     @Test fun aPlainAndroidPhoneIsNotAskedForAutostart() {

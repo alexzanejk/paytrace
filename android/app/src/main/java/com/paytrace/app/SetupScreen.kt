@@ -28,11 +28,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
-private fun openAppDetails(ctx: Context) {
+fun openAppDetails(ctx: Context) {
     ctx.startActivity(
         Intent(AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + ctx.packageName))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     )
+}
+
+/** The phone brand's own autostart page if this phone has one, otherwise PayTrace's normal settings page. */
+fun openAutostartPage(ctx: Context) {
+    if (!OemSettings.open(ctx)) openAppDetails(ctx)
 }
 
 private fun openNotificationSettings(ctx: Context) {
@@ -102,35 +107,37 @@ fun SetupScreen(settings: AppSettings, missing: List<Setup.Req>, onAutostartConf
             title = "Receive SMS",
             why = "Needed to see bKash, Nagad, Rocket and Upay payment messages.",
             done = Setup.Req.SMS_RECEIVE !in missing,
-            button = "Allow",
-        ) { askRuntime(Manifest.permission.RECEIVE_SMS) }
+            actions = listOf("Allow" to { askRuntime(Manifest.permission.RECEIVE_SMS) }),
+        )
 
         Item(
             title = "Read SMS inbox",
             why = "Needed to recover a payment message that arrived while the phone was off.",
             done = Setup.Req.SMS_READ !in missing,
-            button = "Allow",
-        ) { askRuntime(Manifest.permission.READ_SMS) }
+            actions = listOf("Allow" to { askRuntime(Manifest.permission.READ_SMS) }),
+        )
 
         Item(
             title = "Notifications",
             why = "PayTrace shows one quiet notice while it runs. Android is much less likely to stop an app that has it.",
             done = Setup.Req.NOTIFICATIONS !in missing,
-            button = "Allow",
-        ) {
-            if (Build.VERSION.SDK_INT >= 33 && !settings.wasAsked(Manifest.permission.POST_NOTIFICATIONS)) {
-                askRuntime(Manifest.permission.POST_NOTIFICATIONS)
-            } else {
-                openNotificationSettings(ctx)
-            }
-        }
+            actions = listOf(
+                "Allow" to {
+                    if (Build.VERSION.SDK_INT >= 33 && !settings.wasAsked(Manifest.permission.POST_NOTIFICATIONS)) {
+                        askRuntime(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        openNotificationSettings(ctx)
+                    }
+                },
+            ),
+        )
 
         Item(
             title = "Run in the background without limits",
             why = "Stops the battery saver from putting PayTrace to sleep, which would make this phone go offline. Choose \"Allow\" when Android asks.",
             done = Setup.Req.BATTERY !in missing,
-            button = "Allow",
-        ) { askBatteryExemption(ctx) }
+            actions = listOf("Allow" to { askBatteryExemption(ctx) }),
+        )
 
         if (Setup.needsAutostartConfirm(Build.MANUFACTURER) || Setup.Req.AUTOSTART in missing) {
             Item(
@@ -140,10 +147,12 @@ fun SetupScreen(settings: AppSettings, missing: List<Setup.Req>, onAutostartConf
                     Setup.brandSteps(Build.MANUFACTURER).mapIndexed { i, step -> "${i + 1}. $step" }.joinToString("\n") +
                     "\n(Wording differs a little between models.)",
                 done = Setup.Req.AUTOSTART !in missing,
-                button = "Open settings",
-                second = "I have done this",
-                onSecond = onAutostartConfirmed,
-            ) { openAppDetails(ctx) }
+                actions = listOf(
+                    "Open the autostart page" to { openAutostartPage(ctx) },
+                    "Open PayTrace's app settings" to { openAppDetails(ctx) },
+                    "I have done all of these" to onAutostartConfirmed,
+                ),
+            )
         }
     }
 }
@@ -153,10 +162,7 @@ private fun Item(
     title: String,
     why: String,
     done: Boolean,
-    button: String,
-    second: String? = null,
-    onSecond: () -> Unit = {},
-    onClick: () -> Unit,
+    actions: List<Pair<String, () -> Unit>>,
 ) {
     Card(
         Modifier.fillMaxWidth(),
@@ -168,10 +174,7 @@ private fun Item(
             Text((if (done) "✓  " else "✗  ") + title, style = MaterialTheme.typography.titleMedium)
             Text(why, style = MaterialTheme.typography.bodySmall)
             if (!done) {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Button(onClick = onClick) { Text(button) }
-                    if (second != null) Button(onClick = onSecond) { Text(second) }
-                }
+                actions.forEach { (label, run) -> Button(onClick = run) { Text(label) } }
             }
         }
     }

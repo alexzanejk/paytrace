@@ -40,6 +40,9 @@ i = cleanInfo({ stopped_count: 3, last_gap_min: "47" }, at);
 check("stop count and gap length are kept", i.stopped_count === 3 && i.last_gap_min === 47, i);
 check("junk stop counts are dropped", cleanInfo({ stopped_count: -1, last_gap_min: "x" }, at).stopped_count === undefined);
 check("being stopped by the phone is NOT a Telegram alert (the offline alert covers it)", healthProblem({ stopped_count: 5 }) === null);
+i = cleanInfo({ default_sms: true }, at);
+check("SMS app mode flag is kept", i.default_sms === true, i);
+check("junk SMS app mode flag is dropped", cleanInfo({ default_sms: "perhaps" }, at).default_sms === undefined);
 check("a missing inbox permission is NOT a Telegram alert (it only shows on the dashboard)", healthProblem({ monitoring: true, sms_permission: true, inbox_permission: false }) === null);
 
 check("healthy phone has no problem", healthProblem({ monitoring: true, sms_permission: true }) === null);

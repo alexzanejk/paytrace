@@ -2,6 +2,7 @@ package com.paytrace.app
 
 import android.content.Context
 import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
@@ -48,7 +49,9 @@ class SendWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
                 .setInitialDelay(delayMinutes, TimeUnit.MINUTES)
                 .addTag("send")
                 .build()
-            WorkManager.getInstance(ctx.applicationContext).enqueue(req)
+            // One scheduled attempt per message: asking again (for example when the internet returns) replaces a
+            // waiting delayed attempt with an immediate one instead of piling up copies.
+            WorkManager.getInstance(ctx.applicationContext).enqueueUniqueWork("send-$id", ExistingWorkPolicy.REPLACE, req)
         }
 
         /** After a restart or app update, make sure nothing is left waiting without a scheduled attempt. */

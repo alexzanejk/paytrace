@@ -19,6 +19,7 @@ export interface DeviceInfo {
   recovered?: number;
   stopped_count?: number;
   last_gap_min?: number;
+  default_sms?: boolean;
   notifications?: boolean;
   battery_exempt?: boolean;
   setup_complete?: boolean;

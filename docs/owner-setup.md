@@ -102,6 +102,18 @@ internet, or the app was stopped all look the same.
   management > PayTrace > "Allow high background power consumption", turn on Autostart, and lock PayTrace in the
   recent-apps screen. For **OnePlus**: Battery optimization > Don't optimize, App > Battery usage > Allow background
   activity, switch off "Sleep standby optimization" and "Deep optimization", and lock PayTrace in recent apps.
+- **One-tap settings:** on Vivo, iQOO, OnePlus, Oppo, Realme, Xiaomi, Huawei, Samsung, Tecno, Infinix and itel phones,
+  the setup page and the app's first screen have an **Open the autostart page** button that jumps straight to your
+  phone brand's own page, so you don't have to hunt through menus. If a model doesn't have that page, it opens
+  PayTrace's normal settings page instead.
+- **Messages waiting to send** are now sent the moment the phone's internet comes back, instead of waiting up to
+  15 minutes. The dashboard hears from the phone at the same moment.
+- **SMS app mode (optional, for phones used only for payments):** on the app's first screen, tap **Turn on SMS app mode**.
+  PayTrace becomes the phone's messaging app. Android sends it every message first and phone brands almost never stop the
+  messaging app, so payment messages keep arriving with the screen off. The trade-off: you cannot send messages or receive
+  picture messages from that phone. Other messages (bank codes, friends) still arrive: they show as notifications from
+  PayTrace and in the inbox of any other messaging app. To go back, tap **Choose another messaging app** and pick Google
+  Messages. The Devices page shows "SMS app mode" for phones that use it.
 - The Devices page shows "The phone stopped PayTrace N times (last time for X min)" when this has happened, so you can
   see whether the settings fixed it (the number should stop growing).
 - When you first open the app, it shows a **setup page** that lists every permission and setting it needs (read and
