@@ -6,7 +6,18 @@ import java.net.URL
 import java.net.URLEncoder
 
 object Sender {
-    data class Result(val ok: Boolean, val error: String?, val body: String?)
+    /** deviceStatus is the server's view of this phone ("pending", "approved", …) when it said so. */
+    data class Result(val ok: Boolean, val error: String?, val body: String?, val deviceStatus: String? = null)
+
+    private fun deviceStatusOf(text: String): String? = try {
+        JSONObject(text).optString("device_status", "").ifEmpty { null }
+    } catch (e: Exception) {
+        null
+    }
+
+    /** The shared secret wins if one was typed in (older setup); otherwise this phone's own key. */
+    private fun authHeader(s: AppSettings): String =
+        s.secret.ifBlank { "Device " + s.deviceKey }
 
     /** Builds the request body from the user's chosen fields. Locked fields are always included. */
     fun payload(s: AppSettings, r: LogRow): JSONObject {
@@ -55,7 +66,7 @@ object Sender {
             conn.connectTimeout = 15000
             conn.readTimeout = 20000
             conn.requestMethod = if (get) "GET" else "POST"
-            conn.setRequestProperty("Authorization", s.secret)
+            conn.setRequestProperty("Authorization", authHeader(s))
             conn.setRequestProperty("Accept", "application/json")
             if (!get) {
                 conn.doOutput = true
@@ -65,9 +76,37 @@ object Sender {
             val code = conn.responseCode
             val stream = if (code in 200..299) conn.inputStream else conn.errorStream
             val text = stream?.bufferedReader()?.use { it.readText() }?.take(500) ?: ""
-            if (code !in 200..299) return Result(false, "HTTP $code", text)
+            val dev = deviceStatusOf(text)
+            if (dev != null && s.secret.isBlank()) s.deviceStatus = if (dev == "unknown") "unpaired" else dev
+            if (code !in 200..299) return Result(false, "HTTP $code", text, dev)
             val ok = try { JSONObject(text).optBoolean("success", false) } catch (e: Exception) { false }
-            return if (ok) Result(true, null, text) else Result(false, "Server did not confirm success", text)
+            return if (ok) Result(true, null, text, dev) else Result(false, "Server did not confirm success", text, dev)
+        } catch (e: Exception) {
+            return Result(false, e.javaClass.simpleName + ": " + (e.message ?: ""), null)
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
+    /** Asks the server to add this phone. Nothing is trusted until an admin approves the code in the dashboard. */
+    fun pair(s: AppSettings): Result {
+        var conn: HttpURLConnection? = null
+        try {
+            conn = URL(s.serverUrl).openConnection() as HttpURLConnection
+            conn.connectTimeout = 15000
+            conn.readTimeout = 20000
+            conn.requestMethod = "POST"
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("Accept", "application/json")
+            val o = JSONObject().put("action", "pair").put("token_hash", s.deviceKeyHash).put("name", s.deviceName)
+            conn.outputStream.use { it.write(o.toString().toByteArray(Charsets.UTF_8)) }
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val text = stream?.bufferedReader()?.use { it.readText() }?.take(500) ?: ""
+            val dev = deviceStatusOf(text)
+            if (dev != null) s.deviceStatus = dev
+            return if (code in 200..299 && dev != null) Result(true, null, text, dev) else Result(false, "HTTP $code", text, dev)
         } catch (e: Exception) {
             return Result(false, e.javaClass.simpleName + ": " + (e.message ?: ""), null)
         } finally {

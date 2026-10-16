@@ -104,14 +104,14 @@ function showLogin(note) {
 }
 
 // ---------- shell ----------
-const TABS = [["overview", "Overview"], ["review", "Review"], ["payments", "Payments"], ["orders", "Orders"], ["logs", "Logs"], ["settings", "Settings"]];
+const TABS = [["overview", "Overview"], ["review", "Review"], ["payments", "Payments"], ["orders", "Orders"], ["devices", "Devices"], ["logs", "Logs"], ["settings", "Settings"]];
 function showApp() {
   const nav = h("nav", {}, TABS.map(([id, label]) => h("button", { class: tab === id ? "on" : "", onclick: () => { tab = id; showApp(); } }, label)));
   const main = h("main", { id: "main" });
   app.replaceChildren(h("header", {}, h("h1", {}, "PayTrace"), nav, h("button", { class: "btn ghost sm", onclick: async () => { await sb.auth.signOut(); showLogin(); } }, "Sign out")), main);
   render();
   clearInterval(timer);
-  timer = setInterval(() => { if (!document.hidden && ["overview", "review", "payments", "logs"].includes(tab)) render(true); }, 20000);
+  timer = setInterval(() => { if (!document.hidden && ["overview", "review", "payments", "devices", "logs"].includes(tab)) render(true); }, 20000);
 }
 async function render(quiet) {
   const main = document.getElementById("main");
@@ -222,8 +222,34 @@ const VIEWS = {
     return h("div", {}, h("h2", {}, "New order"), form, table([{ t: "Order" }, { t: "Created" }, { t: "Customer" }, { t: "Phone" }, { t: "Amount", n: 1 }, { t: "Status" }, { t: "Claimed TrxID" }, { t: "" }], rows));
   },
 
+  async devices() {
+    const devs = must(await sb.from("devices").select("*").neq("status", "revoked").order("created_at", { ascending: false }).limit(200));
+    const pending = devs.filter((d) => d.status === "pending"), approved = devs.filter((d) => d.status === "approved");
+    const codeCount = {};
+    pending.forEach((d) => { codeCount[d.pair_code] = (codeCount[d.pair_code] || 0) + 1; });
+    const act = (d, status, label, cls, ask) => h("button", { class: cls, onclick: async (e) => {
+      if (!confirm(ask)) return;
+      const { error } = await sb.rpc("set_device_status", { p_device_id: d.id, p_status: status });
+      if (error) { e.target.after(h("span", { class: "err" }, " " + error.message)); return; }
+      render();
+    } }, label);
+    const pRows = pending.map((d) => h("tr", {}, h("td", {}, h("strong", {}, d.pair_code)), h("td", {}, d.name || "–"), h("td", {}, when(d.created_at)),
+      h("td", {}, codeCount[d.pair_code] > 1
+        ? h("span", { class: "err" }, "Two requests share this code. Reject both and ask again on the phone.")
+        : act(d, "approved", "Approve", "btn sm", `Approve phone with code ${d.pair_code}? Only do this if the same code is showing on your phone right now.`),
+        " ", act(d, "revoked", "Reject", "btn ghost sm", "Reject this request?"))));
+    const aRows = approved.map((d) => h("tr", {}, h("td", {}, d.pair_code), h("td", {}, d.name || "–"), h("td", {}, when(d.approved_at)), h("td", {}, when(d.last_seen_at)),
+      h("td", {}, act(d, "revoked", "Remove", "btn ghost sm", `Remove ${d.name || d.pair_code}? It will stop sending payments until it is approved again.`))));
+    return h("div", {},
+      h("p", { class: "mut" }, "Install the app on a phone and open it. It shows a code. Approve that code here; nothing needs to be typed on the phone. Approve only codes you can see on your own phone."),
+      h("h2", {}, "Waiting for approval"),
+      table([{ t: "Code" }, { t: "Phone" }, { t: "Asked (BD)" }, { t: "Action" }], pRows),
+      h("h2", {}, "Connected phones"),
+      table([{ t: "Code" }, { t: "Phone" }, { t: "Approved (BD)" }, { t: "Last seen (BD)" }, { t: "" }], aRows));
+  },
+
   async logs() {
-    const kind = h("select", {}, h("option", { value: "" }, "All events"), ["created", "duplicate", "matched", "review", "claim", "manual_match", "parse_failed", "ignored", "rejected_sender", "test", "error"].map((k) => h("option", { value: k }, k)));
+    const kind = h("select", {}, h("option", { value: "" }, "All events"), ["created", "duplicate", "matched", "review", "claim", "manual_match", "parse_failed", "ignored", "rejected_sender", "test", "device_pair_request", "device_approved", "device_revoked", "error"].map((k) => h("option", { value: k }, k)));
     const holder = h("div", {});
     const load = async () => {
       let q = sb.from("events").select("*").order("at", { ascending: false }).limit(200);
@@ -251,8 +277,8 @@ const VIEWS = {
           msg(out, error ? error.message : "Saved.", error ? "err" : "ok");
         } }, "Save"), " ", out),
       h("div", { class: "card", style: "margin-top:12px" }, h("h2", { style: "margin-top:0" }, "Connect the Android app"),
-        h("p", {}, "Server URL: ", h("code", {}, SUPABASE_URL + "/functions/v1/ingest")),
-        h("p", { class: "mut" }, "Auth header: Authorization = your INGEST_SECRET (set in Supabase → Edge Functions → Secrets). It is never shown here.")));
+        h("p", {}, "Phones connect themselves: open the app, then approve its code under Devices. No URL or secret needs to be typed."),
+        h("p", { class: "mut" }, "Server URL (built into the app): ", h("code", {}, SUPABASE_URL + "/functions/v1/ingest"))));
   },
 };
 
