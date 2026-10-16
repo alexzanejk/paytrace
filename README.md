@@ -7,6 +7,8 @@ Automatic bKash / Nagad / Rocket / Upay payment verification from SMS.
 - `tests/` – parser tests (`node --experimental-strip-types tests/parser.test.ts`)
 - `android/` – Android app (coming next)
 
+Dashboard: React + Vite, built with `npm ci && npm run build` into `dist/`.
+
 Phones connect by pairing: open the app, then approve the code it shows under Devices in the dashboard. No URL or secret is typed on the phone. The optional shared secret (INGEST_SECRET) lives only in Supabase; never commit it or build it into the APK.
 
 ## Android app

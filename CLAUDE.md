@@ -16,7 +16,7 @@ contains no source code; everything here was written from scratch.
 | Source of truth | GitHub `alexzanejk/paytrace`, branch `main` |
 | Database + API | Supabase project `paytrace-payments`, ref `mkjcqwkfbamnuibmurcd` (Tokyo, `ap-northeast-1`) |
 | Receiving endpoint | `https://mkjcqwkfbamnuibmurcd.supabase.co/functions/v1/ingest` (Edge Function, `verify_jwt=false`, own secret check) |
-| Dashboard | `dashboard/index.html`, one static page; Cloudflare Workers static assets (`wrangler.jsonc`, worker name `paytrace-dashboard`) |
+| Dashboard | React + TypeScript + Vite in `dashboard/` (source in `dashboard/src`), Tailwind CSS v4, shadcn/ui components in `dashboard/src/components/ui`, Lucide icons. `npm run build` → `dist/`. Cloudflare Workers static assets (`wrangler.jsonc`, worker `paytrace-dashboard`, build command `npm ci && npm run build`) |
 | Android app | `android/` (Kotlin, Compose, SQLite, WorkManager). GitHub Actions builds `app-debug.apk` (artifact `paytrace-apk`) |
 | Parser tests | `tests/parser.test.ts`, run `node --experimental-strip-types tests/parser.test.ts` |
 | DB history | `supabase/migrations/` (apply in filename order) |
@@ -34,6 +34,14 @@ and the deployed function identical.
 - The publishable key inside `dashboard/index.html` is public by design; RLS protects the data.
 - Admin login: one Supabase Auth user, listed in `public.admins`. Public sign-ups should be OFF in Supabase Auth.
 
+## Frontend stack (fixed)
+- Dashboard: React + TypeScript + Vite, Tailwind CSS v4 (`@theme` tokens in `dashboard/src/index.css`, no JS config),
+  shadcn/ui-style components copied into `components/ui`, Lucide icons, responsive for desktop and mobile.
+- Android: Kotlin + Jetpack Compose + Material 3. (ViewModel/StateFlow and Navigation Compose are the target for new
+  screens; the owner chose to leave the existing screens as they are.)
+- The two share one palette: the Material 3 baseline colours the Android app uses are the dashboard's CSS tokens, and
+  payment-status colours live in one place per app (`components/StatusBadge.tsx` on the web).
+
 ## Design decisions
 - The phone sends the raw SMS plus sender ID. **The server parses**, so wording fixes never need an app update.
 - `payments` has `unique(provider, trx_id)`. Orders: one payment per order, one order per payment, enforced by unique
@@ -45,7 +53,7 @@ and the deployed function identical.
 - Mismatches (wrong amount, different payer phone digits, expired order) go to `review`, never auto-credited.
 - Rocket and Upay use a generic parser and are always held for `review` (`unverified_format`) until real samples exist.
 - A claim is limited to 5 attempts per order to stop TrxID guessing.
-- SMS text is untrusted: the dashboard builds all text with `textContent`, never `innerHTML`. Keep it that way.
+- SMS text is untrusted: the dashboard renders it as React children only. Never use `dangerouslySetInnerHTML`.
 - Times: SMS times are read as Bangladesh time (+06:00); totals group by Asia/Dhaka.
 
 ## Status (2026-10-16)
