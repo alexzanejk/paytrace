@@ -17,6 +17,8 @@ export interface DeviceInfo {
   failed?: number;
   inbox_permission?: boolean;
   recovered?: number;
+  stopped_count?: number;
+  last_gap_min?: number;
   notifications?: boolean;
   battery_exempt?: boolean;
   setup_complete?: boolean;
@@ -71,6 +73,12 @@ export function infoProblems(info: DeviceInfo | null | undefined): string[] {
   const out = blockingProblems(info);
   if (info.inbox_permission === false) {
     out.push("Reading old SMS is off, so a payment message that arrives while the phone is off cannot be recovered");
+  }
+  if ((info.stopped_count ?? 0) > 0) {
+    const n = info.stopped_count as number;
+    out.push(
+      `The phone stopped PayTrace ${n} time${n === 1 ? "" : "s"} (last time for ${info.last_gap_min ?? "?"} min). Its battery manager is closing the app: check the phone's battery settings`,
+    );
   }
   if (info.notifications === false) {
     out.push("Notifications are off, so Android may stop PayTrace running in the background");

@@ -43,6 +43,45 @@ object Setup {
         return m.isNotEmpty() && STRICT_MAKERS.any { m.contains(it) }
     }
 
+    /** What to switch on in this phone brand's own battery manager, which Android's standard "no battery limit" setting
+     *  does not cover. Wording differs a little between models, so the steps name the screens to look for. */
+    fun brandSteps(manufacturer: String?): List<String> {
+        val m = (manufacturer ?: "").trim().lowercase()
+        val lockStep = "Open the recent-apps screen and LOCK PayTrace (pull its card down, or tap the small lock icon), so cleaning never closes it."
+        return when {
+            m.contains("vivo") || m.contains("iqoo") -> listOf(
+                "Settings > Battery > Background power consumption management > PayTrace > choose \"Allow high background power consumption\".",
+                "Settings > Apps (or i Manager > App manager) > Autostart: switch PayTrace on.",
+                lockStep,
+            )
+            m.contains("oneplus") || m.contains("oppo") || m.contains("realme") -> listOf(
+                "Settings > Battery > Battery optimization > PayTrace > Don't optimize.",
+                "Settings > Apps > App management > PayTrace > Battery usage: Allow background activity, and Allow auto-launch.",
+                "Settings > Battery > More battery settings: switch OFF \"Sleep standby optimization\" and \"Deep optimization\".",
+                lockStep,
+            )
+            m.contains("xiaomi") || m.contains("redmi") || m.contains("poco") -> listOf(
+                "Settings > Apps > Manage apps > PayTrace > Autostart: switch on.",
+                "Same screen > Battery saver: choose \"No restrictions\".",
+                lockStep,
+            )
+            m.contains("samsung") -> listOf(
+                "Settings > Battery > Background usage limits > Never sleeping apps: add PayTrace.",
+                "Same screen: switch OFF \"Put unused apps to sleep\".",
+                lockStep,
+            )
+            m.contains("huawei") || m.contains("honor") -> listOf(
+                "Settings > Battery > App launch > PayTrace: switch to \"Manage manually\" and turn ON auto-launch, secondary launch and run in background.",
+                lockStep,
+            )
+            else -> listOf(
+                "Open PayTrace's page in the phone's Settings > Apps and set battery to \"No restrictions\" / \"Don't optimize\".",
+                "Allow auto-start / background activity if the phone has that option.",
+                lockStep,
+            )
+        }
+    }
+
     // ---- reading the real phone ----
 
     private fun granted(ctx: Context, permission: String) =

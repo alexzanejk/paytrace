@@ -48,6 +48,10 @@ check("healthy report has no problems", infoProblems({ monitoring: true, sms_per
 check("battery saver allowed to stop the app is flagged", infoProblems({ battery_exempt: false }).some((p) => /Battery saver/.test(p)));
 check("notifications off is flagged", infoProblems({ notifications: false }).some((p) => /Notifications are off/.test(p)));
 check("...neither is a red-banner problem", blockingProblems({ battery_exempt: false, notifications: false }).length === 0);
+check("stopped by the phone is flagged with the count", infoProblems({ stopped_count: 2, last_gap_min: 14 }).some((p) => /stopped PayTrace 2 times/.test(p) && /14 min/.test(p)));
+check("stopped once is singular", infoProblems({ stopped_count: 1, last_gap_min: 6 }).some((p) => /1 time \(/.test(p)));
+check("never stopped is fine", infoProblems({ stopped_count: 0 }).length === 0);
+check("being stopped is not a red-banner problem", blockingProblems({ stopped_count: 4 }).length === 0);
 check("no report has no problems", infoProblems(null).length === 0 && infoProblems(undefined).length === 0);
 check("sms permission off is flagged", infoProblems({ sms_permission: false }).some((p) => /SMS permission/.test(p)));
 check("monitoring off is flagged", infoProblems({ monitoring: false }).some((p) => /not being forwarded/.test(p)));

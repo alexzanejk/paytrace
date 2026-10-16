@@ -48,6 +48,26 @@ class SetupTest {
         assertTrue(Setup.needsAutostartConfirm("Samsung"))
     }
 
+    @Test fun vivoStepsNameTheHighBackgroundPowerSetting() {
+        val steps = Setup.brandSteps("vivo")
+        assertTrue(steps.any { it.contains("high background power consumption") })
+        assertTrue(steps.any { it.contains("LOCK PayTrace") })
+    }
+
+    @Test fun oneplusStepsSwitchOffSleepStandbyAndDeepOptimization() {
+        val steps = Setup.brandSteps("OnePlus")
+        assertTrue(steps.any { it.contains("Sleep standby optimization") && it.contains("Deep optimization") })
+        assertTrue(steps.any { it.contains("Allow background activity") })
+    }
+
+    @Test fun everyStrictMakerGetsAtLeastTwoSteps() {
+        for (m in listOf("vivo", "iqoo", "oppo", "realme", "oneplus", "xiaomi", "redmi", "poco", "huawei", "honor", "samsung", "tecno", "asus")) {
+            assertTrue("steps for $m", Setup.brandSteps(m).size >= 2)
+        }
+    }
+
+    @Test fun anUnknownMakerStillGetsSomething() = assertTrue(Setup.brandSteps("Acme").isNotEmpty())
+
     @Test fun aPlainAndroidPhoneIsNotAskedForAutostart() {
         assertFalse(Setup.needsAutostartConfirm("Google"))
         assertFalse(Setup.needsAutostartConfirm(""))

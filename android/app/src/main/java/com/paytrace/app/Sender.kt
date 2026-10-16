@@ -101,6 +101,8 @@ object Sender {
         o.put("sms_permission", ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED)
         o.put("inbox_permission", ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED)
         o.put("recovered", s.recoveredTotal)
+        o.put("stopped_count", s.stoppedCount)
+        o.put("last_gap_min", s.lastGapMin)
         o.put("notifications", Setup.notificationsOn(ctx))
         o.put("battery_exempt", Setup.batteryExempt(ctx))
         o.put("setup_complete", Setup.missing(ctx, s).isEmpty())

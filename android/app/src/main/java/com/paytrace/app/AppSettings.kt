@@ -150,13 +150,30 @@ class AppSettings(ctx: Context) {
 
     /** The owner ticked "I did this" for the phone-brand auto-start setting, which Android does not let an app read. */
     var autostartConfirmed: Boolean
-        get() = p.getBoolean("autostart_confirmed", false)
-        set(v) { p.edit().putBoolean("autostart_confirmed", v).apply() }
+        // v2: the checklist grew (high background power use, lock in recents...), so phones confirmed under the short
+        // version are asked once more.
+        get() = p.getBoolean("autostart_confirmed_v2", false)
+        set(v) { p.edit().putBoolean("autostart_confirmed_v2", v).apply() }
 
     /** Permissions the app has already asked for once. After that Android will not show the question again, so the
      *  setup screen sends the owner to the phone's app settings instead. */
     fun wasAsked(permission: String): Boolean = p.getBoolean("asked_$permission", false)
     fun markAsked(permission: String) { p.edit().putBoolean("asked_$permission", true).apply() }
+
+    /** Uptime-clock reading (SystemClock.elapsedRealtime) of the last heartbeat attempt. 0 = none yet. */
+    var lastBeatElapsed: Long
+        get() = p.getLong("last_beat_elapsed", 0L)
+        set(v) { p.edit().putLong("last_beat_elapsed", v).apply() }
+
+    /** How many times the phone stopped PayTrace (a gap of 5+ minutes while the phone stayed on) since it was installed. */
+    var stoppedCount: Int
+        get() = p.getInt("stopped_count", 0)
+        set(v) { p.edit().putInt("stopped_count", v).apply() }
+
+    /** Length in minutes of the most recent such stop. */
+    var lastGapMin: Int
+        get() = p.getInt("last_gap_min", 0)
+        set(v) { p.edit().putInt("last_gap_min", v).apply() }
 
     fun providerEnabled(provider: String): Boolean = p.getBoolean("prov_$provider", true)
     fun setProviderEnabled(provider: String, on: Boolean) {

@@ -103,6 +103,15 @@ and the deployed function identical.
   30 s is ~175k Edge Function calls a month plus ~43k for the watchdog, against the free plan's 500k; about 5 phones
   is the free-plan ceiling (ask before suggesting Pro). A phone cannot report that it is dying: "offline" is inferred
   from silence, so a dead battery, no internet and a killed app look the same.
+- **Surviving the phone brand's power manager.** Observed 2026-10-17: Vivo killed the service outright (no notification,
+  Offline) and OnePlus froze it while the screen was off (back online when the screen woke). The standard battery
+  exemption does not stop that on Vivo/OnePlus/Oppo/Xiaomi/Samsung. Mitigations in the app: `Setup.brandSteps` (per-brand
+  checklist on the gate, re-asked once via `autostart_confirmed_v2`, and repeated on the app's first screen);
+  `Keepalive` alarm (`setAndAllowWhileIdle`, pushed 2 min ahead on every beat, restarts the service if it dies; some
+  brands cancel alarms when they stop an app); `onTaskRemoved` restart; a Wi-Fi lock beside the CPU wake lock;
+  `startForeground` failures are caught instead of crashing; `BeatGap` counts a 5+ min gap with the phone still up
+  (uptime clock, so a reboot is not counted) as "stopped by the phone", reported as `stopped_count`/`last_gap_min` and
+  shown on the Devices page. It cannot be made 100% in software; Firebase push would be the next step if settings are not enough.
 - **Required-permissions gate (Android).** `Setup.kt` (pure `missing()` is unit tested in `SetupTest`) lists what the
   app needs: RECEIVE_SMS, READ_SMS, notifications, battery-optimisation exemption, and (Vivo/OnePlus/Oppo/Xiaomi/
   Samsung and similar, `STRICT_MAKERS`) a hand-confirmed "auto-start" step, because Android cannot report OEM

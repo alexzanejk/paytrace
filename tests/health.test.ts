@@ -36,6 +36,10 @@ i = cleanInfo({ notifications: false, battery_exempt: "false", setup_complete: t
 check("setup fields are kept, also as text", i.notifications === false && i.battery_exempt === false && i.setup_complete === true, i);
 check("junk setup fields are dropped", cleanInfo({ notifications: "maybe", setup_complete: 1 }, at).notifications === undefined && cleanInfo({ setup_complete: 1 }, at).setup_complete === undefined);
 check("battery saver or notifications off is NOT a Telegram alert (dashboard only)", healthProblem({ battery_exempt: false, notifications: false }) === null);
+i = cleanInfo({ stopped_count: 3, last_gap_min: "47" }, at);
+check("stop count and gap length are kept", i.stopped_count === 3 && i.last_gap_min === 47, i);
+check("junk stop counts are dropped", cleanInfo({ stopped_count: -1, last_gap_min: "x" }, at).stopped_count === undefined);
+check("being stopped by the phone is NOT a Telegram alert (the offline alert covers it)", healthProblem({ stopped_count: 5 }) === null);
 check("a missing inbox permission is NOT a Telegram alert (it only shows on the dashboard)", healthProblem({ monitoring: true, sms_permission: true, inbox_permission: false }) === null);
 
 check("healthy phone has no problem", healthProblem({ monitoring: true, sms_permission: true }) === null);

@@ -208,10 +208,24 @@ fun Dashboard(settings: AppSettings, tick: Int) {
             }) { Text("Allow running in background (battery)") }
         }
         item {
-            Text(
-                "Tip: on Xiaomi, Oppo, Vivo, Realme and Samsung phones also set PayTrace to \"No restrictions\" / \"Autostart\" in the phone's app settings, or Android may stop it.",
-                style = MaterialTheme.typography.bodySmall,
-            )
+            val stopped = remember(tick) { settings.stoppedCount }
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Does this phone keep going offline?", style = MaterialTheme.typography.titleSmall)
+                    if (stopped > 0) {
+                        Text(
+                            "The phone has stopped PayTrace $stopped time${if (stopped == 1) "" else "s"} (last time for ${settings.lastGapMin} minutes). " +
+                                "Its battery manager is closing the app when the screen is off.",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Text("Check these in the phone's Settings (wording differs a little by model):", style = MaterialTheme.typography.bodySmall)
+                    Setup.brandSteps(Build.MANUFACTURER).forEachIndexed { i, step ->
+                        Text("${i + 1}. $step", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
         }
     }
 }
