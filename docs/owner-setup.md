@@ -63,6 +63,22 @@ Authentication, then Providers, then Email.
 
 ---
 
+## 5. Let your website check transaction IDs
+
+Your website's admin and super-admin servers can ask PayTrace whether a customer's transaction ID really arrived, and
+for how much. Everything is done on the dashboard, nothing is typed into Supabase:
+
+1. Open the dashboard and go to **API access**.
+2. Type the name of the server (for example "Website admin") and press **Make key**. Do this once per server.
+3. The key is shown **once**. Press **Copy key**, or **Copy instructions with this key**, and send it to your developer
+   privately. If it is lost, revoke it and make a new one: PayTrace keeps only a scrambled version and cannot show it again.
+4. Press **Copy instructions for the developer** (no key inside) to give them the endpoint and what to show for each
+   answer. **Copy endpoint** copies just the address.
+5. To stop a server (or if a key leaks), press **Revoke** next to its key. It stops working immediately. The list shows
+   when each key was last used.
+
+The developer's guide is also in `docs/verify-api.md`.
+
 ## If a payment message arrives while the phone is off
 
 You don't need to do anything. Every 15 minutes (and when the app opens or the phone restarts) PayTrace looks

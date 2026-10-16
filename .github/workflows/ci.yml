@@ -37,4 +37,6 @@ jobs:
 
       # The receiving endpoint runs on Deno. This catches type mistakes before it is deployed.
       - name: Type-check the server function
-        run: deno check supabase/functions/ingest/index.ts
+        run: |
+          deno check supabase/functions/ingest/index.ts
+          deno check supabase/functions/verify-transaction/index.ts

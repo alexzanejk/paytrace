@@ -1,4 +1,4 @@
-import { ClipboardList, Gauge, ListChecks, Receipt, ScrollText, Settings2, Smartphone } from "lucide-react";
+import { ClipboardList, Gauge, KeyRound, ListChecks, Receipt, ScrollText, Settings2, Smartphone } from "lucide-react";
 
 export const TABS = [
   { id: "overview", label: "Overview", icon: Gauge },
@@ -7,6 +7,7 @@ export const TABS = [
   { id: "orders", label: "Orders", icon: ClipboardList },
   { id: "devices", label: "Devices", icon: Smartphone },
   { id: "logs", label: "Logs", icon: ScrollText },
+  { id: "api", label: "API access", icon: KeyRound },
   { id: "settings", label: "Settings", icon: Settings2 },
 ] as const;
 
