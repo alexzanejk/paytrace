@@ -114,7 +114,7 @@ class MonitorService : Service() {
      *  to be started again right away. */
     override fun onTaskRemoved(rootIntent: Intent?) {
         try {
-            Keepalive.schedule(this)
+            Keepalive.schedule(this, Keepalive.SOON_MS)
             start(applicationContext)
         } catch (e: Exception) {
         }
@@ -177,6 +177,8 @@ class MonitorService : Service() {
     }
 
     override fun onDestroy() {
+        // Android is stopping the service (not us: nothing here ever stops it on purpose). Ask to be started again in 5 seconds.
+        try { Keepalive.schedule(applicationContext, Keepalive.SOON_MS) } catch (e: Exception) { }
         try { netCallback?.let { getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(it) } } catch (e: Exception) { }
         netCallback = null
         running = false
