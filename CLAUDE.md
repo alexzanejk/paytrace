@@ -53,15 +53,17 @@ Done and tested: schema, matching logic (10 abuse scenarios, rolled back), parse
 bKash and Nagad Cash Out messages), endpoint deployed and confirmed to reject unauthenticated calls, Android app
 compiles in CI.
 
+Verified 2026-10-16: dashboard live at paytrace.ashkawser54.workers.dev (owner signed in); phone pairing worked end
+to end on a OnePlus LE2111 (pair request, approval in Devices tab, authenticated connection test).
+
 NOT yet verified (be honest about this):
-- Dashboard has never been loaded in a real browser or against real data; Cloudflare deploy result unknown.
-- Android app has never run on a phone. Test connection, real SMS capture, background survival and reboot are untested.
+- Real SMS capture on the phone, background survival and reboot are untested; no real payment has gone through yet.
 - bKash/Nagad **received** and **Send Money** layouts were written from general knowledge, not real samples.
 - Endpoint was never called with the real secret (the sandbox could not reach Supabase).
 
 ## Open items, in rough order
-1. Owner deploys dashboard on Cloudflare Workers (Workers Builds, import repo, deploy command `npx wrangler deploy`), signs in, reports back.
-2. Install APK on a phone, approve its code under Devices in the dashboard, then make a small real payment.
+1. Make a small real bKash/Nagad payment to the paired phone and confirm it appears in the dashboard.
+2. Check the phone keeps forwarding after hours in the background and after a reboot.
 3. Get real redacted sample SMS (bKash/Nagad received, Send Money; Rocket/Upay) and fix parsers + tests.
 4. Order intake: owner has not said how orders are created (website / WhatsApp / store platform). Plan: an `orders`
    Edge Function with its own API key for create-order and claim-payment calls (`claim_order` already exists).
