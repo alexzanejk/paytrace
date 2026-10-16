@@ -141,7 +141,13 @@ NOT yet verified (be honest about this):
 8. Optional, costs money: Supabase Pro ($25/mo; stops idle pausing and enables leaked-password protection); a second
    phone for redundancy; custom domain. Ask before spending.
 9. Run Supabase security advisors after any schema change.
-10. Auto-deploy of the Edge Function from GitHub is NOT set up (deploys are manual; repo must equal deployed). It would
+10. `npm audit` reports `@supabase/auth-js <=2.69.1` (low, GHSA-8r88-6cj9-9fh5: path routing in the ADMIN methods such
+    as `getUserById` when fed unvalidated input) and dev-only `esbuild`/`vite` advisories (affect only a local dev
+    server). Not exploitable here: the dashboard holds only the publishable key and never calls admin methods; the
+    function pins the same version but does not call them either. **Do not bump `@supabase/supabase-js` blindly**:
+    `mfa.enroll()` prefixes the QR code with `data:image/svg+xml;utf-8,` itself, so a version that changes that breaks
+    two-step setup. Upgrade only together with a real enrolment test against Supabase Auth.
+11. Auto-deploy of the Edge Function from GitHub is NOT set up (deploys are manual; repo must equal deployed). It would
     need a Supabase access token as a GitHub secret.
 
 ## Known limits to repeat to the owner
