@@ -1,7 +1,7 @@
 import { TriangleAlert } from "lucide-react";
 import { must, sb } from "@/lib/supabase";
 import type { Device } from "@/lib/types";
-import { agoText, deviceHealth, infoProblems } from "@/lib/deviceHealth";
+import { agoText, blockingProblems, deviceHealth } from "@/lib/deviceHealth";
 import { useQuery } from "@/hooks/useQuery";
 
 /** A red strip on every page when a phone has gone quiet or cannot capture payments.
@@ -21,8 +21,9 @@ export function DeviceAlertBar({ onOpen }: { onOpen: () => void }) {
     const name = d.name || d.pair_code;
     const h = deviceHealth(d);
     if (h.level === "silent") lines.push(`${name} has not been heard from for ${agoText(h.minutes).replace(" ago", "")}. Payments sent to it may be missing.`);
-    // Failed sends are shown on the Devices page; the strip is for things that stop payments being captured.
-    for (const p of infoProblems(d.info).filter((x) => !/could not be sent/.test(x))) lines.push(`${name}: ${p}.`);
+    // Failed sends and a missing "read old SMS" permission are shown on the Devices page. The strip is only for
+    // things that stop payments being captured right now.
+    for (const p of blockingProblems(d.info)) lines.push(`${name}: ${p}.`);
   }
   if (lines.length === 0) return null;
 

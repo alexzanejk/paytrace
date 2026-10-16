@@ -99,6 +99,8 @@ object Sender {
         val o = JSONObject().put("action", "heartbeat")
         o.put("monitoring", s.monitoring)
         o.put("sms_permission", ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED)
+        o.put("inbox_permission", ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED)
+        o.put("recovered", s.recoveredTotal)
         try {
             val (pending, failed) = Db.get(ctx).backlog()
             o.put("pending", pending).put("failed", failed)

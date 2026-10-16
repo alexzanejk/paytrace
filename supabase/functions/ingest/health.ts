@@ -7,6 +7,8 @@ export interface DeviceInfo {
   sms_permission?: boolean; // Android's permission to receive SMS
   pending?: number; // messages waiting to be sent
   failed?: number; // messages that ran out of retries
+  inbox_permission?: boolean; // Android's permission to read old SMS, which missed-message recovery needs
+  recovered?: number; // missed messages the inbox scan has picked up since the app was installed
   app_version?: string;
   reported_at?: string;
 }
@@ -33,6 +35,10 @@ export function cleanInfo(body: Record<string, unknown>, now: Date = new Date())
   if (pending !== undefined) info.pending = pending;
   const failed = asCount(body.failed, 1_000_000);
   if (failed !== undefined) info.failed = failed;
+  const inbox = asBool(body.inbox_permission);
+  if (inbox !== undefined) info.inbox_permission = inbox;
+  const recovered = asCount(body.recovered, 1_000_000);
+  if (recovered !== undefined) info.recovered = recovered;
   if (typeof body.app_version === "string") {
     const v = body.app_version.replace(/[^0-9A-Za-z._-]/g, "").slice(0, 20);
     if (v) info.app_version = v;

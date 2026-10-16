@@ -96,6 +96,17 @@ and the deployed function identical.
   goes through `clean()`. Sending never throws, never blocks saving a payment (`EdgeRuntime.waitUntil`), and never
   logs the token (a fetch error message can contain it). `{"action":"test_alert"}` lets the signed-in admin send one
   message; it verifies the caller by asking the database `is_admin()` with the caller's own JWT.
+- **Missed-message recovery (inbox catch-up).** The live SMS listener can miss a message (phone off, app frozen), but
+  the SMS stays in the phone's inbox. `InboxScanner` reads `content://sms/inbox` (READ_SMS) on every heartbeat
+  (~15 min), at app open and after boot, and stores any provider message not already stored. Rules, all covered by
+  `CatchUpTest` (JUnit, runs in CI): only the four provider sender IDs; oldest first (the balance chain checks each
+  balance against the one before); first scan looks back 24 h, never more than 7 days; messages already stored are
+  matched by provider + exact body, NOT by sender spelling, and do not count against the 200-message batch; the
+  resume point is exact after a full batch and 1 h before "now" after a finished scan. (An earlier draft always
+  resumed 1 h early, which stalls forever on >200 messages within an hour: the unit test for this must stay.)
+  The server dedupes by TrxID, so a message sent twice is harmless. Heartbeat reports `inbox_permission` and
+  `recovered`; a missing READ_SMS shows on the Devices page, not in the red banner or Telegram (nothing is being lost
+  *yet*). Recovered messages keep their real arrival time as `created_at`/`timestamp`.
 - The balance-chain `mismatch` is NOT alerted (cash-outs break it innocently); only payments that go to `review` are.
 - A claim is limited to 5 attempts per order to stop TrxID guessing.
 - SMS text is untrusted: the dashboard renders it as React children only. Never use `dangerouslySetInnerHTML`.
@@ -104,7 +115,7 @@ and the deployed function identical.
 ## Status (2026-10-16)
 Done and tested: schema, matching logic, parsers (44 tests incl. the owner's real bKash, Nagad and Rocket receipts),
 balance-chain fraud check, device pairing, phone heartbeat + health display, Telegram alert code and watchdog,
-two-step login code, CI. `npm test` = 5 files, ~130 checks. The dashboard UI was driven in a real browser against a
+two-step login code, inbox catch-up logic (19 JUnit tests), CI. `npm test` = 5 files, ~140 checks. The dashboard UI was driven in a real browser against a
 simulated Supabase (health states, banner, two-step prompt, wrong code, setup flow, test-message outcomes).
 
 Verified live 2026-10-16: dashboard at paytrace.ashkawser54.workers.dev; phone pairing end to end on a OnePlus
@@ -123,7 +134,11 @@ NOT yet verified (be honest about this):
   SVG). The first real enrolment is the true test.
 - **Signing with the permanent key**: the signing path itself runs on every build (throwaway key), but no permanent
   key exists yet; the owner must run `scripts/create-android-key.sh` and add the 4 GitHub secrets.
-- Background survival over many hours and across a reboot; a missed SMS is still lost (no inbox catch-up yet).
+- **Inbox catch-up on a real phone.** The selection logic is unit-tested and the app builds, but it has never read a
+  real inbox. First real check: after installing, the phone screen should say "Inbox last checked ... Nothing was
+  missed" or "Recovered N", and the Devices page should show the same. Also unverified: that the live listener and
+  the scan agree on sender spelling on a real phone (the body-based "already stored" check is there for this).
+- Background survival over many hours and across a reboot.
 - No payment has yet been matched to an order; only cash-out receipts have been seen in the wild.
 - bKash/Nagad **received** and **Send Money** layouts were written from general knowledge, not real samples.
 
@@ -131,9 +146,9 @@ NOT yet verified (be honest about this):
 1. Owner: create the Telegram bot and set the two secrets, press "Send a test message" (docs/owner-setup.md step 1).
 2. Owner: run `scripts/create-android-key.sh`, add the 4 GitHub secrets, install the signed build (step 2).
 3. Owner: turn on two-step login in Settings (step 3). Then confirm `auth.mfa_factors` has one verified row.
-4. **Inbox catch-up in the app** (READ_SMS is already granted): scan the SMS inbox on start/boot and every few hours
-   for provider messages not yet sent, so a missed broadcast is not lost. The server already ignores duplicates.
-   This is the biggest remaining reliability gap.
+4. Confirm inbox catch-up on the owner's phone (see above). A recovered message that is an older receipt can leave
+   the NEXT stored message's `chain_status` as `mismatch` (it was judged before the missing one existed); harmless for
+   cash-outs, which are never held for it.
 5. Get real redacted sample SMS for layouts still unseen (bKash/Nagad received + Send Money, Upay).
 6. Watch whether `chain_status = 'mismatch'` is rare or constant; revisit the rule if real payments are wrongly held.
 7. Order intake: owner has not said how orders are created (website / WhatsApp / store platform), or whether they
