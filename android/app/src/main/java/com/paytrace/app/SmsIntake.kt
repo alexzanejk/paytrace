@@ -40,14 +40,22 @@ object SmsIntake {
 
     private const val CHANNEL = "other_sms"
 
+    /** One notification per sender, so a new message from the same person replaces the old one and "seen" can clear it. */
+    fun notificationId(address: String): Int = address.hashCode()
+
     /** A normal notification for messages that are not payments (bank codes, friends), because in SMS app mode PayTrace is
      *  the only app that sees them arrive. */
     fun notifyOther(ctx: Context, sender: String, body: String) {
         try {
             val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
             nm.createNotificationChannel(NotificationChannel(CHANNEL, "Other text messages", NotificationManager.IMPORTANCE_HIGH))
+            val id = notificationId(sender)
             val open = PendingIntent.getActivity(
-                ctx, 0, Intent(ctx, MainActivity::class.java),
+                ctx, id, Intent(ctx, MainActivity::class.java).putExtra(MainActivity.EXTRA_OPEN_THREAD, sender),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            val markRead = PendingIntent.getBroadcast(
+                ctx, id, Intent(ctx, MarkReadReceiver::class.java).putExtra("address", sender),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
             val n = android.app.Notification.Builder(ctx, CHANNEL)
@@ -57,8 +65,9 @@ object SmsIntake {
                 .setSmallIcon(android.R.drawable.stat_notify_chat)
                 .setContentIntent(open)
                 .setAutoCancel(true)
+                .addAction(android.app.Notification.Action.Builder(null, "Mark as read", markRead).build())
                 .build()
-            nm.notify((sender + body).hashCode(), n)
+            nm.notify(id, n)
         } catch (e: Exception) {
         }
     }

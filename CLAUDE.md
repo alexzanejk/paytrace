@@ -129,6 +129,18 @@ and the deployed function identical.
   recent FAILED messages that failed for network reasons (not `HTTP 4xx`), re-queues PENDING ones and sends a
   heartbeat). `SendWorker.enqueue` now uses unique work per message (`send-<id>`, REPLACE) so a re-queue replaces the
   delayed retry instead of piling up copies. None of this has run on a real phone yet.
+- **Stronger keep-alive + full SMS app (2026-10-18, after the Vivo still died with SMS app mode on):** `Keepalive` now also
+  sets a 5-minute `setAlarmClock` backup (`strongAlarm` setting, default on; AlarmClock alarms are the ones OEMs almost
+  never cancel; side effect: alarm icon / "next alarm" on the lock screen); the quick 45 s alarm's receiver also sends a
+  heartbeat itself (`goAsync` thread) so the dashboard is right even if the service is slow to start; the service notice
+  uses channel `monitor_v2` (IMPORTANCE_DEFAULT, silent, CATEGORY_SERVICE, FOREGROUND_SERVICE_IMMEDIATE) because the old
+  low-importance channel is hidden/deprioritised on some brands, and a `deleteIntent` re-posts it if swiped away
+  (Android 14 allows dismissing); `stopWithTask="false"`. In SMS app mode the app is a basic SMS client: `Messages` tab
+  (`MessagesScreen`: conversations via `ThreadGrouping`, thread view, new message, send), `SmsStore` (query/mark read/
+  send through `SmsManager` with sent/delivered `PendingIntent`s written back to the provider; only works as default
+  SMS app; needs runtime SEND_SMS, asked lazily), notification "Mark as read" + tap opens the thread
+  (`LaunchRequest`), `RespondViaMessageService` sends quick replies. NOT supported: MMS (incoming MMS is dropped:
+  `MmsDeliverReceiver` is a stub), contacts names, dual-SIM choice, drafts, deleting. Nothing here has run on a phone.
 - **Required-permissions gate (Android).** `Setup.kt` (pure `missing()` is unit tested in `SetupTest`) lists what the
   app needs: RECEIVE_SMS, READ_SMS, notifications, battery-optimisation exemption, and (Vivo/OnePlus/Oppo/Xiaomi/
   Samsung and similar, `STRICT_MAKERS`) a hand-confirmed "auto-start" step, because Android cannot report OEM

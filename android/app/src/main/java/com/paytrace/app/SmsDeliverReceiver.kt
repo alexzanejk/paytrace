@@ -31,10 +31,16 @@ class MmsDeliverReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {}
 }
 
-/** Android requires a default SMS app to offer "reply by message" from the call screen. PayTrace does not send messages. */
+/** "Reply by message" from the call screen: sends the chosen quick reply. */
 class RespondViaMessageService : android.app.Service() {
     override fun onBind(intent: Intent?): android.os.IBinder? = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        try {
+            val to = intent?.data?.schemeSpecificPart?.substringBefore('?')
+            val text = intent?.getStringExtra(Intent.EXTRA_TEXT)
+            if (!to.isNullOrBlank() && !text.isNullOrBlank()) SmsStore.send(applicationContext, to, text)
+        } catch (e: Exception) {
+        }
         stopSelf(startId)
         return START_NOT_STICKY
     }

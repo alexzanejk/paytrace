@@ -12,4 +12,9 @@ class KeepaliveTest {
     @Test fun theNormalAlarmIsLongerThanOneHeartbeat() = assertTrue(Keepalive.RING_AFTER_MS > MonitorService.BEAT_MS)
 
     @Test fun theQuickRestartIsFasterThanTheNormalAlarm() = assertTrue(Keepalive.SOON_MS < Keepalive.RING_AFTER_MS)
+
+    @Test fun theStrongBackupIsSlowerThanTheQuickOneButStillWithinMinutes() {
+        assertTrue(Keepalive.STRONG_AFTER_MS > Keepalive.RING_AFTER_MS)
+        assertTrue(Keepalive.STRONG_AFTER_MS <= 10 * 60_000L)
+    }
 }

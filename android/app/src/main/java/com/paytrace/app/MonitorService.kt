@@ -34,8 +34,16 @@ class MonitorService : Service() {
     override fun onCreate() {
         super.onCreate()
         val nm = getSystemService(NotificationManager::class.java)
+        // The old channel was "low" importance, which some phone brands hide and treat as unimportant. This one is shown
+        // normally in the status bar but makes no sound and no vibration.
+        try { nm.deleteNotificationChannel("monitor") } catch (e: Exception) { }
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL, "Payment monitoring", NotificationManager.IMPORTANCE_LOW)
+            NotificationChannel(CHANNEL, "Payment monitoring", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                setSound(null, null)
+                enableVibration(false)
+                setShowBadge(false)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            }
         )
     }
 
@@ -50,6 +58,11 @@ class MonitorService : Service() {
             .setSmallIcon(android.R.drawable.stat_notify_sync_noanim)
             .setContentIntent(open)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setCategory(Notification.CATEGORY_SERVICE)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
+            .setDeleteIntent(Keepalive.repostIntent(this)) // swiped away: it comes straight back
             .build()
     }
 
@@ -192,7 +205,7 @@ class MonitorService : Service() {
     }
 
     companion object {
-        private const val CHANNEL = "monitor"
+        private const val CHANNEL = "monitor_v2"
         private const val NOTIF_ID = 1
 
         /** How often this phone says "I am online". The dashboard calls a phone Offline after three missed ones. */

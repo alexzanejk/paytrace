@@ -110,10 +110,16 @@ internet, or the app was stopped all look the same.
   15 minutes. The dashboard hears from the phone at the same moment.
 - **SMS app mode (optional, for phones used only for payments):** on the app's first screen, tap **Turn on SMS app mode**.
   PayTrace becomes the phone's messaging app. Android sends it every message first and phone brands almost never stop the
-  messaging app, so payment messages keep arriving with the screen off. The trade-off: you cannot send messages or receive
-  picture messages from that phone. Other messages (bank codes, friends) still arrive: they show as notifications from
-  PayTrace and in the inbox of any other messaging app. To go back, tap **Choose another messaging app** and pick Google
-  Messages. The Devices page shows "SMS app mode" for phones that use it.
+  messaging app, so payment messages keep arriving with the screen off. The app then has a **Messages** tab where you can
+  read conversations, reply, send new text messages, and mark messages as seen (opening a conversation marks it as read;
+  notifications also have a **Mark as read** button). The trade-off: picture messages (MMS, group pictures) are not
+  supported, so a phone in this mode will not receive them. Other messages (bank codes, friends) still arrive as
+  notifications from PayTrace. The first time you send, Android asks to allow sending messages. To go back, tap **Choose
+  another messaging app** and pick Google Messages. The Devices page shows "SMS app mode" for phones that use it.
+- **Extra-strong keep-alive** (Settings tab, on by default): a backup alarm every 5 minutes that phone brands almost never
+  cancel, so PayTrace is restarted if the phone stops it. It shows a small alarm icon in the status bar and may show
+  "next alarm" on the lock screen. PayTrace's notice is now shown normally in the status bar (no sound), and comes back
+  straight away if someone swipes it away.
 - The Devices page shows "The phone stopped PayTrace N times (last time for X min)" when this has happened, so you can
   see whether the settings fixed it (the number should stop growing).
 - When you first open the app, it shows a **setup page** that lists every permission and setting it needs (read and

@@ -66,8 +66,20 @@ import java.util.Date
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        /** A notification tap asks to open this conversation (the sender's address). */
+        const val EXTRA_OPEN_THREAD = "open_thread"
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra(EXTRA_OPEN_THREAD)?.let { LaunchRequest.address = it }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        intent?.getStringExtra(EXTRA_OPEN_THREAD)?.let { LaunchRequest.address = it }
         MonitorService.start(this) // always on: it also tells the dashboard this phone is online
         SendWorker.resumePending(this)
         HeartbeatWorker.schedule(this)
@@ -105,15 +117,23 @@ fun App() {
         return
     }
 
+    // A tap on a message notification jumps to that conversation.
+    val launchAddress = LaunchRequest.address
+    LaunchedEffect(launchAddress) { if (launchAddress != null) tab = 1 }
+
+    var unread by remember { mutableIntStateOf(0) }
+    LaunchedEffect(tick) { unread = withContext(Dispatchers.IO) { if (SmsStore.canRead(ctx)) SmsStore.unreadTotal(ctx) else 0 } }
+
     Column(Modifier.fillMaxSize().systemBarsPadding()) {
         TabRow(selectedTabIndex = tab) {
-            listOf("Dashboard", "Logs", "Settings").forEachIndexed { i, title ->
+            listOf("Dashboard", if (unread > 0) "Messages ($unread)" else "Messages", "Logs", "Settings").forEachIndexed { i, title ->
                 Tab(selected = tab == i, onClick = { tab = i }, text = { Text(title) })
             }
         }
         when (tab) {
             0 -> Dashboard(settings, tick)
-            1 -> Logs(tick)
+            1 -> MessagesScreen(tick, onOpenDashboard = { tab = 0 })
+            2 -> Logs(tick)
             else -> SettingsScreen(settings)
         }
     }
@@ -247,16 +267,16 @@ private fun SmsAppModeCard(tick: Int) {
             if (isDefault) {
                 Text(
                     "PayTrace is this phone's messaging app, so Android delivers payment messages to it first and the phone's battery manager almost never stops it. " +
-                        "Other messages (bank codes, friends) still arrive: they appear as notifications from PayTrace and in the phone's inbox, and you can read them in any other messaging app. " +
-                        "PayTrace cannot send messages or receive picture messages.",
+                        "Other messages (bank codes, friends) still arrive: they appear as notifications from PayTrace (with a Mark as read button) and in the Messages tab, where you can also read, reply and send text messages. " +
+                        "Picture messages are not supported.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 OutlinedButton(onClick = { ctx.startActivity(DefaultSms.settingsIntent()) }) { Text("Choose another messaging app (Default apps)") }
             } else {
                 Text(
                     "Recommended for a phone used only for payments. It makes this phone stop closing PayTrace when the screen is off. " +
-                        "Trade-off: PayTrace replaces the phone's messaging app. Other messages still arrive (as notifications from PayTrace and in the inbox of any other messaging app), " +
-                        "but you cannot send messages or receive picture messages from this phone. You can switch back any time.",
+                        "Trade-off: PayTrace replaces the phone's messaging app. Other messages still arrive (as notifications from PayTrace and in the Messages tab, where you can read, reply and send text messages), " +
+                        "but picture messages are not supported. You can switch back any time.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Button(onClick = {
@@ -404,6 +424,23 @@ fun SettingsScreen(settings: AppSettings) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        var strong by remember { mutableStateOf(settings.strongAlarm) }
+        val settingsCtx = LocalContext.current
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Extra-strong keep-alive", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "A backup alarm every 5 minutes that phone brands almost never cancel, so PayTrace is restarted if it is stopped. " +
+                        "It shows a small alarm icon in the status bar and may show \"next alarm\" on the lock screen. Recommended for payment phones.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Switch(checked = strong, onCheckedChange = {
+                strong = it
+                settings.strongAlarm = it
+                Keepalive.schedule(settingsCtx)
+            })
+        }
         Text("This phone", style = MaterialTheme.typography.titleMedium)
         Text(
             when (settings.deviceStatus) {
