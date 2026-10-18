@@ -34,6 +34,7 @@ export interface Payment {
   raw_message: string;
   balance_delta: number | null;
   chain_status: string | null;
+  device_id: string | null;
 }
 
 export interface Order {
@@ -81,4 +82,18 @@ export interface Totals {
 export interface Settings {
   enabled_providers: string[];
   order_expiry_minutes: number;
+}
+
+export interface DeviceBalance {
+  device_id: string;
+  provider: string;
+  balance: number;
+  at: string;
+}
+
+export interface ProviderBalance {
+  provider: string;
+  device_id: string | null;
+  balance: number;
+  at: string;
 }

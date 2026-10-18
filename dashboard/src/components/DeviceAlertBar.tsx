@@ -39,7 +39,7 @@ export function DeviceAlertBar({ onOpen }: { onOpen: () => void }) {
           ))}
         </div>
         <button type="button" onClick={onOpen} className="shrink-0 font-medium underline underline-offset-2">
-          Open Devices
+          Open Phones
         </button>
       </div>
     </div>

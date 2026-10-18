@@ -84,7 +84,7 @@ The developer's guide is also in `docs/verify-api.md`.
 You don't need to do anything. Every 15 minutes (and when the app opens or the phone restarts) PayTrace looks
 through the phone's own message inbox for payment messages it missed and sends them. It needs the **"Read SMS"**
 permission: when the app first asks for SMS permissions, allow all of them. The phone's screen shows
-"Inbox last checked ... Recovered N missed messages", and so does the Devices page. A phone that has been off for a
+"Inbox last checked ... Recovered N missed messages", and so does the Phones page. A phone that has been off for a
 long time catches up with up to 7 days of messages.
 
 ## When the dashboard says a phone is Offline
@@ -115,14 +115,14 @@ internet, or the app was stopped all look the same.
   notifications also have a **Mark as read** button). The trade-off: picture messages (MMS, group pictures) are not
   supported, so a phone in this mode will not receive them. Other messages (bank codes, friends) still arrive as
   notifications from PayTrace. The first time you send, Android asks to allow sending messages. To go back, tap **Choose
-  another messaging app** and pick Google Messages. The Devices page shows "SMS app mode" for phones that use it.
+  another messaging app** and pick Google Messages. The Phones page shows "SMS app mode" for phones that use it.
 - **The first time you finish setup**, the app asks once "Make PayTrace this phone's SMS app?". Say **Yes** on phones used for
   payments. If you say "Not now", a reminder with the same button stays at the top of the first screen.
 - **Extra-strong keep-alive** (Settings tab, on by default): a backup alarm every 5 minutes that phone brands almost never
   cancel, so PayTrace is restarted if the phone stops it. It shows a small alarm icon in the status bar and may show
   "next alarm" on the lock screen. PayTrace's notice is now shown normally in the status bar (no sound), and comes back
   straight away if someone swipes it away.
-- The Devices page shows "The phone stopped PayTrace N times (last time for X min)" when this has happened, so you can
+- The Phones page shows "The phone stopped PayTrace N times (last time for X min)" when this has happened, so you can
   see whether the settings fixed it (the number should stop growing).
 - When you first open the app, it shows a **setup page** that lists every permission and setting it needs (read and
   receive SMS, notifications, "run in the background without limits", and on Vivo, OnePlus, Oppo, Xiaomi, Samsung and
