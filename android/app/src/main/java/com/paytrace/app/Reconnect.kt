@@ -34,6 +34,10 @@ object Reconnect {
             // The regular retries still run; this is only a faster path.
         }
         try {
+            InboxScanner.run(ctx) // anything that arrived while the internet was down is also re-read from the phone's inbox
+        } catch (e: Exception) {
+        }
+        try {
             HeartbeatWorker.beat(ctx)
         } catch (e: Exception) {
         }

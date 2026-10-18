@@ -10,6 +10,31 @@ import android.provider.Telephony
 
 /** What happens to one incoming SMS, shared by the normal listener and the default-SMS-app listener. */
 object SmsIntake {
+    /** Runs `work` on a background thread while holding a short wake lock, and keeps the receiver alive until it is done, so
+     *  Android cannot put the phone back to sleep halfway through saving or queueing a message. Also makes sure the
+     *  always-on service is running (an SMS arriving is a good moment to revive it). */
+    fun runAwake(ctx: Context, receiver: android.content.BroadcastReceiver, work: () -> Unit) {
+        val pending = receiver.goAsync()
+        val wl = try {
+            ctx.getSystemService(android.os.PowerManager::class.java)
+                ?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "paytrace:sms")
+                ?.apply { setReferenceCounted(false); acquire(20_000L) }
+        } catch (e: Exception) {
+            null
+        }
+        Thread({
+            try {
+                try { MonitorService.start(ctx.applicationContext) } catch (e: Exception) { }
+                work()
+            } catch (e: Exception) {
+                // Whatever happened, the inbox scan later picks the message up.
+            } finally {
+                try { if (wl?.isHeld == true) wl.release() } catch (e: Exception) { }
+                pending.finish()
+            }
+        }, "paytrace-sms").start()
+    }
+
     /** Keeps payment messages from the four providers and queues them for the server. Safe to call twice for the same
      *  message: the second copy is recognised and ignored. */
     fun handlePayment(ctx: Context, sender: String, body: String, receivedAt: Long? = null) {
@@ -40,14 +65,22 @@ object SmsIntake {
 
     private const val CHANNEL = "other_sms"
 
+    /** One notification per sender, so a new message from the same person replaces the old one and "seen" can clear it. */
+    fun notificationId(address: String): Int = address.hashCode()
+
     /** A normal notification for messages that are not payments (bank codes, friends), because in SMS app mode PayTrace is
      *  the only app that sees them arrive. */
     fun notifyOther(ctx: Context, sender: String, body: String) {
         try {
             val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
             nm.createNotificationChannel(NotificationChannel(CHANNEL, "Other text messages", NotificationManager.IMPORTANCE_HIGH))
+            val id = notificationId(sender)
             val open = PendingIntent.getActivity(
-                ctx, 0, Intent(ctx, MainActivity::class.java),
+                ctx, id, Intent(ctx, MainActivity::class.java).putExtra(MainActivity.EXTRA_OPEN_THREAD, sender),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            val markRead = PendingIntent.getBroadcast(
+                ctx, id, Intent(ctx, MarkReadReceiver::class.java).putExtra("address", sender),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
             val n = android.app.Notification.Builder(ctx, CHANNEL)
@@ -57,8 +90,9 @@ object SmsIntake {
                 .setSmallIcon(android.R.drawable.stat_notify_chat)
                 .setContentIntent(open)
                 .setAutoCancel(true)
+                .addAction(android.app.Notification.Action.Builder(null, "Mark as read", markRead).build())
                 .build()
-            nm.notify((sender + body).hashCode(), n)
+            nm.notify(id, n)
         } catch (e: Exception) {
         }
     }

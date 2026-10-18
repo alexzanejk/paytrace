@@ -160,6 +160,16 @@ class AppSettings(ctx: Context) {
     fun wasAsked(permission: String): Boolean = p.getBoolean("asked_$permission", false)
     fun markAsked(permission: String) { p.edit().putBoolean("asked_$permission", true).apply() }
 
+    /** The one-time "make PayTrace your SMS app?" question has been shown. */
+    var defaultSmsPrompted: Boolean
+        get() = p.getBoolean("default_sms_prompted", false)
+        set(v) { p.edit().putBoolean("default_sms_prompted", v).apply() }
+
+    /** Extra-strong keep-alive: a 5-minute "alarm clock" backup. Shows an alarm icon in the status bar. On by default. */
+    var strongAlarm: Boolean
+        get() = p.getBoolean("strong_alarm", true)
+        set(v) { p.edit().putBoolean("strong_alarm", v).apply() }
+
     /** Uptime-clock reading (SystemClock.elapsedRealtime) of the last heartbeat attempt. 0 = none yet. */
     var lastBeatElapsed: Long
         get() = p.getLong("last_beat_elapsed", 0L)

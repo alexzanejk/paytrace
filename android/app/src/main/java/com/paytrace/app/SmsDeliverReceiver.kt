@@ -16,12 +16,14 @@ class SmsDeliverReceiver : BroadcastReceiver() {
         val body = parts.joinToString("") { it.messageBody ?: "" }
         val date = parts[0].timestampMillis.takeIf { it > 0 } ?: System.currentTimeMillis()
 
-        SmsIntake.saveToInbox(context, sender, body, date)
-        try {
-            if (Providers.fromSender(sender) != null) SmsIntake.handlePayment(context, sender, body, date)
-            else SmsIntake.notifyOther(context, sender, body)
-        } catch (e: Exception) {
-            // The message is already safe in the inbox; the inbox scan will pick the payment up later.
+        SmsIntake.runAwake(context, this) {
+            SmsIntake.saveToInbox(context, sender, body, date)
+            try {
+                if (Providers.fromSender(sender) != null) SmsIntake.handlePayment(context, sender, body, date)
+                else SmsIntake.notifyOther(context, sender, body)
+            } catch (e: Exception) {
+                // The message is already safe in the inbox; the inbox scan will pick the payment up later.
+            }
         }
     }
 }
@@ -31,10 +33,16 @@ class MmsDeliverReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {}
 }
 
-/** Android requires a default SMS app to offer "reply by message" from the call screen. PayTrace does not send messages. */
+/** "Reply by message" from the call screen: sends the chosen quick reply. */
 class RespondViaMessageService : android.app.Service() {
     override fun onBind(intent: Intent?): android.os.IBinder? = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        try {
+            val to = intent?.data?.schemeSpecificPart?.substringBefore('?')
+            val text = intent?.getStringExtra(Intent.EXTRA_TEXT)
+            if (!to.isNullOrBlank() && !text.isNullOrBlank()) SmsStore.send(applicationContext, to, text)
+        } catch (e: Exception) {
+        }
         stopSelf(startId)
         return START_NOT_STICKY
     }

@@ -16,6 +16,6 @@ class SmsReceiver : BroadcastReceiver() {
         val sender = parts[0].originatingAddress ?: return
         // Long messages arrive in several parts; join them back together.
         val body = parts.joinToString("") { it.messageBody ?: "" }
-        SmsIntake.handlePayment(context, sender, body)
+        SmsIntake.runAwake(context, this) { SmsIntake.handlePayment(context, sender, body) }
     }
 }
