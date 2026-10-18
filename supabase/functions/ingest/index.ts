@@ -292,6 +292,7 @@ Deno.serve(async (req) => {
       counterparty: d.counterparty, occurred_at: d.occurredAt,
       raw_message: raw, status, review_reason: reviewReason,
       balance_delta: chain?.delta ?? null, chain_status: chainStatus,
+      device_id: deviceId,
     })
     .select("id")
     .single();

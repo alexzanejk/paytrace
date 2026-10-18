@@ -2,7 +2,10 @@ import { useState } from "react";
 import { must, sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { reviewReasonText } from "@/lib/reasons";
-import { PROVIDER_LABEL, type Order, type Payment } from "@/lib/types";
+import { type Order, type Payment } from "@/lib/types";
+import { useDevices } from "@/hooks/useDevices";
+import { DeviceChip } from "@/components/DeviceChip";
+import { ProviderChip } from "@/components/ProviderChip";
 import { useQuery } from "@/hooks/useQuery";
 import { Screen } from "@/components/Screen";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -15,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 export function Review() {
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState<Record<string, string>>({});
+  const devices = useDevices();
 
   const { data, error, loading, refresh } = useQuery(
     async () => {
@@ -63,6 +67,7 @@ export function Review() {
         <TableHeader>
           <TableRow>
             <TableHead>Time (BD)</TableHead>
+            <TableHead>Phone</TableHead>
             <TableHead>Provider</TableHead>
             <TableHead>TrxID</TableHead>
             <TableHead className="text-right">Amount</TableHead>
@@ -73,7 +78,7 @@ export function Review() {
         </TableHeader>
         <TableBody>
           {payments.length === 0 ? (
-            <EmptyRow cols={7} text="Nothing is waiting for a decision." />
+            <EmptyRow cols={8} text="Nothing is waiting for a decision." />
           ) : (
             payments.map((p) => {
               const choice = picked[p.id] ?? "";
@@ -81,7 +86,8 @@ export function Review() {
               return (
                 <TableRow key={p.id}>
                   <TableCell>{when(p.occurred_at ?? p.received_at)}</TableCell>
-                  <TableCell>{PROVIDER_LABEL[p.provider] ?? p.provider}</TableCell>
+                  <TableCell className="max-w-40"><DeviceChip id={p.device_id} name={devices.nameOf(p.device_id)} /></TableCell>
+                  <TableCell><ProviderChip provider={p.provider} /></TableCell>
                   <TableCell className="font-mono text-xs">{p.trx_id}</TableCell>
                   <TableCell className="text-right">{tk(p.amount)}</TableCell>
                   <TableCell>{p.counterparty ?? "–"}</TableCell>
