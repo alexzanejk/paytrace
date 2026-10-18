@@ -151,6 +151,7 @@ and the deployed function identical.
   every 5 minutes via `INBOX_EVERY_BEATS`). Also copied from ZiniPay: SMS receivers hold a short wake lock and start the
   service (`SmsIntake.runAwake`, `goAsync`). Deliberately NOT copied: ZiniPay's `dataSync` foreground type (Android 15 stops
   dataSync services after ~6 h; PayTrace keeps `specialUse`). PayTrace-only extras were left untouched.
+- **Phone app is deliberately minimal (owner's request, 2026-10-18, modelled on ZiniPay's simple look):** three tabs, Home (one status card: Running / Not connected / Needs attention, the pairing card, permission warnings, SMS-app banner), Messages, Settings (SMS app mode, extra-strong keep-alive, battery help + one-tap pages, Advanced URL/secret). Removed from the phone on purpose: today's totals, cash-out figures, sent/failed/waiting counts, the log list, the per-provider switches, the pause switch, field checkboxes and retry settings. Those are dashboard-managed; the app resets monitoring and all providers to ON at start so nothing can stay switched off unseen. Not yet built on a phone; CI compiles it.
 - **Required-permissions gate (Android).** `Setup.kt` (pure `missing()` is unit tested in `SetupTest`) lists what the
   app needs: RECEIVE_SMS, READ_SMS, notifications, battery-optimisation exemption, and (Vivo/OnePlus/Oppo/Xiaomi/
   Samsung and similar, `STRICT_MAKERS`) a hand-confirmed "auto-start" step, because Android cannot report OEM

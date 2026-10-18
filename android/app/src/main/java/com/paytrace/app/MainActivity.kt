@@ -11,7 +11,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,8 +18,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -28,13 +25,9 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
@@ -62,9 +55,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     companion object {
@@ -93,9 +83,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private fun money(v: Double): String = String.format(Locale.US, "Tk %,.2f", v)
-private fun timeText(ms: Long): String = SimpleDateFormat("dd MMM HH:mm", Locale.getDefault()).format(Date(ms))
-
 @Composable
 fun App() {
     val ctx = LocalContext.current
@@ -107,6 +94,13 @@ fun App() {
             delay(2000)
             tick++
         }
+    }
+
+    // The phone is a plain forwarder: what to watch and what to show is managed in the web dashboard. Undo any old
+    // on/off choices made here in earlier versions so nothing stays switched off with no way to see it.
+    LaunchedEffect(Unit) {
+        settings.monitoring = true
+        Providers.ALL.forEach { settings.setProviderEnabled(it, true) }
     }
 
     // Until every permission and setting PayTrace needs is in place, nothing else can be used. `tick` re-checks every
@@ -127,9 +121,9 @@ fun App() {
             title = { Text("Make PayTrace this phone's SMS app?") },
             text = {
                 Text(
-                    "Recommended for a phone used for payments. Android then sends payment messages to PayTrace first, and phone brands almost never stop the messaging app, " +
-                        "so PayTrace stays alive with the screen off. You can still read, reply and send text messages from the Messages tab. " +
-                        "Picture messages are not supported. You can switch back any time.",
+                    "Recommended for a phone used for payments. Phone brands almost never stop the messaging app, so PayTrace " +
+                        "stays alive with the screen off. You can still read and send text messages here. Picture messages are not " +
+                        "supported. You can switch back any time.",
                 )
             },
             confirmButton = {
@@ -154,16 +148,16 @@ fun App() {
     LaunchedEffect(tick) { unread = withContext(Dispatchers.IO) { if (SmsStore.canRead(ctx)) SmsStore.unreadTotal(ctx) else 0 } }
 
     Column(Modifier.fillMaxSize().systemBarsPadding()) {
+        Text("PayTrace", Modifier.padding(start = 20.dp, top = 14.dp, bottom = 6.dp), style = MaterialTheme.typography.titleLarge)
         TabRow(selectedTabIndex = tab) {
-            listOf("Dashboard", if (unread > 0) "Messages ($unread)" else "Messages", "Logs", "Settings").forEachIndexed { i, title ->
+            listOf("Home", if (unread > 0) "Messages ($unread)" else "Messages", "Settings").forEachIndexed { i, title ->
                 Tab(selected = tab == i, onClick = { tab = i }, text = { Text(title) })
             }
         }
         when (tab) {
-            0 -> Dashboard(settings, tick)
+            0 -> Home(settings, tick)
             1 -> MessagesScreen(tick, onOpenDashboard = { tab = 0 })
-            2 -> Logs(tick)
-            else -> SettingsScreen(settings)
+            else -> SettingsScreen(settings, tick)
         }
     }
 }
@@ -173,114 +167,143 @@ private fun Warning(text: String) {
     Card(
         Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-    ) { Text(text, Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onErrorContainer) }
+    ) { Text(text, Modifier.padding(14.dp), color = MaterialTheme.colorScheme.onErrorContainer) }
 }
 
+/** One calm status screen: is this phone connected and watching, and anything that needs fixing. No numbers or switches. */
 @Composable
-private fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier) {
-        Column(Modifier.padding(14.dp)) {
-            Text(label, style = MaterialTheme.typography.labelMedium)
-            Text(value, style = MaterialTheme.typography.headlineSmall)
+fun Home(settings: AppSettings, tick: Int) {
+    val ctx = LocalContext.current
+    val configured = remember(tick) { settings.ready }
+    val smsOk = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
+    val readOk = ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
+    val healthy = configured && smsOk && readOk
+
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Card(
+            Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = if (healthy) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+            ),
+        ) {
+            Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(if (healthy) "●" else "○", style = MaterialTheme.typography.displayMedium)
+                Text(
+                    when {
+                        healthy -> "Running"
+                        !configured -> "Not connected yet"
+                        else -> "Needs attention"
+                    },
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                Text(
+                    if (healthy) "Payment messages are being sent to your dashboard." else "See below.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(settings.deviceName, style = MaterialTheme.typography.bodySmall)
+            }
         }
+        if (!smsOk) Warning("SMS permission is off. Open the phone's app settings for PayTrace and allow SMS, or no payment can be detected.")
+        if (smsOk && !readOk) Warning("Reading old SMS is off. Allow it in the phone's app settings for PayTrace, or a payment message that arrives while the phone is off cannot be recovered.")
+        if (!configured) PairCard(settings)
+        SmsAppBanner(tick)
+        Text(
+            "Leave this phone on, charged and connected to the internet. Totals, logs and settings are in the web dashboard.",
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
 @Composable
-fun Dashboard(settings: AppSettings, tick: Int) {
+fun SettingsScreen(settings: AppSettings, tick: Int) {
     val ctx = LocalContext.current
-    val stats = remember(tick) { Db.get(ctx).todayStats() }
-    val configured = remember(tick) { settings.ready }
-    val smsOk = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
-    val readOk = ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
-    var on by remember { mutableStateOf(settings.monitoring) }
+    val scope = rememberCoroutineScope()
+    var url by remember { mutableStateOf(settings.serverUrl) }
+    var secret by remember { mutableStateOf(settings.secret) }
+    var msg by remember { mutableStateOf("") }
+    var advanced by remember { mutableStateOf(false) }
+    var strong by remember { mutableStateOf(settings.strongAlarm) }
 
-    LazyColumn(
-        Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Monitoring", style = MaterialTheme.typography.titleMedium)
-                    Text(if (on) "Watching for payment SMS" else "Paused: payments are NOT being forwarded")
+        Text(
+            when (settings.deviceStatus) {
+                "approved" -> "Connected to your dashboard. Code " + settings.pairCode
+                "pending" -> "Waiting for approval in the dashboard. Code " + settings.pairCode
+                "revoked" -> "Removed in the dashboard. Open Home to ask again."
+                else -> "Not connected yet. Open Home to connect."
+            },
+        )
+
+        SmsAppModeCard(tick)
+
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Extra-strong keep-alive", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "A backup alarm every 5 minutes restarts PayTrace if the phone stops it. Shows a small alarm icon. Recommended.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Switch(checked = strong, onCheckedChange = {
+                strong = it
+                settings.strongAlarm = it
+                Keepalive.schedule(ctx)
+            })
+        }
+
+        val stopped = remember(tick) { settings.stoppedCount }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Does this phone keep going offline?", style = MaterialTheme.typography.titleSmall)
+                if (stopped > 0) {
+                    Text(
+                        "The phone has stopped PayTrace $stopped time${if (stopped == 1) "" else "s"} (last time for ${settings.lastGapMin} minutes). " +
+                            "Its battery manager is closing the app when the screen is off.",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
-                Switch(checked = on, onCheckedChange = {
-                    on = it
-                    settings.monitoring = it
-                })
+                Text("Check these in the phone's Settings (wording differs a little by model):", style = MaterialTheme.typography.bodySmall)
+                Setup.brandSteps(Build.MANUFACTURER).forEachIndexed { i, step ->
+                    Text("${i + 1}. $step", style = MaterialTheme.typography.bodySmall)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = { openAutostartPage(ctx) }) { Text("Autostart page") }
+                    OutlinedButton(onClick = { openAppDetails(ctx) }) { Text("App settings") }
+                }
+                OutlinedButton(onClick = {
+                    ctx.startActivity(Intent(AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                }) { Text("Allow running in background (battery)") }
             }
         }
-        item {
-            val last = remember(tick) { settings.inboxCheckedAt }
-            val recovered = remember(tick) { settings.recoveredTotal }
-            Text(
-                when {
-                    !readOk -> "Missed-message recovery is off."
-                    last == null -> "Missed-message recovery: not run yet."
-                    recovered == 0 -> "Inbox last checked " + timeText(last) + ". Nothing was missed."
-                    else -> "Inbox last checked " + timeText(last) + ". Recovered " + recovered + " missed message" + (if (recovered == 1) "" else "s") + "."
-                },
-                style = MaterialTheme.typography.bodySmall,
+
+        TextButton(onClick = { advanced = !advanced }) { Text(if (advanced) "Hide advanced" else "Advanced") }
+        if (advanced) {
+            OutlinedTextField(
+                value = url, onValueChange = { url = it }, label = { Text("Server URL") },
+                singleLine = true, modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
             )
-        }
-        if (smsOk && !readOk) item { Warning("Reading old SMS is off. Allow it in the phone's app settings for PayTrace, or a payment message that arrives while the phone is off cannot be recovered.") }
-        if (!smsOk) item { Warning("SMS permission is off. Open the phone's app settings for PayTrace and allow SMS, or no payment can be detected.") }
-        if (!configured) item { PairCard(settings) }
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatCard("Received today", money(stats.receivedTotal), Modifier.weight(1f))
-                StatCard("Cash Out today", money(stats.cashOutTotal), Modifier.weight(1f))
+            if (url.trim().startsWith("http://")) {
+                Text("This address is not encrypted (http). Use https:// so your payment data cannot be read on the way.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
-        }
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatCard("Sent", stats.sent.toString(), Modifier.weight(1f))
-                StatCard("Failed", stats.failed.toString(), Modifier.weight(1f))
-                StatCard("Waiting", stats.pending.toString(), Modifier.weight(1f))
-            }
-        }
-        item { Text("Providers", style = MaterialTheme.typography.titleMedium) }
-        items(Providers.ALL) { p ->
-            var en by remember(p) { mutableStateOf(settings.providerEnabled(p)) }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(Providers.LABEL[p] ?: p, Modifier.weight(1f))
-                Switch(checked = en, onCheckedChange = {
-                    en = it
-                    settings.setProviderEnabled(p, it)
-                })
-            }
-        }
-        item {
-            OutlinedButton(onClick = {
-                ctx.startActivity(Intent(AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-            }) { Text("Allow running in background (battery)") }
-        }
-        item { SmsAppBanner(tick) }
-        item { SmsAppModeCard(tick) }
-        item {
-            val stopped = remember(tick) { settings.stoppedCount }
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Does this phone keep going offline?", style = MaterialTheme.typography.titleSmall)
-                    if (stopped > 0) {
-                        Text(
-                            "The phone has stopped PayTrace $stopped time${if (stopped == 1) "" else "s"} (last time for ${settings.lastGapMin} minutes). " +
-                                "Its battery manager is closing the app when the screen is off.",
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    Text("Check these in the phone's Settings (wording differs a little by model):", style = MaterialTheme.typography.bodySmall)
-                    Setup.brandSteps(Build.MANUFACTURER).forEachIndexed { i, step ->
-                        Text("${i + 1}. $step", style = MaterialTheme.typography.bodySmall)
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(onClick = { openAutostartPage(ctx) }) { Text("Open the autostart page") }
-                        OutlinedButton(onClick = { openAppDetails(ctx) }) { Text("App settings") }
-                    }
-                }
-            }
+            OutlinedTextField(
+                value = secret, onValueChange = { secret = it }, label = { Text("Shared secret key (leave empty)") },
+                singleLine = true, modifier = Modifier.fillMaxWidth(),
+                visualTransformation = PasswordVisualTransformation(),
+            )
+            Button(onClick = {
+                settings.serverUrl = url
+                settings.secret = secret.trim()
+                msg = "Saved."
+            }) { Text("Save") }
+            if (msg.isNotEmpty()) Text(msg)
         }
     }
 }
@@ -294,7 +317,7 @@ private fun SmsAppBanner(tick: Int) {
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("PayTrace is not this phone's SMS app yet. Making it the SMS app keeps it running with the screen off (recommended for payment phones).", style = MaterialTheme.typography.bodySmall)
+            Text("Make PayTrace this phone's SMS app so the phone keeps it running with the screen off.", style = MaterialTheme.typography.bodySmall)
             Button(onClick = {
                 val i = DefaultSms.requestIntent(ctx)
                 if (i != null) launcher.launch(i) else ctx.startActivity(DefaultSms.settingsIntent())
@@ -310,23 +333,16 @@ private fun SmsAppModeCard(tick: Int) {
     val isDefault = remember(tick) { DefaultSms.isDefault(ctx) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(if (isDefault) "SMS app mode: ON" else "SMS app mode (optional)", style = MaterialTheme.typography.titleSmall)
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(if (isDefault) "SMS app mode: on" else "SMS app mode", style = MaterialTheme.typography.titleSmall)
+            Text(
+                if (isDefault) "PayTrace is this phone's messaging app, so the phone almost never stops it. Picture messages are not supported."
+                else "Recommended for a payment phone: the phone almost never stops its messaging app. Picture messages are not supported.",
+                style = MaterialTheme.typography.bodySmall,
+            )
             if (isDefault) {
-                Text(
-                    "PayTrace is this phone's messaging app, so Android delivers payment messages to it first and the phone's battery manager almost never stops it. " +
-                        "Other messages (bank codes, friends) still arrive: they appear as notifications from PayTrace (with a Mark as read button) and in the Messages tab, where you can also read, reply and send text messages. " +
-                        "Picture messages are not supported.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                OutlinedButton(onClick = { ctx.startActivity(DefaultSms.settingsIntent()) }) { Text("Choose another messaging app (Default apps)") }
+                OutlinedButton(onClick = { ctx.startActivity(DefaultSms.settingsIntent()) }) { Text("Choose another messaging app") }
             } else {
-                Text(
-                    "Recommended for a phone used only for payments. It makes this phone stop closing PayTrace when the screen is off. " +
-                        "Trade-off: PayTrace replaces the phone's messaging app. Other messages still arrive (as notifications from PayTrace and in the Messages tab, where you can read, reply and send text messages), " +
-                        "but picture messages are not supported. You can switch back any time.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
                 Button(onClick = {
                     val i = DefaultSms.requestIntent(ctx)
                     if (i != null) launcher.launch(i) else ctx.startActivity(DefaultSms.settingsIntent())
@@ -384,184 +400,5 @@ private fun PairCard(settings: AppSettings) {
             }) { Text(if (busy) "Checking…" else if (status == "revoked") "Ask again" else "I approved it, check now") }
             if (note.isNotEmpty()) Text(note, style = MaterialTheme.typography.bodySmall)
         }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun Logs(tick: Int) {
-    val ctx = LocalContext.current
-    val db = Db.get(ctx)
-    var status by remember { mutableStateOf<String?>(null) }
-    var prov by remember { mutableStateOf<String?>(null) }
-    val rows = remember(tick, status, prov) { db.list(status, prov, 200) }
-
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("PENDING", "SENT", "FAILED").forEach { s ->
-                FilterChip(selected = status == s, onClick = { status = if (status == s) null else s }, label = { Text(s) })
-            }
-        }
-        Row(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Providers.ALL.forEach { p ->
-                FilterChip(selected = prov == p, onClick = { prov = if (prov == p) null else p }, label = { Text(Providers.LABEL[p] ?: p) })
-            }
-        }
-        if (rows.isEmpty()) Text("No messages yet.", Modifier.padding(16.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(rows, key = { it.id }) { r -> LogItem(r) }
-        }
-    }
-}
-
-@Composable
-private fun LogItem(r: LogRow) {
-    val ctx = LocalContext.current
-    var open by remember(r.id) { mutableStateOf(false) }
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp)) {
-            Row(Modifier.fillMaxWidth()) {
-                Text(
-                    (Providers.LABEL[r.provider] ?: r.provider) + (if (r.cashOut) " · Cash Out" else ""),
-                    Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                Text(r.status, style = MaterialTheme.typography.labelLarge)
-            }
-            Text((r.trxId ?: "no TrxID found") + "  ·  " + (r.amount?.let { money(it) } ?: "amount ?"))
-            Text(timeText(r.createdAt) + "  ·  tries: " + r.attempts, style = MaterialTheme.typography.bodySmall)
-            if (r.error != null) Text(r.error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            if (open) Text(r.body, Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall)
-            Row {
-                TextButton(onClick = { open = !open }) { Text(if (open) "Hide SMS" else "Show SMS") }
-                if (r.status != "SENT") {
-                    TextButton(onClick = {
-                        Db.get(ctx).resetForRetry(r.id)
-                        SendWorker.enqueue(ctx, r.id, 0)
-                    }) { Text("Retry") }
-                    TextButton(onClick = { Db.get(ctx).markSuccess(r.id) }) { Text("Mark success") }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun SettingsScreen(settings: AppSettings) {
-    val scope = rememberCoroutineScope()
-    var url by remember { mutableStateOf(settings.serverUrl) }
-    var secret by remember { mutableStateOf(settings.secret) }
-    var method by remember { mutableStateOf(settings.method) }
-    var fields by remember { mutableStateOf(settings.fields + AppSettings.LOCKED) }
-    var retries by remember { mutableStateOf(settings.maxRetries.toString()) }
-    var interval by remember { mutableStateOf(settings.retryMinutes.toString()) }
-    var msg by remember { mutableStateOf("") }
-    var testing by remember { mutableStateOf(false) }
-    var advanced by remember { mutableStateOf(false) }
-
-    fun save() {
-        settings.serverUrl = url
-        settings.secret = secret.trim()
-        settings.method = method
-        settings.fields = fields
-        settings.maxRetries = retries.toIntOrNull()?.coerceIn(0, 20) ?: 3
-        settings.retryMinutes = interval.toIntOrNull()?.coerceIn(1, 1440) ?: 15
-    }
-
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        var strong by remember { mutableStateOf(settings.strongAlarm) }
-        val settingsCtx = LocalContext.current
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Extra-strong keep-alive", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "A backup alarm every 5 minutes that phone brands almost never cancel, so PayTrace is restarted if it is stopped. " +
-                        "It shows a small alarm icon in the status bar and may show \"next alarm\" on the lock screen. Recommended for payment phones.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            Switch(checked = strong, onCheckedChange = {
-                strong = it
-                settings.strongAlarm = it
-                Keepalive.schedule(settingsCtx)
-            })
-        }
-        Text("This phone", style = MaterialTheme.typography.titleMedium)
-        Text(
-            when (settings.deviceStatus) {
-                "approved" -> "Connected (approved in the dashboard). Code " + settings.pairCode
-                "pending" -> "Waiting for approval in the dashboard. Code " + settings.pairCode
-                "revoked" -> "Removed in the dashboard. Open the Dashboard tab to ask again."
-                else -> "Not connected yet. Open the Dashboard tab to connect."
-            } + if (settings.secret.isNotBlank()) "\nA shared secret key is set under Advanced and is used instead." else ""
-        )
-
-        TextButton(onClick = { advanced = !advanced }) { Text(if (advanced) "Hide advanced" else "Advanced (normally not needed)") }
-        if (advanced) {
-            OutlinedTextField(
-                value = url, onValueChange = { url = it }, label = { Text("Server URL") },
-                singleLine = true, modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-            )
-            if (url.trim().startsWith("http://")) {
-                Text("This address is not encrypted (http). Use https:// so your payment data cannot be read on the way.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            }
-            OutlinedTextField(
-                value = secret, onValueChange = { secret = it }, label = { Text("Shared secret key (leave empty)") },
-                singleLine = true, modifier = Modifier.fillMaxWidth(),
-                visualTransformation = PasswordVisualTransformation(),
-            )
-            Text("Request method", style = MaterialTheme.typography.titleSmall)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected = method == "POST", onClick = { method = "POST" })
-                Text("POST (recommended)")
-                RadioButton(selected = method == "GET", onClick = { method = "GET" })
-                Text("GET")
-            }
-        }
-
-        Text("Data to send", style = MaterialTheme.typography.titleMedium)
-        AppSettings.FIELD_LABELS.forEach { (key, label) ->
-            val locked = key in AppSettings.LOCKED
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(
-                    checked = key in fields, enabled = !locked,
-                    onCheckedChange = { fields = if (it) fields + key else fields - key },
-                )
-                Text(label)
-            }
-        }
-
-        Text("If sending fails", style = MaterialTheme.typography.titleMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedTextField(
-                value = retries, onValueChange = { retries = it.filter(Char::isDigit).take(2) },
-                label = { Text("Retries") }, singleLine = true, modifier = Modifier.weight(1f),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            )
-            OutlinedTextField(
-                value = interval, onValueChange = { interval = it.filter(Char::isDigit).take(4) },
-                label = { Text("Minutes between tries") }, singleLine = true, modifier = Modifier.weight(1f),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            )
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = { save(); msg = "Saved." }) { Text("Save") }
-            OutlinedButton(enabled = !testing, onClick = {
-                save()
-                testing = true
-                msg = "Testing…"
-                scope.launch {
-                    val r = withContext(Dispatchers.IO) { Sender.test(settings) }
-                    testing = false
-                    msg = if (r.ok) "Connection OK. Server accepted the test." else "Failed: " + (r.error ?: "unknown") + (r.body?.let { " " + it } ?: "")
-                }
-            }) { Text("Test connection") }
-        }
-        if (msg.isNotEmpty()) Text(msg)
     }
 }
