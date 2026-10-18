@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -115,6 +116,34 @@ fun App() {
     if (missing.isNotEmpty()) {
         SetupScreen(settings, missing, onAutostartConfirmed = { settings.autostartConfirmed = true; confirmed = true })
         return
+    }
+
+    // Once, right after setup: ask whether PayTrace should become the phone's SMS app (recommended for payment phones).
+    var askSmsApp by remember { mutableStateOf(!settings.defaultSmsPrompted && !DefaultSms.isDefault(ctx)) }
+    val smsAppLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
+    if (askSmsApp) {
+        AlertDialog(
+            onDismissRequest = { },
+            title = { Text("Make PayTrace this phone's SMS app?") },
+            text = {
+                Text(
+                    "Recommended for a phone used for payments. Android then sends payment messages to PayTrace first, and phone brands almost never stop the messaging app, " +
+                        "so PayTrace stays alive with the screen off. You can still read, reply and send text messages from the Messages tab. " +
+                        "Picture messages are not supported. You can switch back any time.",
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    settings.defaultSmsPrompted = true
+                    askSmsApp = false
+                    val i = DefaultSms.requestIntent(ctx)
+                    if (i != null) smsAppLauncher.launch(i) else ctx.startActivity(DefaultSms.settingsIntent())
+                }) { Text("Yes, make it the SMS app") }
+            },
+            dismissButton = {
+                TextButton(onClick = { settings.defaultSmsPrompted = true; askSmsApp = false }) { Text("Not now") }
+            },
+        )
     }
 
     // A tap on a message notification jumps to that conversation.
@@ -227,6 +256,7 @@ fun Dashboard(settings: AppSettings, tick: Int) {
                 ctx.startActivity(Intent(AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
             }) { Text("Allow running in background (battery)") }
         }
+        item { SmsAppBanner(tick) }
         item { SmsAppModeCard(tick) }
         item {
             val stopped = remember(tick) { settings.stoppedCount }
@@ -251,6 +281,24 @@ fun Dashboard(settings: AppSettings, tick: Int) {
                     }
                 }
             }
+        }
+    }
+}
+
+/** A reminder at the top of the first screen while PayTrace is not the phone's SMS app. */
+@Composable
+private fun SmsAppBanner(tick: Int) {
+    val ctx = LocalContext.current
+    val isDefault = remember(tick) { DefaultSms.isDefault(ctx) }
+    if (isDefault) return
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
+    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("PayTrace is not this phone's SMS app yet. Making it the SMS app keeps it running with the screen off (recommended for payment phones).", style = MaterialTheme.typography.bodySmall)
+            Button(onClick = {
+                val i = DefaultSms.requestIntent(ctx)
+                if (i != null) launcher.launch(i) else ctx.startActivity(DefaultSms.settingsIntent())
+            }) { Text("Make PayTrace the SMS app") }
         }
     }
 }

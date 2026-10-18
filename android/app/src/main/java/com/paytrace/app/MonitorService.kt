@@ -164,7 +164,13 @@ class MonitorService : Service() {
         if (thread?.isAlive == true) return
         running = true
         thread = Thread({
+            var beat = 0
             while (running) {
+                // Re-read the SMS inbox for payment messages that were missed: when the service starts, then every few minutes.
+                if (beat % INBOX_EVERY_BEATS == 0) {
+                    try { InboxScanner.run(applicationContext) } catch (e: Exception) { }
+                }
+                beat++
                 try {
                     AppSettings(applicationContext).lastBeatElapsed = SystemClock.elapsedRealtime()
                     HeartbeatWorker.beat(applicationContext)
@@ -210,6 +216,9 @@ class MonitorService : Service() {
 
         /** How often this phone says "I am online". The dashboard calls a phone Offline after three missed ones. */
         const val BEAT_MS = 30_000L
+
+        /** The inbox is re-read every this many heartbeats (10 x 30 s = 5 minutes). */
+        const val INBOX_EVERY_BEATS = 10
 
         fun start(ctx: Context) {
             try {

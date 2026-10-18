@@ -10,6 +10,31 @@ import android.provider.Telephony
 
 /** What happens to one incoming SMS, shared by the normal listener and the default-SMS-app listener. */
 object SmsIntake {
+    /** Runs `work` on a background thread while holding a short wake lock, and keeps the receiver alive until it is done, so
+     *  Android cannot put the phone back to sleep halfway through saving or queueing a message. Also makes sure the
+     *  always-on service is running (an SMS arriving is a good moment to revive it). */
+    fun runAwake(ctx: Context, receiver: android.content.BroadcastReceiver, work: () -> Unit) {
+        val pending = receiver.goAsync()
+        val wl = try {
+            ctx.getSystemService(android.os.PowerManager::class.java)
+                ?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "paytrace:sms")
+                ?.apply { setReferenceCounted(false); acquire(20_000L) }
+        } catch (e: Exception) {
+            null
+        }
+        Thread({
+            try {
+                try { MonitorService.start(ctx.applicationContext) } catch (e: Exception) { }
+                work()
+            } catch (e: Exception) {
+                // Whatever happened, the inbox scan later picks the message up.
+            } finally {
+                try { if (wl?.isHeld == true) wl.release() } catch (e: Exception) { }
+                pending.finish()
+            }
+        }, "paytrace-sms").start()
+    }
+
     /** Keeps payment messages from the four providers and queues them for the server. Safe to call twice for the same
      *  message: the second copy is recognised and ignored. */
     fun handlePayment(ctx: Context, sender: String, body: String, receivedAt: Long? = null) {

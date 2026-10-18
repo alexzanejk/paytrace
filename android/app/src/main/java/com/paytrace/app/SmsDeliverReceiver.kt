@@ -16,12 +16,14 @@ class SmsDeliverReceiver : BroadcastReceiver() {
         val body = parts.joinToString("") { it.messageBody ?: "" }
         val date = parts[0].timestampMillis.takeIf { it > 0 } ?: System.currentTimeMillis()
 
-        SmsIntake.saveToInbox(context, sender, body, date)
-        try {
-            if (Providers.fromSender(sender) != null) SmsIntake.handlePayment(context, sender, body, date)
-            else SmsIntake.notifyOther(context, sender, body)
-        } catch (e: Exception) {
-            // The message is already safe in the inbox; the inbox scan will pick the payment up later.
+        SmsIntake.runAwake(context, this) {
+            SmsIntake.saveToInbox(context, sender, body, date)
+            try {
+                if (Providers.fromSender(sender) != null) SmsIntake.handlePayment(context, sender, body, date)
+                else SmsIntake.notifyOther(context, sender, body)
+            } catch (e: Exception) {
+                // The message is already safe in the inbox; the inbox scan will pick the payment up later.
+            }
         }
     }
 }

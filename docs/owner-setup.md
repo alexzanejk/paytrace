@@ -116,6 +116,8 @@ internet, or the app was stopped all look the same.
   supported, so a phone in this mode will not receive them. Other messages (bank codes, friends) still arrive as
   notifications from PayTrace. The first time you send, Android asks to allow sending messages. To go back, tap **Choose
   another messaging app** and pick Google Messages. The Devices page shows "SMS app mode" for phones that use it.
+- **The first time you finish setup**, the app asks once "Make PayTrace this phone's SMS app?". Say **Yes** on phones used for
+  payments. If you say "Not now", a reminder with the same button stays at the top of the first screen.
 - **Extra-strong keep-alive** (Settings tab, on by default): a backup alarm every 5 minutes that phone brands almost never
   cancel, so PayTrace is restarted if the phone stops it. It shows a small alarm icon in the status bar and may show
   "next alarm" on the lock screen. PayTrace's notice is now shown normally in the status bar (no sound), and comes back
