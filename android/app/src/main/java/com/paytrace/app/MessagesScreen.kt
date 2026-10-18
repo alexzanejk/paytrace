@@ -95,10 +95,10 @@ private fun ThreadList(tick: Int, onOpen: (ThreadSummary) -> Unit, onNew: () -> 
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
                         "You can read messages here, but to send, reply and mark messages as read, PayTrace must be this phone's SMS app. " +
-                            "Turn on SMS app mode on the Dashboard tab.",
+                            "Turn on SMS app mode on the Home tab.",
                         style = MaterialTheme.typography.bodySmall,
                     )
-                    OutlinedButton(onClick = onOpenDashboard) { Text("Go to the Dashboard tab") }
+                    OutlinedButton(onClick = onOpenDashboard) { Text("Go to Home") }
                 }
             }
         }
@@ -177,7 +177,7 @@ private fun ThreadView(start: ThreadSummary?, tick: Int, onBack: () -> Unit) {
             items(msgs, key = { it.id }) { m -> Bubble(m) }
         }
         if (!isDefault) {
-            Text("Turn on SMS app mode (Dashboard tab) to send and reply.", style = MaterialTheme.typography.bodySmall)
+            Text("Turn on SMS app mode (Home tab) to send and reply.", style = MaterialTheme.typography.bodySmall)
         } else if (!canSend) {
             Button(onClick = { askSend.launch(Manifest.permission.SEND_SMS) }) { Text("Allow sending messages") }
         }
