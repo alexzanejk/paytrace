@@ -81,4 +81,40 @@ class SetupTest {
         assertFalse(Setup.needsAutostartConfirm(""))
         assertFalse(Setup.needsAutostartConfirm(null))
     }
+
+    // ---- the guide ----
+
+    @Test fun vivoGuideNamesTheExactChoiceAndTheOneToAvoid() {
+        val step = Setup.guide("vivo").first { it.id == "vivo_bg" }
+        assertEquals("Allow high background power consumption", step.choose)
+        assertTrue(step.avoid!!.contains("Optimized"))
+        assertTrue(step.path.contains("Background power consumption management"))
+    }
+
+    @Test fun everyBrandGuideHasUniqueIdsAndCompleteText() {
+        for (m in listOf("vivo", "iqoo", "oppo", "realme", "oneplus", "xiaomi", "redmi", "poco", "huawei", "honor", "samsung", "tecno", "infinix", "itel", "asus", "Google")) {
+            val steps = Setup.guide(m)
+            assertTrue("steps for $m", steps.size >= 2)
+            assertEquals("unique ids for $m", steps.size, steps.map { it.id }.toSet().size)
+            steps.forEach {
+                assertTrue("${it.id}: title", it.title.isNotBlank())
+                assertTrue("${it.id}: where", it.path.isNotBlank())
+                assertTrue("${it.id}: choose", it.choose.isNotBlank())
+                assertTrue("${it.id}: why", it.why.isNotBlank())
+            }
+            assertTrue("lock step for $m", steps.any { it.id == "lock" })
+        }
+    }
+
+    @Test fun theGuideIsCompleteOnlyWhenEveryStepIsTicked() {
+        val ids = Setup.guide("vivo").map { it.id }
+        assertFalse(Setup.guideComplete("vivo", emptySet()))
+        assertFalse(Setup.guideComplete("vivo", ids.drop(1).toSet()))
+        assertTrue(Setup.guideComplete("vivo", ids.toSet()))
+        assertTrue(Setup.guideComplete("vivo", ids.toSet() + "something_else"))
+    }
+
+    @Test fun ticksFromAnotherBrandDoNotCompleteThisOne() {
+        assertFalse(Setup.guideComplete("vivo", Setup.guide("samsung").map { it.id }.toSet()))
+    }
 }

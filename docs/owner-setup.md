@@ -152,3 +152,11 @@ block the app (autostart off, app force-stopped), the message is blocked too, so
 5. Build the app again (any change to the app, or "Run workflow" on the Build Android APK page) and install it on the
    phones. The run summary should say "Firebase wake-up pushes: **included**". Each phone's card on the Phones page shows
    "Wake-up messages: ready" once it has registered.
+
+## The phone-settings guide in the app
+
+On first opening, and under **Settings → Keep this phone running**, the app lists the exact phone settings for your brand,
+one card each: **Where** to find it, what to **Choose**, what **Not** to choose, and an **Open this page** button. Tick
+**I have done this** only when it is really set. The app cannot check these settings itself. Example (Vivo): Settings → Battery →
+Background power consumption management → PayTrace → choose **Allow high background power consumption**, not
+"Optimized". The app stays on the setup page until every card is ticked.
