@@ -24,6 +24,8 @@ export interface DeviceInfo {
   battery_exempt?: boolean;
   setup_complete?: boolean;
   push_ready?: boolean;
+  wake_count?: number;
+  last_wake_at?: string;
   app_version?: string;
   reported_at?: string;
 }

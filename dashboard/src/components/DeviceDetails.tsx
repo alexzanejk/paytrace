@@ -1,5 +1,5 @@
 import { BatteryMedium, LifeBuoy, TriangleAlert } from "lucide-react";
-import { infoProblems, type DeviceInfo } from "@/lib/deviceHealth";
+import { agoText, infoProblems, minutesSince, type DeviceInfo } from "@/lib/deviceHealth";
 
 /** What the phone reported about itself: battery, app version, and anything stopping it capturing payments. */
 export function DeviceDetails({ info }: { info: DeviceInfo | null | undefined }) {
@@ -19,6 +19,13 @@ export function DeviceDetails({ info }: { info: DeviceInfo | null | undefined })
         <span title="The server can send this phone a wake-up message if it goes quiet">
           Wake-up messages: {info.push_ready ? "ready" : "not set up"}
         </span>
+        {info.wake_count ? (
+          <span title="Wake-up messages that reached this phone">
+            {info.wake_count} received{info.last_wake_at ? `, last ${agoText(minutesSince(info.last_wake_at))}` : ""}
+          </span>
+        ) : info.push_ready ? (
+          <span>none received yet</span>
+        ) : null}
         {info.default_sms ? <span title="PayTrace is this phone's messaging app, which phone brands rarely stop">SMS app mode</span> : null}
       </div>
       {info.recovered ? (

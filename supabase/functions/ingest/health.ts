@@ -15,6 +15,8 @@ export interface DeviceInfo {
   notifications?: boolean; // notifications allowed (the app's always-on notice needs them)
   battery_exempt?: boolean; // Android's battery saver is told to leave the app alone
   setup_complete?: boolean; // every permission and setting the app requires is in place
+  wake_count?: number; // wake-up pushes this phone has received
+  last_wake_at?: string; // when the latest one arrived
   push_ready?: boolean; // the phone has a Firebase push address, so the server can wake it
   app_version?: string;
   reported_at?: string;
@@ -58,6 +60,13 @@ export function cleanInfo(body: Record<string, unknown>, now: Date = new Date())
   if (batteryExempt !== undefined) info.battery_exempt = batteryExempt;
   const setupComplete = asBool(body.setup_complete);
   if (setupComplete !== undefined) info.setup_complete = setupComplete;
+  const wakes = asCount(body.wake_count, 1_000_000);
+  if (wakes !== undefined) info.wake_count = wakes;
+  // The phone sends the time as milliseconds since 1970; only a believable one is kept.
+  const wakeAt = typeof body.last_wake_at === "number" ? body.last_wake_at : Number(body.last_wake_at);
+  if (Number.isFinite(wakeAt) && wakeAt > Date.parse("2020-01-01") && wakeAt < now.getTime() + 864e5) {
+    info.last_wake_at = new Date(wakeAt).toISOString();
+  }
   const pushReady = asBool(body.push_ready);
   if (pushReady !== undefined) info.push_ready = pushReady;
   if (typeof body.app_version === "string") {

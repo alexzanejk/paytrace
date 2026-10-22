@@ -130,8 +130,8 @@ async function watchdog(): Promise<Response> {
   return json({ success: true });
 }
 
-/** Sends one Telegram message if the caller is the signed-in dashboard admin. */
-async function testAlert(authHeader: string): Promise<Response> {
+/** Checks that the caller is the signed-in dashboard admin. Returns an error response, or null when all is well. */
+async function adminCheck(authHeader: string): Promise<Response | null> {
   const jwt = authHeader.match(/^Bearer\s+(\S+)$/i)?.[1];
   if (!jwt) return json({ success: false, message: "sign in to the dashboard first" }, 401);
   if (!ANON_KEY) return json({ success: false, message: "server not configured" }, 500);
@@ -143,8 +143,30 @@ async function testAlert(authHeader: string): Promise<Response> {
   const { data: isAdmin, error } = await asUser.rpc("is_admin");
   if (error) return json({ success: false, message: "not signed in" }, 401);
   if (isAdmin !== true) return json({ success: false, message: "admins only" }, 403);
+  return null;
+}
+
+/** Sends one Telegram message if the caller is the signed-in dashboard admin. */
+async function testAlert(authHeader: string): Promise<Response> {
+  const denied = await adminCheck(authHeader);
+  if (denied) return denied;
   if (!notify.enabled) return json({ success: true, configured: false, sent: false });
   return json({ success: true, configured: true, sent: await notify.send(testMessage()) });
+}
+
+/** Sends one wake-up push to one phone, for the admin who clicked "Test wake-up" on the Phones page. The phone
+ *  reports it back in its next heartbeat (wake_count / last_wake_at), which is how the dashboard shows it arrived. */
+async function testWake(authHeader: string, deviceId: string): Promise<Response> {
+  const denied = await adminCheck(authHeader);
+  if (denied) return denied;
+  if (!/^[0-9a-f-]{36}$/i.test(deviceId)) return json({ success: false, message: "bad device" }, 400);
+  if (!pusher.enabled) return json({ success: true, configured: false });
+  const { data: row } = await db.from("device_push").select("token").eq("device_id", deviceId).maybeSingle();
+  if (!row) return json({ success: true, configured: true, registered: false });
+  const result = await pusher.wake(row.token as string);
+  if (result === "bad_token") await db.from("device_push").delete().eq("device_id", deviceId);
+  await log("phone_wake_test", null, { device_id: deviceId, result });
+  return json({ success: true, configured: true, registered: result !== "bad_token", result });
 }
 
 Deno.serve(async (req) => {
@@ -190,6 +212,7 @@ Deno.serve(async (req) => {
   // ---- auth ----
   const authHeader = (req.headers.get("authorization") ?? "").trim();
   if (req.method === "POST" && body.action === "test_alert") return await testAlert(authHeader);
+  if (req.method === "POST" && body.action === "test_wake") return await testWake(authHeader, String(body.device_id ?? ""));
   const deviceKey = authHeader.match(/^Device\s+(\S{32,200})$/i)?.[1];
   let deviceId: string | null = null;
   let device: { id: string; name: string; pair_code: string; info: DeviceInfo | null } | null = null;

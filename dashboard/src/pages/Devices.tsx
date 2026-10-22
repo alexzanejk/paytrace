@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { BatteryMedium, ChevronLeft, ChevronRight, Check, HeartPulse, ListOrdered, Pencil, Smartphone, X } from "lucide-react";
-import { must, sb } from "@/lib/supabase";
+import { BatteryMedium, BellRing, ChevronLeft, ChevronRight, Check, HeartPulse, ListOrdered, Pencil, Smartphone, X } from "lucide-react";
+import { INGEST_URL, must, sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { PROVIDERS, type Device, type DeviceBalance } from "@/lib/types";
 import { addDays, dayLabel, dhakaDay, groupSummary, summarize, type DayTotal } from "@/lib/period";
@@ -205,9 +205,37 @@ function DeviceCard({
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(d.name);
   const [showHealth, setShowHealth] = useState(false);
+  const [waking, setWaking] = useState(false);
+  const [wakeNote, setWakeNote] = useState("");
   const s = sum ?? summarize([]);
   const byProvider = groupSummary(totals, (r) => r.provider);
   const problems = infoProblems(d.info).length;
+
+  /** Sends one wake-up push to this phone. If it arrives, the phone's health shows "N received" within a minute. */
+  async function testWake() {
+    setWaking(true);
+    setWakeNote("");
+    try {
+      const { data } = await sb.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) return setWakeNote("You are signed out. Sign in again and retry.");
+      const res = await fetch(INGEST_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "test_wake", device_id: d.id }),
+      });
+      const b = (await res.json().catch(() => ({}))) as { configured?: boolean; registered?: boolean; result?: string; message?: string };
+      if (!res.ok) setWakeNote(`Could not send: ${b.message ?? res.status}.`);
+      else if (!b.configured) setWakeNote("Firebase is not set up on the server yet (the FIREBASE_SERVICE_ACCOUNT secret).");
+      else if (!b.registered) setWakeNote("This phone has not registered for wake-ups. Install the newest app and open it once.");
+      else if (b.result === "sent") setWakeNote("Sent to Google. Open Phone health in a minute: if it arrived, it says \"1 received\" or more.");
+      else setWakeNote("Google did not accept the message. Try again in a minute.");
+    } catch {
+      setWakeNote("Could not reach the server. Check your internet and try again.");
+    } finally {
+      setWaking(false);
+    }
+  }
 
   async function save() {
     const { error } = await sb.rpc("rename_device", { p_device_id: d.id, p_name: name });
@@ -306,6 +334,9 @@ function DeviceCard({
         <Button size="sm" variant="outline" onClick={() => setShowHealth((v) => !v)} aria-expanded={showHealth}>
           <HeartPulse aria-hidden /> Phone health{problems ? ` (${problems})` : ""}
         </Button>
+        <Button size="sm" variant="outline" onClick={() => void testWake()} disabled={waking}>
+          <BellRing aria-hidden /> {waking ? "Sending…" : "Test wake-up"}
+        </Button>
         <Confirm
           title={`Remove ${d.name || d.pair_code}?`}
           description="It stops sending payments immediately. Its old transactions stay. To use it again you would approve a new code on that phone."
@@ -316,6 +347,7 @@ function DeviceCard({
         </Confirm>
         {error ? <span className="text-xs text-destructive">{error}</span> : null}
       </div>
+      {wakeNote ? <p role="status" className="text-sm text-muted-foreground">{wakeNote}</p> : null}
       {showHealth ? <DeviceDetails info={d.info} /> : null}
     </Card>
   );
