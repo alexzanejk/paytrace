@@ -48,6 +48,22 @@ export interface Order {
   created_at: string;
   claimed_trx_id: string | null;
   claimed_provider: string | null;
+  kind: "manual" | "deposit";
+  merchant_order_id: string | null;
+  provider: string | null;
+  wallet_number: string | null;
+  wallet_method: "send_money" | "cash_out" | null;
+  api_key_id: string | null;
+}
+
+/** The number a phone receives one provider's payments on, shown to customers on the pay page. */
+export interface DeviceWallet {
+  id: string;
+  device_id: string;
+  provider: string;
+  wallet_number: string;
+  method: "send_money" | "cash_out";
+  enabled: boolean;
 }
 
 export interface Device {

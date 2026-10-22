@@ -372,9 +372,14 @@ async function handle(req: Request): Promise<Response> {
 
   // ---- try to match to an order that already claimed this TrxID ----
   let matchResult = status;
-  if (status === "unmatched") {
+  // A Cash Out receipt is stored as tracked_only, but it can pay a deposit whose wallet is a Cash Out wallet.
+  if (status === "unmatched" || status === "tracked_only") {
     const { data: r } = await db.rpc("reconcile_payment", { p_payment_id: inserted.id });
     if (typeof r === "string") matchResult = r;
+    // A deposit order just got paid or held: tell its website now instead of waiting for the minute timer.
+    if (matchResult === "matched" || matchResult === "review") {
+      defer(fetch(`${SUPABASE_URL}/functions/v1/gateway/deliver`, { method: "POST", body: "{}" }).then((x) => x.body?.cancel()).catch(() => {}));
+    }
   }
 
   // Tell the owner when a payment is being held, whether that happened on arrival or while matching.

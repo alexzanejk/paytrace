@@ -66,3 +66,43 @@ export function developerInstructions(key?: string): string {
     "committed, in a web page, or in chat. If it leaks, tell the owner: they revoke it on the dashboard and make a new one.",
   ].join("\n");
 }
+
+export const GATEWAY_URL = `${SUPABASE_URL}/functions/v1/gateway`;
+
+/** The text the owner sends to the developer who adds PayTrace deposits to a website. */
+export function depositInstructions(key?: string): string {
+  const k = key ?? "<YOUR_KEY>";
+  return [
+    "PayTrace: deposit gateway",
+    "",
+    "Your SERVER creates a deposit order, sends the customer to the pay page it returns, and learns the result by a signed message (webhook)",
+    "and/or by asking. Use the key from your server only, never in a browser or app.",
+    "",
+    "1) CREATE THE ORDER",
+    `POST ${GATEWAY_URL}/create-deposit`,
+    `Authorization: Bearer ${k}`,
+    "Content-Type: application/json",
+    '{ "amount": 500, "order_id": "SHOP-1001", "return_url": "https://yourshop.com/thanks", "provider": "bkash", "expires_in_minutes": 15 }',
+    "- amount: required, 10 to 500000.",
+    "- order_id: required. YOUR own order number. Sending the same order_id again returns the same order (safe to retry).",
+    '- provider: optional ("bkash", "nagad", "rocket", "upay"). Leave it out and the customer chooses on the pay page.',
+    "- return_url: optional, https only. The customer is sent back here after a confirmed payment.",
+    "- expires_in_minutes: optional, 3 to 60, default 15.",
+    '- customer_name, customer_phone: optional, for your own records.',
+    'Answer 200: { "tracking_number": "...", "pay_url": "https://.../pay?trackingNumber=...", "status": "pending", "expires_at": "..." }',
+    "Redirect the customer to pay_url. They pick a wallet (if you did not), pay the number shown, and paste the TrxID.",
+    "",
+    "2) LEARN THE RESULT",
+    "a) Webhook (recommended). The owner enters your https address on the dashboard's API access page and gives you the signing secret.",
+    "   PayTrace POSTs JSON: { \"event\": \"deposit.paid\", \"data\": { \"tracking_number\", \"order_id\", \"status\", \"amount\", \"currency\", \"provider\", \"trx_id\", \"paid_at\" } }",
+    "   Events: deposit.paid, deposit.review (held for a manual check), deposit.expired, deposit.cancelled.",
+    "   Header X-PayTrace-Signature: t=<unix seconds>,v1=<hex>. Compute HMAC-SHA256 with the signing secret over \"<t>.<raw request body>\",",
+    "   compare with v1 in constant time, and reject if t is more than 5 minutes old.",
+    "   Answer with any 2xx. Anything else is retried (1 min, 5 min, 15 min, 1 h, 3 h, 6 h, 12 h). The same event may arrive twice: handle it idempotently by order_id.",
+    "b) Ask. POST " + `${GATEWAY_URL}/order-status`,
+    '   { "order_id": "SHOP-1001" }  or  { "tracking_number": "..." }  ->  { "status": "pending|paid|review|expired|cancelled", "amount", "provider", "trx_id", "paid_at", ... }',
+    "",
+    "ONLY credit the customer when status is \"paid\" and the amount and order_id are the ones you expect. Do not trust the browser redirect.",
+    "Errors: 401 wrong or revoked key, 400 bad request (see error text), 429 too many requests (120 per minute per key), 5xx try again.",
+  ].join("\n");
+}

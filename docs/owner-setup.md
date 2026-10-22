@@ -160,3 +160,18 @@ one card each: **Where** to find it, what to **Choose**, what **Not** to choose,
 **I have done this** only when it is really set. The app cannot check these settings itself. Example (Vivo): Settings → Battery →
 Background power consumption management → PayTrace → choose **Allow high background power consumption**, not
 "Optimized". The app stays on the setup page until every card is ticked.
+
+
+## Step 7: Accept deposits on your websites
+
+1. **Phones tab:** on each phone press **Add a number**, choose the provider, type the wallet number that phone receives money
+   on, and choose how customers pay it: *Customer sends money*, or *Customer cashes out at this agent*. You can switch a number
+   off without deleting it. Customers are only ever shown numbers from phones you approved.
+2. **API access tab:** make a key for the website (the same kind of key as for the transaction check).
+3. In **Where to send payment results**, pick that key and type the https address on your website that should receive "paid"
+   messages. Copy the signing secret that appears (shown once) and give it to your developer.
+4. Press **Copy deposit instructions for the developer** and send them, with the key, to whoever builds your site.
+5. Try it with a small real amount: the developer creates an order, you open the pay link on your phone, pay, paste the TrxID.
+   The order should show as paid in the **Orders** tab (source: *Website deposit*).
+
+Held payments (wrong amount, wrong phone, late) show in **Review**; approve them by hand once you have checked.

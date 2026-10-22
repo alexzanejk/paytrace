@@ -2,12 +2,13 @@ import { useState, type FormEvent } from "react";
 import { KeyRound, ShieldAlert } from "lucide-react";
 import { must, sb } from "@/lib/supabase";
 import { when } from "@/lib/format";
-import { developerInstructions, VERIFY_URL } from "@/lib/apiDocs";
+import { depositInstructions, developerInstructions, GATEWAY_URL, VERIFY_URL } from "@/lib/apiDocs";
 import { useQuery } from "@/hooks/useQuery";
 import { Screen } from "@/components/Screen";
 import { EmptyRow } from "@/components/Empty";
 import { Confirm } from "@/components/Confirm";
 import { CopyButton } from "@/components/CopyButton";
+import { WebhookCard } from "@/components/WebhookCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,6 +23,7 @@ interface ApiKey {
   created_at: string;
   last_used_at: string | null;
   revoked_at: string | null;
+  webhook_url: string | null;
 }
 
 interface NewKey {
@@ -37,7 +39,7 @@ export function ApiAccess() {
       must(
         await sb
           .from("api_keys")
-          .select("id,name,key_prefix,created_at,last_used_at,revoked_at")
+          .select("id,name,key_prefix,created_at,last_used_at,revoked_at,webhook_url")
           .order("created_at", { ascending: false }),
       ) as ApiKey[],
     [],
@@ -100,6 +102,32 @@ export function ApiAccess() {
             </div>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Accept deposits on your websites</CardTitle>
+            <CardDescription>
+              Your website's server creates a deposit order, sends the customer to a PayTrace pay page, and PayTrace tells the
+              website when it is paid. The customer pays one of your phones' numbers and enters the transaction ID. Set the
+              numbers on each phone in the Phones tab first.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            <div>
+              <Label>Endpoint (the address your servers call)</Label>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <code className="min-w-0 flex-1 break-all rounded-lg border border-border bg-muted px-3 py-2 text-xs">{GATEWAY_URL}/create-deposit</code>
+                <CopyButton text={`${GATEWAY_URL}/create-deposit`} label="Copy endpoint" />
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <CopyButton text={() => depositInstructions()} label="Copy deposit instructions for the developer" variant="default" />
+              <span className="text-xs text-muted-foreground">Plain text; it does not include any key. Uses the same keys as below.</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <WebhookCard keys={keys} onChanged={refresh} />
 
         {fresh ? (
           <Card className="border-primary">
