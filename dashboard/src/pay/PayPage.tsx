@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, XCircle, X } from "lucide-react";
 import { DEMO, Gone, demoSwitch, getOrder, pickProvider, submitTrx, type OrderView, type SubmitState } from "./api";
-import { HowToImage } from "./HowToImage";
-import { bannerColor, bdt, bnDigits, clock, headerColor, PROVIDER_NAME, t, type Lang, type Variant } from "./i18n";
+import { BkashMenuRow, HowToBody, howCaption, howClose, howKind, howTitle } from "./HowTo";
+import { bannerColor, bdt, bnDigits, clock, headerColor, mmss, PROVIDER_NAME, t, variantFor, type Lang, type Variant } from "./i18n";
 import bkashLogo from "./logos/bkash.png";
 import nagadLogo from "./logos/nagad.png";
 import rocketLogo from "./logos/rocket.png";
@@ -36,7 +36,6 @@ export function PayPage() {
   const [trx, setTrx] = useState("");
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [touched, setTouched] = useState(false); // the "how do I find the TrxID" link appears once the box is used
   const [focused, setFocused] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [howOpen, setHowOpen] = useState(false);
@@ -45,7 +44,7 @@ export function PayPage() {
   const picking = useRef(false);
   const toastTimer = useRef<number | undefined>(undefined);
 
-  const variant: Variant = view?.method === "send_money" ? "send" : "cash";
+  const variant: Variant = variantFor(view?.provider ?? "", view?.method ?? null);
   const tr = (key: string, vars?: Record<string, string>) => t(lang, variant, key, vars);
 
   const showToast = (kind: "ok" | "bad", text: string) => {
@@ -125,7 +124,6 @@ export function PayPage() {
   const cleanTrx = trx.replace(/\s+/g, "");
 
   function pressConfirm() {
-    setTouched(true);
     if (cleanTrx.length < 6) {
       document.getElementById("trx")?.focus();
       return;
@@ -171,6 +169,7 @@ export function PayPage() {
   const shownAmount = lang === "bn" && variant === "send" ? redAmount : bdt(view?.amount ?? 0, view?.currency ?? "BDT", false);
   const timer = `${tr("expiresIn")}: ${clock(left)}`;
   const dim = confirmOpen || howOpen;
+  const how = howKind(provider, view?.method ?? null);
 
   const banner = (
     <div className="flex items-center gap-4 rounded px-4 py-3 text-white" style={{ background: color, minHeight: 76 }}>
@@ -182,7 +181,7 @@ export function PayPage() {
         </span>
       )}
       <span className="text-xl font-bold">
-        {pname.toUpperCase()} {tr("deposit")}
+        {variant === "bsend" && lang === "bn" ? tr("bannerName") : `${pname.toUpperCase()} ${tr("deposit")}`}
       </span>
     </div>
   );
@@ -214,10 +213,7 @@ export function PayPage() {
         id="trx"
         value={trx}
         onChange={(e) => setTrx(e.target.value)}
-        onFocus={() => {
-          setFocused(true);
-          setTouched(true);
-        }}
+        onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         autoComplete="off"
         autoCapitalize="characters"
@@ -234,8 +230,8 @@ export function PayPage() {
     </div>
   );
 
-  const linkRow = touched && (
-    <button type="button" onClick={() => setHowOpen(true)} className="pay-fade block w-full py-1 text-center text-[15px] font-bold text-[#1565c0]">
+  const linkRow = (
+    <button type="button" onClick={() => setHowOpen(true)} className="block w-full py-1 text-center text-[15px] font-bold text-[#1565c0]">
       {tr("link")}
     </button>
   );
@@ -246,7 +242,7 @@ export function PayPage() {
         type="button"
         onClick={pressConfirm}
         disabled={busy}
-        className="rounded-[10px] border border-neutral-900 bg-white px-14 py-3 text-sm text-neutral-900 transition-colors hover:bg-neutral-200 active:bg-neutral-300 disabled:opacity-50"
+        className={`rounded-[10px] border border-neutral-900 bg-white py-3 text-sm text-neutral-900 transition-colors hover:bg-neutral-200 active:bg-neutral-300 disabled:opacity-50 ${variant === "bsend" ? "w-full" : "px-14"}`}
       >
         {busy ? "…" : tr("confirm")}
       </button>
@@ -295,6 +291,7 @@ export function PayPage() {
                 ["nagad", "cash_out", "Nagad Cash Out"],
                 ["nagad", "send_money", "Nagad Send Money"],
                 ["rocket", "cash_out", "Rocket Cash Out"],
+                ["bkash", "send_money", "bKash Send Money"],
               ] as const
             ).map(([p, m, label]) => (
               <button
@@ -304,7 +301,6 @@ export function PayPage() {
                   demoSwitch(p, m);
                   setTrx("");
                   setEditing(false);
-                  setTouched(false);
                   void refresh();
                 }}
                 className={`rounded-md border px-3 py-1 font-semibold ${provider === p && view?.method === m ? "border-amber-900 bg-amber-900 text-white" : "border-amber-700"}`}
@@ -336,7 +332,7 @@ export function PayPage() {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xl font-bold leading-tight">{view ? amountText : tr("loading")}</p>
-              <p className="mt-1 text-base font-bold leading-tight">{view ? tr("sub") : ""}</p>
+              <p className={`mt-1 font-bold leading-tight ${variant === "bsend" ? "text-sm" : "text-base"}`}>{view ? tr("sub") : ""}</p>
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1.5">
               <div className="flex items-center gap-2" aria-label={shop}>
@@ -396,13 +392,15 @@ export function PayPage() {
           {screen === "ready" && view && view.status === "pending" && view.provider && (
             <>
               <p className="text-[17px] font-bold leading-snug text-[#e0392b]">{tr("amountNote", { amount: lang === "bn" && variant === "send" ? redAmount : redAmount })}</p>
-              <p className="text-[13px] font-bold" style={{ color: left < 60 ? "#b3261e" : "#d9722b" }}>
-                {timer}
-              </p>
+              {variant !== "bsend" && (
+                <p className="text-[13px] font-bold" style={{ color: left < 60 ? "#b3261e" : "#d9722b" }}>
+                  {timer}
+                </p>
+              )}
 
               {wallProblem && !view.wallet_number && <p className="rounded bg-amber-50 p-3 text-sm text-amber-900">{tr("noWallet")}</p>}
 
-              {view.wallet_number && variant === "cash" && (
+              {view.wallet_number && (variant === "cash" || variant === "bsend") && (
                 <>
                   {banner}
                   <div>
@@ -424,6 +422,15 @@ export function PayPage() {
                       {linkRow}
                       {trxBox}
                       {confirmBtn}
+                    </>
+                  )}
+                  {variant === "bsend" && (
+                    <>
+                      <BkashMenuRow lang={lang} />
+                      <p className="text-center text-xl font-bold text-[#e0392b]">{tr("menuLabel")}</p>
+                      <p className="text-center text-sm font-bold" style={{ color: left < 60 ? "#b3261e" : "#555" }}>
+                        {tr("timeLeft")} <span className="text-[#e0392b]">{mmss(left)}</span>
+                      </p>
                     </>
                   )}
                   {warning}
@@ -465,12 +472,12 @@ export function PayPage() {
       </main>
 
       {howOpen && (
-        <div role="dialog" aria-modal="true" aria-label="How to complete a cash transaction?" className="pay-pop fixed left-1/2 top-1/2 z-50 max-h-[92vh] w-[min(92vw,420px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded bg-white p-5 text-center shadow-2xl">
-          <h2 className="mb-3 text-base font-bold">How to complete a cash transaction?</h2>
-          <HowToImage lang={lang} />
-          <p className="my-3 text-[11px] font-bold">Please copy and fill out this label after completing the transfer.</p>
-          <button type="button" onClick={() => setHowOpen(false)} className="rounded bg-[#0b6b45] px-6 py-2 text-sm font-bold text-white">
-            Close
+        <div role="dialog" aria-modal="true" aria-label={howTitle(how, lang)} className="pay-pop fixed left-1/2 top-1/2 z-50 max-h-[92vh] w-[min(92vw,420px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded bg-white p-5 text-center shadow-2xl">
+          <h2 className="mb-3 text-base font-bold">{howTitle(how, lang)}</h2>
+          <HowToBody kind={how} lang={lang} />
+          {howCaption(how) && <p className="my-3 text-[11px] font-bold">{howCaption(how)}</p>}
+          <button type="button" onClick={() => setHowOpen(false)} className={`rounded bg-[#0b6b45] py-2 text-sm font-bold text-white ${how === "bkash_send" ? "mt-3 w-full" : "px-6"}`}>
+            {howClose(how, lang)}
           </button>
         </div>
       )}

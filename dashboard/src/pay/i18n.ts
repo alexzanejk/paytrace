@@ -1,9 +1,9 @@
 // Wording for the customer's pay page, in Bangla and English. Plain text only: nothing here is ever rendered as HTML.
-// Two layouts exist, as on the gateway pages the owner showed: "cash" (customer cashes out at the agent number) and
-// "send" (customer sends money). Each has its own wording; the dialogs and toasts the reference page shows in English
+// Three layouts exist, as on the gateway pages the owner showed: "cash" (customer cashes out at the agent number),
+// "send" (customer sends money, Nagad style) and "bsend" (personal bKash Send Money, with its own steps). Each has its own wording; the dialogs and toasts the reference page shows in English
 // stay in English in both languages.
 export type Lang = "bn" | "en";
-export type Variant = "cash" | "send";
+export type Variant = "cash" | "send" | "bsend";
 
 export const PROVIDER_NAME: Record<string, string> = { bkash: "bKash", nagad: "Nagad", rocket: "Rocket", upay: "Upay" };
 
@@ -17,6 +17,12 @@ export function bannerColor(provider: string, variant: Variant): string {
 export const HEADER_GREEN = "#216a4a";
 /** The header is green for Cash Out pages and takes the provider's colour on Send Money pages. */
 export const headerColor = (provider: string, variant: Variant) => (variant === "send" ? bannerColor(provider, variant) : HEADER_GREEN);
+
+/** Which layout a provider and way of paying use. */
+export function variantFor(provider: string, method: string | null): Variant {
+  if (method !== "send_money") return "cash";
+  return provider === "bkash" ? "bsend" : "send";
+}
 
 type Dict = Record<string, string>;
 
@@ -145,9 +151,32 @@ const send: Record<Lang, Dict> = {
   },
 };
 
+
+const bsend: Record<Lang, Dict> = {
+  bn: {
+    sub: "কম বা বেশি করবেন না সেন্ড মানি",
+    walletOnly: "এই বিকাশ নাম্বারে শুধুমাত্র সেন্ড মানি গ্রহণ করা হয়",
+    trxLabel: "সেন্ড মানির TrxID নাম্বারটি লিখুন",
+    warnGray: "অনুগ্রহ করে নিশ্চিত হয়ে নিন যে আপনি বিকাশ deposit ওয়ালেট নাম্বারে সেন্ড মানি করছেন। এই নাম্বারের অন্য কোন ওয়ালেট থেকে সেন্ড মানি করলে সেই টাকা পাওয়ার কোন সম্ভাবনা নাই",
+    timeLeft: "বাকি সময়",
+    menuLabel: "সেন্ড মানি",
+    bannerName: "বিকাশ Deposit",
+  },
+  en: {
+    sub: "Do not send less or more money",
+    walletOnly: "Only Send Money is accepted on this bKash number",
+    trxLabel: "Enter the TrxID of your Send Money",
+    warnGray: "Please make sure you are sending money to the bKash deposit wallet number. Money sent from any other wallet to this number cannot be credited.",
+    timeLeft: "Time left",
+    menuLabel: "Send Money",
+    bannerName: "bKash Deposit",
+  },
+};
+
 /** Looks up a phrase for a layout and fills in {name} placeholders. */
 export function t(lang: Lang, variant: Variant, key: string, vars: Record<string, string> = {}): string {
-  const raw = (variant === "send" ? send : cash)[lang][key] ?? common[lang][key] ?? common.en[key] ?? key;
+  const own = variant === "send" ? send : variant === "bsend" ? bsend : cash;
+  const raw = own[lang][key] ?? (variant === "bsend" ? cash[lang][key] : undefined) ?? common[lang][key] ?? common.en[key] ?? key;
   return raw.replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? "");
 }
 
@@ -163,6 +192,12 @@ export function bdt(amount: number, currency: string, twoDecimals: boolean): str
 }
 
 /** hh:mm:ss, as the reference pages count down. */
+export function mmss(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(Math.floor(s / 60))}:${p(s % 60)}`;
+}
+
 export function clock(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));
   const p = (n: number) => String(n).padStart(2, "0");
