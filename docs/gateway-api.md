@@ -49,3 +49,10 @@ not a recognised one. The owner sees it in Review and can approve it by hand.
 
 Orders: amount 10 to 500000 with at most 2 decimals; expiry 3 to 60 minutes (default 15). A claimed order gets 10 extra minutes
 for a late SMS. 5 TrxID attempts per order. 120 website API calls per minute per key. Withdrawals are not built yet.
+
+## Result page looks
+
+The transaction-submission page is the same for every site. After the customer presses Confirm, the waiting / paid / held / expired
+screens come in six looks (Aurora, Steps, Receipt, Checklist, Ring, Playful) so that different sites do not show an identical
+result page. Each API key has a look (dashboard: API access, "How the result page looks"), or Automatic, which gives each site a
+stable look of its own.

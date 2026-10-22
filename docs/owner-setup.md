@@ -175,3 +175,6 @@ Background power consumption management → PayTrace → choose **Allow high bac
    The order should show as paid in the **Orders** tab (source: *Website deposit*).
 
 Held payments (wrong amount, wrong phone, late) show in **Review**; approve them by hand once you have checked.
+
+Optional: on **API access**, "How the result page looks" lets you pick, per website key, how the screen after Confirm looks (six
+looks). Leave it on Automatic and every site gets its own look. "Preview the looks" shows them all.

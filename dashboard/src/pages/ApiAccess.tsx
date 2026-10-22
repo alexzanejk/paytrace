@@ -9,6 +9,7 @@ import { EmptyRow } from "@/components/Empty";
 import { Confirm } from "@/components/Confirm";
 import { CopyButton } from "@/components/CopyButton";
 import { WebhookCard } from "@/components/WebhookCard";
+import { ResultStyleCard } from "@/components/ResultStyleCard";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +25,7 @@ interface ApiKey {
   last_used_at: string | null;
   revoked_at: string | null;
   webhook_url: string | null;
+  result_style: number | null;
 }
 
 interface NewKey {
@@ -39,7 +41,7 @@ export function ApiAccess() {
       must(
         await sb
           .from("api_keys")
-          .select("id,name,key_prefix,created_at,last_used_at,revoked_at,webhook_url")
+          .select("id,name,key_prefix,created_at,last_used_at,revoked_at,webhook_url,result_style")
           .order("created_at", { ascending: false }),
       ) as ApiKey[],
     [],
@@ -136,6 +138,8 @@ export function ApiAccess() {
         </Card>
 
         <WebhookCard keys={keys} onChanged={refresh} />
+
+        <ResultStyleCard keys={keys} onChanged={refresh} />
 
         {fresh ? (
           <Card className="border-primary">

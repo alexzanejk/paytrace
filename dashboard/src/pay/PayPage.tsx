@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, XCircle, X } from "lucide-react";
-import { DEMO, Gone, demoSwitch, getOrder, pickProvider, submitTrx, type OrderView, type SubmitState } from "./api";
+import { DEMO, Gone, demoStyle, demoSwitch, getOrder, pickProvider, submitTrx, type OrderView, type SubmitState } from "./api";
 import { BkashMenuRow, HowToBody, howCaption, howClose, howKind, howTitle } from "./HowTo";
+import { ResultScreen, RESULT_STYLE_NAMES, type Phase } from "./ResultScreens";
 import { bannerColor, bdt, bnDigits, clock, headerColor, mmss, PROVIDER_NAME, t, variantFor, type Lang, type Variant } from "./i18n";
 import bkashLogo from "./logos/bkash.png";
 import nagadLogo from "./logos/nagad.png";
@@ -279,9 +280,8 @@ export function PayPage() {
     </section>
   );
 
-  return (
-    <div className="min-h-screen bg-[#eceff1] sm:px-3 sm:py-8" style={{ fontFamily: FONT, color: "#222" }}>
-      {DEMO && (
+  const demoBar = DEMO ? (
+
         <div className="mx-auto mb-3 w-full max-w-[680px] space-y-2 bg-amber-100 px-3 py-2 text-center text-xs text-amber-900 sm:rounded-lg">
           <p className="font-semibold">Preview only: nothing real is created or paid. Your website chooses the method before sending the customer here.</p>
           <div className="flex flex-wrap items-center justify-center gap-2">
@@ -309,9 +309,56 @@ export function PayPage() {
               </button>
             ))}
           </div>
-          <p>Try any TrxID of 6+ letters or numbers. USEDTRX1 shows the "already used" message; FORMATBAD1 shows the red error message.</p>
+          <div className="flex flex-wrap items-center justify-center gap-1.5">
+            <span className="font-semibold">After Confirm, look:</span>
+            {RESULT_STYLE_NAMES.map((n, i) => (
+              <button key={n} type="button" onClick={() => demoStyle(i)} className={`rounded-md border px-2 py-0.5 font-semibold ${(view?.result_style ?? 0) === i ? "border-amber-900 bg-amber-900 text-white" : "border-amber-700"}`}>
+                {n}
+              </button>
+            ))}
+          </div>
+          <p>Try any TrxID of 6+ letters or numbers. REVIEW001 ends in "held for review", EXPIRED01 in "expired". USEDTRX1 shows the "already used" message; FORMATBAD1 shows the red error message.</p>
         </div>
-      )}
+  ) : null;
+
+  const showResult = screen === "ready" && !!view && !!view.provider && (view.status === "paid" || view.status === "review" || view.status === "expired" || (view.status === "pending" && !!view.trx_id && !editing));
+  if (showResult && view) {
+    const phase: Phase = view.status === "pending" ? "checking" : (view.status as Phase);
+    return (
+      <div className="min-h-screen bg-[#eceff1] px-3 py-6 sm:py-10" style={{ fontFamily: FONT, color: "#222" }}>
+        {demoBar}
+        <div className="mx-auto w-full max-w-[560px]">
+          <div className="mb-2 flex justify-end">
+            <div className="flex overflow-hidden rounded text-[11px] font-bold shadow" role="group" aria-label="Language">
+              {(["en", "bn"] as Lang[]).map((l) => (
+                <button key={l} type="button" onClick={() => changeLang(l)} aria-pressed={lang === l} className={`px-3 py-1 ${lang === l ? "bg-neutral-300 text-neutral-800" : "bg-white text-black"}`}>
+                  {l === "en" ? "EN" : "বাং"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <ResultScreen
+            style={view.result_style ?? 0}
+            phase={phase}
+            lang={lang}
+            amount={bdt(view.amount, view.currency, false)}
+            shop={shop}
+            provider={pname}
+            trx={view.trx_id ?? ""}
+            returnUrl={view.return_url}
+            onChange={() => {
+              setEditing(true);
+              setTrx(view.trx_id ?? "");
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#eceff1] sm:px-3 sm:py-8" style={{ fontFamily: FONT, color: "#222" }}>
+      {demoBar}
 
       {dim && <div className="pay-fade fixed inset-0 z-40 bg-black/45" onClick={() => (howOpen ? setHowOpen(false) : setConfirmOpen(false))} />}
 

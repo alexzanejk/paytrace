@@ -14,6 +14,7 @@ export interface OrderView {
   trx_id: string | null;
   providers: string[];
   return_url: string | null;
+  result_style?: number;
 }
 
 export type SubmitState = "paid" | "checking" | "review" | "used" | "expired" | "too_many" | "wrong_method" | "invalid" | "closed";
@@ -26,6 +27,8 @@ export const DEMO =
   new URLSearchParams(window.location.search).get("demo") === "1" || (window as unknown as { __PAYTRACE_DEMO__?: boolean }).__PAYTRACE_DEMO__ === true;
 
 const demo = {
+  style: Number(new URLSearchParams(window.location.search).get("style") || 0) || 0,
+  outcome: "paid" as "paid" | "review" | "expired",
   provider: (new URLSearchParams(window.location.search).get("provider") || "bkash") as string | null,
   method: (new URLSearchParams(window.location.search).get("method") || "") as string,
   trx: null as string | null,
@@ -47,13 +50,18 @@ export function demoSwitch(provider: string, method: string) {
   demo.paidAt = 0;
   demo.endsAt = Date.now() + 15 * 60_000;
 }
+export function demoStyle(n: number) {
+  demo.style = n;
+}
 function demoView(): OrderView {
   const w0 = demo.provider ? DEMO_WALLET[demo.provider] : null;
   const m = (demo.method === "send_money" || demo.method === "cash_out" ? demo.method : w0?.m) ?? null;
   const w = w0 ? { n: w0.n.slice(0, -1) + (m === "cash_out" ? "1" : "2"), m } : null;
-  const paid = demo.paidAt > 0 && Date.now() >= demo.paidAt;
+  const done = demo.paidAt > 0 && Date.now() >= demo.paidAt;
+  const paid = done && demo.outcome === "paid";
   return {
-    status: paid ? "paid" : Date.now() > demo.endsAt ? "expired" : "pending",
+    status: paid ? "paid" : done && demo.outcome !== "paid" ? demo.outcome : Date.now() > demo.endsAt ? "expired" : "pending",
+    result_style: demo.style,
     amount: Number(new URLSearchParams(window.location.search).get("amount")) || 500,
     currency: "BDT",
     shop: "Your shop (preview)",
@@ -111,6 +119,7 @@ export async function submitTrx(tracking: string, trx: string): Promise<SubmitSt
     if (t === "USEDTRX1") return "used"; // try this one to see the "already used" message
     if (t === "FORMATBAD1") return "invalid"; // and this one for the red error message
     demo.trx = t;
+    demo.outcome = t === "REVIEW001" ? "review" : t === "EXPIRED01" ? "expired" : "paid";
     demo.paidAt = Date.now() + 6000; // pretend the SMS arrives and the payment is confirmed 6 seconds later
     return "checking";
   }
