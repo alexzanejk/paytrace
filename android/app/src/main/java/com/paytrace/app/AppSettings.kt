@@ -148,6 +148,11 @@ class AppSettings(ctx: Context) {
         get() = p.getInt("recovered_total", 0)
         set(v) { p.edit().putInt("recovered_total", v).apply() }
 
+    /** Which steps of the phone-settings guide the owner has ticked (Setup.guide). Android cannot read these settings. */
+    var guideDone: Set<String>
+        get() = p.getStringSet("guide_done_v3", emptySet())?.toSet() ?: emptySet()
+        set(v) { p.edit().putStringSet("guide_done_v3", HashSet(v)).apply() }
+
     /** The owner ticked "I did this" for the phone-brand auto-start setting, which Android does not let an app read. */
     var autostartConfirmed: Boolean
         // v2: the checklist grew (high background power use, lock in recents...), so phones confirmed under the short

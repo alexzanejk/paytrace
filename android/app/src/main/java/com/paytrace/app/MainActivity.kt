@@ -106,10 +106,10 @@ fun App() {
 
     // Until every permission and setting PayTrace needs is in place, nothing else can be used. `tick` re-checks every
     // couple of seconds, so coming back from the phone's settings unlocks the app by itself.
-    var confirmed by remember { mutableStateOf(settings.autostartConfirmed) }
-    val missing = remember(tick, confirmed) { Setup.missing(ctx, settings) }
+    var guideVersion by remember { mutableIntStateOf(0) }
+    val missing = remember(tick, guideVersion) { Setup.missing(ctx, settings) }
     if (missing.isNotEmpty()) {
-        SetupScreen(settings, missing, onAutostartConfirmed = { settings.autostartConfirmed = true; confirmed = true })
+        SetupScreen(settings, missing, onGuideChanged = { guideVersion++ })
         return
     }
 
@@ -259,30 +259,19 @@ fun SettingsScreen(settings: AppSettings, tick: Int) {
         }
 
         val stopped = remember(tick) { settings.stoppedCount }
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Does this phone keep going offline?", style = MaterialTheme.typography.titleSmall)
-                if (stopped > 0) {
-                    Text(
-                        "The phone has stopped PayTrace $stopped time${if (stopped == 1) "" else "s"} (last time for ${settings.lastGapMin} minutes). " +
-                            "Its battery manager is closing the app when the screen is off.",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                Text("Check these in the phone's Settings (wording differs a little by model):", style = MaterialTheme.typography.bodySmall)
-                Setup.brandSteps(Build.MANUFACTURER).forEachIndexed { i, step ->
-                    Text("${i + 1}. $step", style = MaterialTheme.typography.bodySmall)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Button(onClick = { openAutostartPage(ctx) }) { Text("Autostart page") }
-                    OutlinedButton(onClick = { openAppDetails(ctx) }) { Text("App settings") }
-                }
-                OutlinedButton(onClick = {
-                    ctx.startActivity(Intent(AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-                }) { Text("Allow running in background (battery)") }
-            }
+        Text("Keep this phone running", style = MaterialTheme.typography.titleMedium)
+        if (stopped > 0) {
+            Text(
+                "The phone has stopped PayTrace $stopped time${if (stopped == 1) "" else "s"} (last time for ${settings.lastGapMin} minutes). " +
+                    "Its battery manager is closing the app when the screen is off. Check the settings below.",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
+        PhoneSettingsGuide(settings)
+        OutlinedButton(onClick = {
+            ctx.startActivity(Intent(AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+        }) { Text("Allow running in background (battery)") }
 
         TextButton(onClick = { advanced = !advanced }) { Text(if (advanced) "Hide advanced" else "Advanced") }
         if (advanced) {
