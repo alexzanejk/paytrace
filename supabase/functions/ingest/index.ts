@@ -15,6 +15,8 @@ import { parseSms, senderMatchesProvider, type Provider } from "./parser.ts";
 import { cleanInfo, healthProblem, type DeviceInfo } from "./health.ts";
 import { makeNotifier, problemMessage, recoveredMessage, reviewMessage, testMessage } from "./notify.ts";
 import { runWatchdog } from "./watchdog.ts";
+import { runWake } from "./wake.ts";
+import { makePusher } from "./fcm.ts";
 
 // Supabase's runtime lets work finish after the response is sent. Absent when run elsewhere (tests).
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
@@ -54,6 +56,9 @@ const notify = makeNotifier({
   token: Deno.env.get("TELEGRAM_BOT_TOKEN"),
   chatId: Deno.env.get("TELEGRAM_CHAT_ID"),
 });
+// Wake-up pushes through Firebase. The service account key is a secret the owner sets in Supabase; without it
+// nothing is sent and everything else works as before.
+const pusher = makePusher(Deno.env.get("FIREBASE_SERVICE_ACCOUNT"));
 const DASHBOARD_URL = (Deno.env.get("DASHBOARD_URL") ?? "https://paytrace.ashkawser54.workers.dev").replace(/\/+$/, "");
 
 // The owner is told on Telegram when a phone has been offline this long. The dashboard shows "Offline" sooner
@@ -93,6 +98,34 @@ async function watchdog(): Promise<Response> {
     },
     notify,
     { now: Date.now(), alertAfterMin: ALERT_AFTER_MIN, dashboardUrl: DASHBOARD_URL },
+  );
+  // Phones that have gone quiet get a wake-up push, so Android starts PayTrace again.
+  await runWake(
+    {
+      async candidates() {
+        const { data: devs } = await db
+          .from("devices").select("id,name,last_seen_at,approved_at").eq("status", "approved");
+        const { data: toks } = await db.from("device_push").select("device_id,token");
+        const byId = new Map((toks ?? []).map((t) => [t.device_id as string, t.token as string]));
+        return (devs ?? []).filter((d) => byId.has(d.id)).map((d) => ({ ...d, token: byId.get(d.id)! }));
+      },
+      async claim(id, cooldownMin) {
+        const cutoff = new Date(Date.now() - cooldownMin * 60_000).toISOString();
+        const { data } = await db
+          .from("device_push")
+          .update({ woken_at: new Date().toISOString() })
+          .eq("device_id", id)
+          .or(`woken_at.is.null,woken_at.lt.${cutoff}`)
+          .select("device_id");
+        return !!data?.length;
+      },
+      async forget(id) {
+        await db.from("device_push").delete().eq("device_id", id);
+      },
+      record: (kind, detail) => log(kind, null, detail),
+    },
+    pusher,
+    { now: Date.now() },
   );
   return json({ success: true });
 }
@@ -197,6 +230,11 @@ Deno.serve(async (req) => {
     if (!device) return json({ success: true, message: "heartbeat ok" }); // shared-secret setups have no phone record
     const info = cleanInfo(body);
     await db.from("devices").update({ info }).eq("id", device.id);
+    // The phone's push address, for wake-ups. Kept in a table the dashboard cannot read.
+    const pushToken = typeof body.push_token === "string" ? body.push_token : "";
+    if (/^[A-Za-z0-9:_\-]{100,400}$/.test(pushToken)) {
+      await db.from("device_push").upsert({ device_id: device.id, token: pushToken, updated_at: new Date().toISOString() }, { onConflict: "device_id" });
+    }
     const problem = healthProblem(info);
     // Tell the owner when a problem appears, not on every heartbeat while it lasts.
     if (problem && problem !== healthProblem(device.info)) {

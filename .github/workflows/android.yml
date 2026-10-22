@@ -39,6 +39,19 @@ jobs:
         working-directory: android
         run: gradle testDebugUnitTest --no-daemon --stacktrace
 
+      # Firebase wake-up pushes: the project's google-services.json (from Firebase, stored as a GitHub secret so it
+      # is not committed). Without the secret the app still builds; it just cannot be woken by a push.
+      - name: Add Firebase config (optional)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+            echo "FIREBASE=yes" >> "$GITHUB_ENV"
+          else
+            echo "FIREBASE=no" >> "$GITHUB_ENV"
+          fi
+
       # One build path either way. With the permanent key (stored as GitHub secrets, never in the repo)
       # the APK can be installed over the previous one. Without it, a throwaway key is used: the build still
       # exercises exactly the same signing setup, but each build has a different signature, so Android will
@@ -80,6 +93,7 @@ jobs:
             echo "### PayTrace APK build $PAYTRACE_VERSION_CODE"
             echo "- Signing key: **$KIND**"
             echo "- Key fingerprint: \`$FP\`"
+            if [ "$FIREBASE" = yes ]; then echo "- Firebase wake-up pushes: **included**"; else echo "- Firebase wake-up pushes: not included (no GOOGLE_SERVICES_JSON secret yet)"; fi
             if [ "$KIND" = throwaway ]; then
               echo "- ⚠️ No permanent key is set up yet, so Android will **not** install this over an older build."
               echo "  Uninstall the old app first (the phone will need approving again). See the README."

@@ -118,6 +118,7 @@ class MonitorService : Service() {
             }
         }
         Keepalive.schedule(this)
+        Push.refresh(this)
         watchNetwork()
         startBeating()
         return START_STICKY

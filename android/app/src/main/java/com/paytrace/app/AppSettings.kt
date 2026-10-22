@@ -165,6 +165,19 @@ class AppSettings(ctx: Context) {
         get() = p.getBoolean("default_sms_prompted", false)
         set(v) { p.edit().putBoolean("default_sms_prompted", v).apply() }
 
+    /** This phone's Firebase push address (what the server uses to wake it). Empty until Firebase hands one out. */
+    var pushToken: String
+        get() = p.getString("push_token", "") ?: ""
+        set(v) { p.edit().putString("push_token", v).apply() }
+
+    /** The address last included in a heartbeat, and when, so it is sent when new and then only now and then. */
+    var pushSentToken: String
+        get() = p.getString("push_sent_token", "") ?: ""
+        set(v) { p.edit().putString("push_sent_token", v).apply() }
+    var pushSentAt: Long
+        get() = p.getLong("push_sent_at", 0L)
+        set(v) { p.edit().putLong("push_sent_at", v).apply() }
+
     /** Extra-strong keep-alive: a 5-minute "alarm clock" backup. Shows an alarm icon in the status bar. On by default. */
     var strongAlarm: Boolean
         get() = p.getBoolean("strong_alarm", true)

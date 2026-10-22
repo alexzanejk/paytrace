@@ -23,6 +23,7 @@ export interface DeviceInfo {
   notifications?: boolean;
   battery_exempt?: boolean;
   setup_complete?: boolean;
+  push_ready?: boolean;
   app_version?: string;
   reported_at?: string;
 }

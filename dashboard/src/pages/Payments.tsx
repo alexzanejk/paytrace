@@ -108,7 +108,8 @@ export function Payments() {
   }
 
   const phoneOptions = [
-    ...devices.list.map((d) => ({ value: d.id, label: devices.nameOf(d.id) })),
+    // Removed phones are not offered as a filter; their old transactions still show under "All phones".
+    ...devices.list.filter((d) => d.status === "approved").map((d) => ({ value: d.id, label: devices.nameOf(d.id) })),
     { value: NO_DEVICE, label: "Unknown phone" },
   ];
 

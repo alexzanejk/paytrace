@@ -16,6 +16,9 @@ export function DeviceDetails({ info }: { info: DeviceInfo | null | undefined })
         ) : null}
         {info.pending ? <span>{info.pending} waiting to send</span> : null}
         {info.app_version ? <span>v{info.app_version}</span> : null}
+        <span title="The server can send this phone a wake-up message if it goes quiet">
+          Wake-up messages: {info.push_ready ? "ready" : "not set up"}
+        </span>
         {info.default_sms ? <span title="PayTrace is this phone's messaging app, which phone brands rarely stop">SMS app mode</span> : null}
       </div>
       {info.recovered ? (
