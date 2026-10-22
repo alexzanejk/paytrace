@@ -42,7 +42,7 @@ fun openAutostartPage(ctx: Context) {
 
 /** The phone's battery page (where its own power manager usually lives); the app's page if there is none. */
 fun openBatterySettings(ctx: Context) {
-    val tries = listOf(AndroidSettings.ACTION_POWER_USAGE_SUMMARY, AndroidSettings.ACTION_BATTERY_SAVER_SETTINGS)
+    val tries = listOf(Intent.ACTION_POWER_USAGE_SUMMARY, AndroidSettings.ACTION_BATTERY_SAVER_SETTINGS)
     for (action in tries) {
         try {
             ctx.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
