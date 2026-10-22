@@ -2,7 +2,7 @@ import { useState } from "react";
 import { BatteryMedium, BellRing, ChevronLeft, ChevronRight, Check, HeartPulse, ListOrdered, Pencil, Smartphone, X } from "lucide-react";
 import { INGEST_URL, must, sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
-import { PROVIDERS, type Device, type DeviceBalance } from "@/lib/types";
+import { PROVIDERS, type Device, type DeviceBalance, type DeviceWallet } from "@/lib/types";
 import { addDays, dayLabel, dhakaDay, groupSummary, summarize, type DayTotal } from "@/lib/period";
 import { openPaymentsWith } from "@/lib/filters";
 import { infoProblems } from "@/lib/deviceHealth";
@@ -15,6 +15,7 @@ import { DeviceChip } from "@/components/DeviceChip";
 import { ProviderChip } from "@/components/ProviderChip";
 import { DeviceHealthBadge } from "@/components/DeviceHealthBadge";
 import { DeviceDetails } from "@/components/DeviceDetails";
+import { WalletsCard } from "@/components/WalletsCard";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -36,7 +37,8 @@ export function Devices() {
       ) as Device[];
       const totals = must(await sb.from("device_day_totals").select("*").eq("day", day)) as DayTotal[];
       const balances = must(await sb.from("device_balances").select("*")) as DeviceBalance[];
-      return { devices, totals, balances };
+      const wallets = must(await sb.from("device_wallets").select("*").order("created_at", { ascending: true })) as DeviceWallet[];
+      return { devices, totals, balances, wallets };
     },
     [day],
     { refreshMs: 10000 },
@@ -169,6 +171,7 @@ export function Devices() {
               sum={perDevice.get(d.id)}
               totals={totals.filter((t) => t.device_id === d.id)}
               balances={(data?.balances ?? []).filter((b) => b.device_id === d.id)}
+              wallets={(data?.wallets ?? []).filter((w) => w.device_id === d.id)}
               error={failed[d.id]}
               onChanged={refresh}
               onRemove={() => setStatus(d, "revoked")}
@@ -187,6 +190,7 @@ function DeviceCard({
   sum,
   totals,
   balances,
+  wallets,
   error,
   onChanged,
   onRemove,
@@ -197,6 +201,7 @@ function DeviceCard({
   sum: ReturnType<typeof summarize> | undefined;
   totals: DayTotal[];
   balances: DeviceBalance[];
+  wallets: DeviceWallet[];
   error: string | undefined;
   onChanged: () => void;
   onRemove: () => void;
@@ -326,6 +331,8 @@ function DeviceCard({
           )}
         </TableBody>
       </Table>
+
+      <WalletsCard deviceId={d.id} wallets={wallets} onChanged={onChanged} />
 
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" onClick={() => openPaymentsWith({ device: d.id, from: day, to: day })}>

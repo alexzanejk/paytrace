@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 
-export const SUPABASE_URL = "https://mkjcqwkfbamnuibmurcd.supabase.co";
+import { SUPABASE_URL } from "@/lib/config";
+
+export { SUPABASE_URL };
 // Publishable key: public by design. Row Level Security protects the data.
 const SUPABASE_KEY = "sb_publishable_faG5Xm4u4Dp9ObPP10oaSQ_Ocye9262";
 

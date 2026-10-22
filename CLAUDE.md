@@ -22,6 +22,7 @@ contains no source code; everything here was written from scratch.
 | CI | `.github/workflows/ci.yml` (tests + dashboard build + `deno check` of the function) and `android.yml` (signed APK). Both run on every push |
 | Owner guide | `docs/owner-setup.md` (plain language: Telegram, signing key, two-step login) |
 | Transaction check API | `supabase/functions/verify-transaction/` (`index.ts`, pure `logic.ts`), SQL `verify_transaction` + `verify_rate` + `api_keys` (migrations 008-011), dashboard page `dashboard/src/pages/ApiAccess.tsx` (+ `lib/apiDocs.ts` developer text), developer guide `docs/verify-api.md` |
+| Deposit gateway | Edge Function `supabase/functions/gateway/` (`index.ts`, pure `logic.ts`; `verify_jwt=false`, own key auth), customer pay page `dashboard/pay.html` + `dashboard/src/pay/` (served at `/pay`), SQL migration 014, dashboard: Phones → Deposit numbers (`WalletsCard`), API access → deposits + result address (`WebhookCard`), Orders → Source column. Guide `docs/gateway-api.md` |
 | DB history | `supabase/migrations/` (apply in filename order) |
 
 Deployed edge function code is `supabase/functions/ingest/{index.ts,parser.ts}`. Redeploy after editing. Keep the repo
@@ -259,6 +260,37 @@ NOT yet verified (be honest about this):
     `ZZLIVE9001` (status `ignored`) may still be in `payments` until the owner allows a delete.
 12. Auto-deploy of the Edge Function from GitHub is NOT set up (deploys are manual; repo must equal deployed). It would
     need a Supabase access token as a GitHub secret.
+
+## Deposit gateway (2026-10-22, owner request; deposits done, withdrawals NOT built yet)
+- Owner's answers: only the owner's own sites (one API key per site, no multi-merchant accounts); create-order API + redirect + signed
+  webhook; wallet number rotates across approved phones that have a number for the chosen provider (online first, least recently
+  handed out); withdrawals = a request queue the owner pays by hand (not built yet; plan: `withdrawals` table, dashboard queue,
+  owner enters the TrxID, webhook `withdrawal.paid`; it cannot be automatic, the providers give no way to send money from an app).
+- The deposit-method chooser ("Bkash Send Money", "Nagad VIP Cash Out", ...) is the WEBSITE's own page, not PayTrace's (owner corrected this 2026-10-22). `create-deposit` therefore requires `provider` (optional `method` `send_money`|`cash_out`) and assigns the wallet at creation (`gw_find_wallet`, migration 015); PayTrace's page starts at the TrxID step. Logos in `dashboard/src/pay/logos/` were supplied by the owner (bKash, Nagad, Rocket; Upay has none, a monogram is used).
+- Pay page matches the owner's screen recordings 1:1 (2026-10-22): two layouts, `cash` (green header, red-bordered TrxID box, Wallet No) and `send` (header and banner in the provider colour, `ওয়ালেট প্রদানকারী`, grey TrxID box), exact Bangla wording in `dashboard/src/pay/i18n.ts`; floating-label input, the blue "how to get the TrxID" link that appears after the box is used, the "How to complete a cash transaction?" popup (own SVG illustration, `HowToImage.tsx`), the English confirm dialog with a dimmed page, green "Copy Success" and red error toasts, the red warning line pulsing 0.9 to 1.2 every 1.7 s (`pay.css`, stopped by reduced-motion). Three layouts: `cash`, `send` (Nagad-style) and `bsend` (personal bKash Send Money: green header, "বিকাশ Deposit", full-width button, the bKash menu tiles and a mm:ss "বাকি সময়" countdown under the form). The "how to find the TrxID" popup differs per provider/way of paying (`HowTo.tsx`): the Nagad cash-out receipt, Rocket SMS screen and bKash Send Money menu are the owner's REAL images (`dashboard/src/pay/help/`); the bKash cash-out receipt and the bKash send-money steps are still drawn by us (no real image supplied). NOT built: the floating "বাতিল করুন" (cancel order) pill seen in the recordings of Rocket and bKash send money. Dialogs/toasts from the reference stay English in both languages; "PAY SERVICE" in the header is placeholder branding. A payment timer is shown in both layouts (the cash-out recording had none, but our orders expire).
+- **Result page looks (owner request 2026-10-22):** the submission page is identical for every site, but what the customer sees AFTER pressing Confirm (waiting, paid, held, expired) comes in six looks (`dashboard/src/pay/ResultScreens.tsx`: Aurora, Steps, Receipt, Checklist, Ring, Playful), so sites do not look the same. `api_keys.result_style` (0-5, null = automatic = `hashtext(key id) mod 6`, stable per site; migration 016), set by the owner on API access → "How the result page looks" (`set_key_result_style`); `gw_order_view` returns `result_style`. Preview: demo bar "After Confirm, look" buttons; TrxID REVIEW001 / EXPIRED01 in demo end in held / expired. The submission page must NOT be changed for this.
+- Flow and fields are in `docs/gateway-api.md` and `dashboard/src/lib/apiDocs.ts` (`depositInstructions`). Pay page is written from
+  scratch (modelled on the owner's screenshots of a third-party page; none of its code or images was copied). Bangla default, EN toggle.
+- Tables: `device_wallets` (phone x provider -> number, method `send_money`|`cash_out`, enabled), `webhook_outbox` (retried 8 times),
+  `orders` gained `kind` (`manual`|`deposit`), `tracking_number` (the unguessable pay-link secret), `api_key_id`, `merchant_order_id`
+  (unique per key = idempotent create), `provider`, `device_id`, `wallet_number`, `wallet_method`, `return_url`; `api_keys` gained
+  `webhook_url` (readable by admins) and `webhook_secret` (never readable; shown once by `set_key_webhook`). SQL `gw_*` functions are
+  service-role only; the function calls them.
+- Crediting still goes ONLY through `claim_order`/`reconcile_payment`/`manual_match`. Changes there: a stored `tracked_only` Cash Out
+  receipt can pay an order whose wallet method is `cash_out` (held for review if its `chain_status` is `mismatch`); a payment from a
+  different phone than the number shown is held (`wrong_phone`); a claimed order gets 10 min grace past `expires_at` for a late SMS.
+  A Cash Out receipt can never pay a Send Money order. Ingest now also reconciles `tracked_only` receipts (a claim can come first).
+- A pg_cron job `paytrace-gateway-deliver` calls `gateway/deliver` every minute (sends waiting webhooks, expires unpaid orders); ingest
+  and the pay-submit route also trigger it right after a match.
+- Public pay routes are callable from the browser only from the dashboard's own origin (`DASHBOARD_URL`). The pay page lives on the
+  dashboard's address for now; a custom domain would be better for customers (ask before buying one).
+- **The Supabase MCP `apply_migration`/`execute_sql` hangs (60 s) on any statement containing DROP or DELETE** (even `drop policy if
+  exists`, or `delete` inside a function body), and nothing is applied. Write migrations without them. A plpgsql `if ... then` cannot
+  contain a `case ... then` in its condition (the parser stops at the first THEN): compute it into a variable first.
+- Tested live with a throwaway admin/phones/key inside a rolled-back transaction (create, idempotent retry, different amount refused,
+  bad key, rotation, send-money match, claim-first, wrong phone, cash-out ok/mismatch, cash-out on a send-money order, webhook queueing),
+  the function answered 404/401/200 via pg_net, and the pay page and dashboard pages were driven in a browser against a simulated gateway.
+  NOT yet done: a real order end to end with real money, a real webhook to a real site, withdrawals.
 
 ## Known limits to repeat to the owner
 Unofficial approach, may breach bKash/Nagad terms (wallet freeze risk); SMS can be spoofed or delayed; phone must stay

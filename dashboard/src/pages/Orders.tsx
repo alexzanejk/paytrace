@@ -101,6 +101,7 @@ export function Orders({ settings }: { settings: Settings | null }) {
           <TableRow>
             <TableHead>Order</TableHead>
             <TableHead>Created (BD)</TableHead>
+            <TableHead>Source</TableHead>
             <TableHead>Customer</TableHead>
             <TableHead>Phone</TableHead>
             <TableHead className="text-right">Amount</TableHead>
@@ -111,7 +112,7 @@ export function Orders({ settings }: { settings: Settings | null }) {
         </TableHeader>
         <TableBody>
           {orders.length === 0 ? (
-            <EmptyRow cols={8} text="No orders yet." />
+            <EmptyRow cols={9} text="No orders yet." />
           ) : (
             orders.map((o) => {
               const expired = o.status === "pending" && new Date(o.expires_at) < new Date();
@@ -120,6 +121,19 @@ export function Orders({ settings }: { settings: Settings | null }) {
                 <TableRow key={o.id}>
                   <TableCell className="font-mono text-xs">{o.order_no}</TableCell>
                   <TableCell>{when(o.created_at)}</TableCell>
+                  <TableCell className="text-xs">
+                    {o.kind === "deposit" ? (
+                      <>
+                        <span className="font-medium">Website deposit</span>
+                        <span className="block text-muted-foreground">
+                          {o.merchant_order_id ?? "–"}
+                          {o.provider ? ` · ${PROVIDER_LABEL[o.provider] ?? o.provider} ${o.wallet_number ?? ""}` : " · wallet not chosen"}
+                        </span>
+                      </>
+                    ) : (
+                      "Entered here"
+                    )}
+                  </TableCell>
                   <TableCell>{o.customer_name ?? "–"}</TableCell>
                   <TableCell>{o.customer_phone ?? "–"}</TableCell>
                   <TableCell className="text-right">{tk(o.expected_amount)}</TableCell>

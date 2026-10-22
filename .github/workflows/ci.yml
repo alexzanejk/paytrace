@@ -40,3 +40,4 @@ jobs:
         run: |
           deno check supabase/functions/ingest/index.ts
           deno check supabase/functions/verify-transaction/index.ts
+          deno check supabase/functions/gateway/index.ts
