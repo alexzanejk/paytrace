@@ -131,3 +131,24 @@ internet, or the app was stopped all look the same.
 - Keep the phone **plugged in**: checking in every 30 seconds uses more battery than before.
 - The red strip also appears if **monitoring is switched off** or **SMS permission was removed**.
 - The free Supabase plan covers about 5 phones at this check-in rate. More than that would need the paid plan; ask first.
+
+## Step 6: Wake-up messages from Firebase (optional, free, for phones that keep getting stopped)
+
+Some phone brands (Vivo, Oppo, Xiaomi and others) stop PayTrace when the screen is off. Firebase is Google's free
+message service. With it set up, when the server notices a phone has gone quiet (about 100 seconds) it sends that phone a
+high-priority wake-up message, and Android starts PayTrace again. It is not a guarantee: if the phone's own settings fully
+block the app (autostart off, app force-stopped), the message is blocked too, so keep the battery steps above done.
+
+1. Go to the Firebase website, sign in with your Google account, and **Add project** (any name, for example "PayTrace";
+   you can turn Google Analytics off).
+2. In the project, tap the Android icon to **Add app**. Android package name: `com.paytrace.app`. Skip the other fields.
+3. Download **google-services.json** from that screen. In your GitHub repository go to Settings > Secrets and variables >
+   Actions > **New repository secret**. Name: `GOOGLE_SERVICES_JSON`. Value: open the downloaded file in a text editor,
+   copy everything and paste it. (This file is not a password, but it is kept out of the public code.)
+4. In Firebase: Project settings (gear icon) > **Service accounts** > **Generate new private key**. This downloads a file
+   that **is** a password. Do not send it to anyone, and do not paste it in chat. Tell Claude "ready for the key", and a
+   private box will open in which you paste the file's whole text; only the server stores it (name:
+   `FIREBASE_SERVICE_ACCOUNT`).
+5. Build the app again (any change to the app, or "Run workflow" on the Build Android APK page) and install it on the
+   phones. The run summary should say "Firebase wake-up pushes: **included**". Each phone's card on the Phones page shows
+   "Wake-up messages: ready" once it has registered.

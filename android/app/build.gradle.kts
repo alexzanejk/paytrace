@@ -4,6 +4,13 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Firebase wake-up pushes need the project's google-services.json (not a secret, but kept out of the repository:
+// CI writes it from the GOOGLE_SERVICES_JSON GitHub secret). Without the file the app still builds and works; it just
+// cannot be woken by a push.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.paytrace.app"
     compileSdk = 34
@@ -60,5 +67,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation(platform("com.google.firebase:firebase-bom:33.4.0"))
+    implementation("com.google.firebase:firebase-messaging")
     testImplementation("junit:junit:4.13.2")
 }

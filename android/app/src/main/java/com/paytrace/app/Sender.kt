@@ -107,6 +107,13 @@ object Sender {
         o.put("notifications", Setup.notificationsOn(ctx))
         o.put("battery_exempt", Setup.batteryExempt(ctx))
         o.put("setup_complete", Setup.missing(ctx, s).isEmpty())
+        o.put("push_ready", s.pushToken.isNotEmpty())
+        val now = System.currentTimeMillis()
+        if (PushPolicy.shouldSend(s.pushToken, s.pushSentToken, s.pushSentAt, now)) {
+            o.put("push_token", s.pushToken)
+            s.pushSentToken = s.pushToken
+            s.pushSentAt = now
+        }
         try {
             val (pending, failed) = Db.get(ctx).backlog()
             o.put("pending", pending).put("failed", failed)

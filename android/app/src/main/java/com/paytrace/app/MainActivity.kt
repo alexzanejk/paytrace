@@ -75,6 +75,7 @@ class MainActivity : ComponentActivity() {
         SendWorker.resumePending(this)
         HeartbeatWorker.schedule(this)
         HeartbeatWorker.now(this)
+        Push.refresh(this)
         setContent {
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 Surface(Modifier.fillMaxSize()) { App() }
