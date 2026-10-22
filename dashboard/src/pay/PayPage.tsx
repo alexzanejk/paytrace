@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { AlertTriangle, CheckCircle2, ChevronDown, Clock, Copy, Loader2, ShieldCheck, XCircle } from "lucide-react";
-import { Gone, getOrder, pickProvider, submitTrx, type OrderView, type SubmitState } from "./api";
+import { DEMO, Gone, getOrder, pickProvider, submitTrx, type OrderView, type SubmitState } from "./api";
 import { clock, money, PROVIDER_COLOR, PROVIDER_NAME, t, type Lang } from "./i18n";
 
 const GREEN = "#0f5f3f";
@@ -20,7 +20,7 @@ type Screen = "loading" | "gone" | "error" | "ready";
 
 /** The page a customer lands on from a website: pick a wallet, pay the number shown, paste the TrxID, wait for the result. */
 export function PayPage() {
-  const tracking = new URLSearchParams(window.location.search).get("trackingNumber") ?? "";
+  const tracking = DEMO ? "demo" : new URLSearchParams(window.location.search).get("trackingNumber") ?? "";
   const [lang, setLang] = useState<Lang>(readLang);
   const [screen, setScreen] = useState<Screen>(tracking ? "loading" : "gone");
   const [view, setView] = useState<OrderView | null>(null);
@@ -158,6 +158,11 @@ export function PayPage() {
 
   return (
     <div className="min-h-screen bg-[#eef3f0] px-3 py-4 text-[#1b1f1d] sm:py-10" style={{ fontFamily: '"Noto Sans Bengali","Noto Sans",Roboto,system-ui,sans-serif' }}>
+      {DEMO && (
+        <p className="mx-auto mb-3 w-full max-w-[480px] rounded-lg bg-amber-100 px-3 py-2 text-center text-xs font-semibold text-amber-900">
+          Preview only: nothing real is created or paid. Enter any TrxID of 6+ letters or numbers (USEDTRX1 shows the "already used" message).
+        </p>
+      )}
       <main className="mx-auto w-full max-w-[480px] overflow-hidden rounded-2xl bg-white shadow-lg">
         <header className="px-5 pb-4 pt-5 text-white" style={{ background: color }}>
           <div className="flex items-start justify-between gap-3">

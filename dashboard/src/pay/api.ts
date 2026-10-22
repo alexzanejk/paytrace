@@ -20,6 +20,41 @@ export type SubmitState = "paid" | "checking" | "review" | "used" | "expired" | 
 
 export class Gone extends Error {}
 
+/** `/pay?demo=1` shows the whole customer page with pretend data and talks to no server, so the owner can look at it
+ *  (and try it: pick a wallet, enter any TrxID) before connecting a website. Nothing real is created or paid. */
+export const DEMO =
+  new URLSearchParams(window.location.search).get("demo") === "1" || (window as unknown as { __PAYTRACE_DEMO__?: boolean }).__PAYTRACE_DEMO__ === true;
+
+const demo = {
+  provider: null as string | null,
+  trx: null as string | null,
+  paidAt: 0,
+  endsAt: Date.now() + 15 * 60_000,
+  tries: 0,
+};
+const DEMO_WALLET: Record<string, { n: string; m: "send_money" | "cash_out" }> = {
+  bkash: { n: "01700000001", m: "cash_out" },
+  nagad: { n: "01700000002", m: "send_money" },
+  rocket: { n: "01700000003", m: "send_money" },
+};
+function demoView(): OrderView {
+  const w = demo.provider ? DEMO_WALLET[demo.provider] : null;
+  const paid = demo.paidAt > 0 && Date.now() >= demo.paidAt;
+  return {
+    status: paid ? "paid" : Date.now() > demo.endsAt ? "expired" : "pending",
+    amount: Number(new URLSearchParams(window.location.search).get("amount")) || 500,
+    currency: "BDT",
+    shop: "Your shop (preview)",
+    provider: demo.provider,
+    wallet_number: w?.n ?? null,
+    method: w?.m ?? null,
+    seconds_left: Math.max(0, Math.floor((demo.endsAt - Date.now()) / 1000)),
+    trx_id: demo.trx,
+    providers: ["bkash", "nagad", "rocket"],
+    return_url: null,
+  };
+}
+
 async function call<T>(route: string, body: Record<string, unknown>): Promise<{ status: number; data: T }> {
   const res = await fetch(`${BASE}/${route}`, {
     method: "POST",
@@ -36,6 +71,7 @@ async function call<T>(route: string, body: Record<string, unknown>): Promise<{ 
 }
 
 export async function getOrder(tracking: string): Promise<OrderView> {
+  if (DEMO) return demoView();
   const { status, data } = await call<OrderView>("pay-order", { tracking_number: tracking });
   if (status === 404) throw new Gone();
   if (status !== 200) throw new Error("server");
@@ -44,6 +80,11 @@ export async function getOrder(tracking: string): Promise<OrderView> {
 
 /** Returns the updated order, or the reason the choice was refused. */
 export async function pickProvider(tracking: string, provider: string): Promise<OrderView | { error: string }> {
+  if (DEMO) {
+    if (!DEMO_WALLET[provider]) return { error: "no_wallet" };
+    demo.provider = provider;
+    return demoView();
+  }
   const { status, data } = await call<OrderView & { error?: string }>("pay-pick", { tracking_number: tracking, provider });
   if (status === 404) throw new Gone();
   if (status === 200) return data;
@@ -52,6 +93,14 @@ export async function pickProvider(tracking: string, provider: string): Promise<
 }
 
 export async function submitTrx(tracking: string, trx: string): Promise<SubmitState> {
+  if (DEMO) {
+    const t = trx.replace(/\s+/g, "").toUpperCase();
+    if (!/^[A-Z0-9]{6,40}$/.test(t)) return "invalid";
+    if (t === "USEDTRX1") return "used"; // try this one to see the "already used" message
+    demo.trx = t;
+    demo.paidAt = Date.now() + 6000; // pretend the SMS arrives and the payment is confirmed 6 seconds later
+    return "checking";
+  }
   const { status, data } = await call<{ state?: SubmitState }>("pay-submit", { tracking_number: tracking, transaction_id: trx });
   if (status === 404) throw new Gone();
   if (status === 400 && data.state) return data.state;

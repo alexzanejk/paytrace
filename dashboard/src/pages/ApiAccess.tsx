@@ -10,7 +10,7 @@ import { Confirm } from "@/components/Confirm";
 import { CopyButton } from "@/components/CopyButton";
 import { WebhookCard } from "@/components/WebhookCard";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -123,6 +123,14 @@ export function ApiAccess() {
             <div className="flex flex-wrap items-center gap-2">
               <CopyButton text={() => depositInstructions()} label="Copy deposit instructions for the developer" variant="default" />
               <span className="text-xs text-muted-foreground">Plain text; it does not include any key. Uses the same keys as below.</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <a href="/pay?demo=1" target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline" })}>
+                Preview the customer pay page
+              </a>
+              <span className="text-xs text-muted-foreground">
+                Opens the page your customers see with pretend data. Try picking a wallet and entering any TrxID. Nothing real happens.
+              </span>
             </div>
           </CardContent>
         </Card>
