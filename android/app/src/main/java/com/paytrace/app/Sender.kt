@@ -108,6 +108,8 @@ object Sender {
         o.put("battery_exempt", Setup.batteryExempt(ctx))
         o.put("setup_complete", Setup.missing(ctx, s).isEmpty())
         o.put("push_ready", s.pushToken.isNotEmpty())
+        o.put("wake_count", s.wakeCount)
+        if (s.lastWakeAt > 0) o.put("last_wake_at", s.lastWakeAt)
         val now = System.currentTimeMillis()
         if (PushPolicy.shouldSend(s.pushToken, s.pushSentToken, s.pushSentAt, now)) {
             o.put("push_token", s.pushToken)

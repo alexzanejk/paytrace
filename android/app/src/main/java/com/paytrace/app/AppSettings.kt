@@ -178,6 +178,14 @@ class AppSettings(ctx: Context) {
         get() = p.getLong("push_sent_at", 0L)
         set(v) { p.edit().putLong("push_sent_at", v).apply() }
 
+    /** Wake-up pushes received, and when the latest arrived (shown on the Phones page, so a push that never arrives is obvious). */
+    var wakeCount: Int
+        get() = p.getInt("wake_count", 0)
+        set(v) { p.edit().putInt("wake_count", v).apply() }
+    var lastWakeAt: Long
+        get() = p.getLong("last_wake_at", 0L)
+        set(v) { p.edit().putLong("last_wake_at", v).apply() }
+
     /** Extra-strong keep-alive: a 5-minute "alarm clock" backup. Shows an alarm icon in the status bar. On by default. */
     var strongAlarm: Boolean
         get() = p.getBoolean("strong_alarm", true)

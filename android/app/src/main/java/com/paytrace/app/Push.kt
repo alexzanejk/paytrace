@@ -40,6 +40,12 @@ class WakeService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         val ctx = applicationContext
+        // First, write down that it arrived: this is what tells the owner a push reached the phone at all.
+        try {
+            val s = AppSettings(ctx)
+            s.wakeCount += 1
+            s.lastWakeAt = System.currentTimeMillis()
+        } catch (e: Exception) { }
         MonitorService.start(ctx)
         try { Keepalive.schedule(ctx) } catch (e: Exception) { }
         // Tell the dashboard straight away, then pick up anything missed while the app was stopped.

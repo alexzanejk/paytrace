@@ -125,5 +125,14 @@ function fakeFetch(fcmStatus: number) {
 // ---- heartbeat ----
 check("push_ready is kept as a true/false", cleanInfo({ push_ready: true }).push_ready === true && cleanInfo({ push_ready: "false" }).push_ready === false && cleanInfo({}).push_ready === undefined);
 
+{
+  const at = Date.parse("2026-10-22T09:00:00Z");
+  const now = new Date("2026-10-22T10:00:00Z");
+  const i = cleanInfo({ wake_count: 3, last_wake_at: at }, now);
+  check("wake count and time are kept", i.wake_count === 3 && i.last_wake_at === new Date(at).toISOString(), i);
+  check("a nonsense wake time is dropped", cleanInfo({ last_wake_at: 5 }, now).last_wake_at === undefined && cleanInfo({ last_wake_at: "x" }, now).last_wake_at === undefined);
+  check("a wake time far in the future is dropped", cleanInfo({ last_wake_at: now.getTime() + 10 * 864e5 }, now).last_wake_at === undefined);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
