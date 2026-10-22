@@ -1,13 +1,13 @@
 // PayTrace gateway: deposit orders for the owner's own websites.
 //
 // Website servers (Authorization: Bearer <key from the dashboard's API access page>):
-//   POST /functions/v1/gateway/create-deposit  {"amount":500,"order_id":"SHOP-1001","provider":"bkash"?,"return_url":"https://..."?,
+//   POST /functions/v1/gateway/create-deposit  {"amount":500,"order_id":"SHOP-1001","provider":"bkash","method":"cash_out"?,"return_url":"https://..."?,
 //                                                "expires_in_minutes":15?,"customer_name"?,"customer_phone"?}
 //        -> {"tracking_number","pay_url","status","expires_at"}     (the same order_id returns the same order)
 //   POST /functions/v1/gateway/order-status    {"tracking_number":"..."} or {"order_id":"SHOP-1001"}
 // The customer's pay page (public; the tracking number is an unguessable secret; browser calls come only from the dashboard's address):
 //   POST /gateway/pay-order   {"tracking_number"}                      what the page shows
-//   POST /gateway/pay-pick    {"tracking_number","provider"}           choose bKash/Nagad/...: returns the wallet number to pay
+//   POST /gateway/pay-pick    {"tracking_number","provider"}           fallback only: gives an order that has no number yet one for its own provider
 //   POST /gateway/pay-submit  {"tracking_number","transaction_id"}     the customer's TrxID
 // Scheduler (pg_cron, every minute; no auth needed, it returns nothing):
 //   POST /gateway/deliver     sends the waiting result messages to the websites and closes unpaid orders.
@@ -50,13 +50,14 @@ async function createDeposit(req: Request, body: Record<string, unknown>): Promi
   const d = parseDeposit(body);
   if ("error" in d) return json({ error: d.error }, 400);
   const { data, error } = await db.rpc("gw_create_deposit", {
-    p_key_hash: await sha256hex(key), p_amount: d.amount, p_merchant_order_id: d.orderId, p_provider: d.provider,
+    p_key_hash: await sha256hex(key), p_amount: d.amount, p_merchant_order_id: d.orderId, p_provider: d.provider, p_method: d.method,
     p_expires_minutes: d.expiresMinutes, p_customer_name: d.customerName, p_customer_phone: d.customerPhone,
     p_return_url: d.returnUrl, p_limit: MERCHANT_LIMIT_PER_MINUTE,
   });
   if (error) { console.error("gw_create_deposit failed", error.code); return json({ error: "could not create the order, try again" }, 500); }
   if (data?.unauthorized) return json({ error: "unauthorized" }, 401);
   if (data?.limited) return json({ error: "too many requests, try again in a minute" }, 429, { "retry-after": "60" });
+  if (data?.error === "no_wallet") return json({ error: "no_wallet", message: data.message }, 409);
   if (data?.error) return json({ error: data.error }, 400);
   return json({
     tracking_number: data.tracking_number,

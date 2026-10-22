@@ -266,6 +266,7 @@ NOT yet verified (be honest about this):
   webhook; wallet number rotates across approved phones that have a number for the chosen provider (online first, least recently
   handed out); withdrawals = a request queue the owner pays by hand (not built yet; plan: `withdrawals` table, dashboard queue,
   owner enters the TrxID, webhook `withdrawal.paid`; it cannot be automatic, the providers give no way to send money from an app).
+- The deposit-method chooser ("Bkash Send Money", "Nagad VIP Cash Out", ...) is the WEBSITE's own page, not PayTrace's (owner corrected this 2026-10-22). `create-deposit` therefore requires `provider` (optional `method` `send_money`|`cash_out`) and assigns the wallet at creation (`gw_find_wallet`, migration 015); PayTrace's page starts at the TrxID step. Logos in `dashboard/src/pay/logos/` were supplied by the owner (bKash, Nagad, Rocket; Upay has none, a monogram is used).
 - Flow and fields are in `docs/gateway-api.md` and `dashboard/src/lib/apiDocs.ts` (`depositInstructions`). Pay page is written from
   scratch (modelled on the owner's screenshots of a third-party page; none of its code or images was copied). Bangla default, EN toggle.
 - Tables: `device_wallets` (phone x provider -> number, method `send_money`|`cash_out`, enabled), `webhook_outbox` (retried 8 times),

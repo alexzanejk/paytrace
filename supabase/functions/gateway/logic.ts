@@ -23,7 +23,8 @@ export function normalizeTrx(v: unknown): string | null {
 export interface DepositRequest {
   amount: number;
   orderId: string;
-  provider: string | null;
+  provider: string;
+  method: string | null;
   returnUrl: string | null;
   expiresMinutes: number | null;
   customerName: string | null;
@@ -37,11 +38,15 @@ export function parseDeposit(body: Record<string, unknown>): DepositRequest | { 
   if (!Number.isFinite(amount) || amount <= 0) return { error: "amount is required, for example 500 or 500.50" };
   const orderId = typeof body.order_id === "string" ? body.order_id.trim() : typeof body.order_id === "number" ? String(body.order_id) : "";
   if (orderId.length < 1 || orderId.length > 100) return { error: "order_id is required (your own order number, 1 to 100 characters)" };
-  let provider: string | null = null;
-  if (body.provider !== undefined && body.provider !== null && body.provider !== "") {
-    const p = typeof body.provider === "string" ? body.provider.trim().toLowerCase() : "";
-    if (!(PROVIDERS as readonly string[]).includes(p)) return { error: "provider must be bkash, nagad, rocket or upay (or leave it out and the customer chooses)" };
-    provider = p;
+  // The website's own page lets the customer choose the method, so the provider is required here.
+  const p = typeof body.provider === "string" ? body.provider.trim().toLowerCase() : "";
+  if (!(PROVIDERS as readonly string[]).includes(p)) return { error: "provider is required: bkash, nagad, rocket or upay" };
+  const provider = p;
+  let method: string | null = null;
+  if (body.method !== undefined && body.method !== null && body.method !== "") {
+    const m = typeof body.method === "string" ? body.method.trim().toLowerCase() : "";
+    if (m !== "send_money" && m !== "cash_out") return { error: "method must be send_money or cash_out (or leave it out)" };
+    method = m;
   }
   let returnUrl: string | null = null;
   if (body.return_url !== undefined && body.return_url !== null && body.return_url !== "") {
@@ -55,7 +60,7 @@ export function parseDeposit(body: Record<string, unknown>): DepositRequest | { 
     expiresMinutes = m;
   }
   const text = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
-  return { amount, orderId, provider, returnUrl, expiresMinutes, customerName: text(body.customer_name, 80), customerPhone: text(body.customer_phone, 20) };
+  return { amount, orderId, provider, method, returnUrl, expiresMinutes, customerName: text(body.customer_name, 80), customerPhone: text(body.customer_phone, 20) };
 }
 
 /** What the customer's page should do after sending a TrxID. The page words these itself (English and Bangla). */

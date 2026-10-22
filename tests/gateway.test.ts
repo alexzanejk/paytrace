@@ -18,16 +18,18 @@ check("a typed TrxID is tidied", normalizeTrx(" bk12 ab34cd ") === "BK12AB34CD")
 check("a TrxID with symbols or a short one is refused", normalizeTrx("AB-12") === null && normalizeTrx("AB12") === null && normalizeTrx("A".repeat(41)) === null && normalizeTrx(12345678) === null);
 
 // creating a deposit
-const ok = parseDeposit({ amount: 500, order_id: "SHOP-1", provider: "BKash", return_url: "https://shop.example/thanks", expires_in_minutes: 20 });
-check("a full request is read", !("error" in ok) && ok.amount === 500 && ok.orderId === "SHOP-1" && ok.provider === "bkash" && ok.expiresMinutes === 20 && ok.returnUrl === "https://shop.example/thanks");
-const min = parseDeposit({ amount: "500.50", order_id: 1001 });
-check("amount as text and a numeric order id are accepted", !("error" in min) && min.amount === 500.5 && min.orderId === "1001" && min.provider === null && min.returnUrl === null);
-check("no amount is refused", "error" in parseDeposit({ order_id: "x" }));
-check("zero, negative or odd amounts are refused", "error" in parseDeposit({ amount: 0, order_id: "x" }) && "error" in parseDeposit({ amount: -5, order_id: "x" }) && "error" in parseDeposit({ amount: "5e3", order_id: "x" }) && "error" in parseDeposit({ amount: "abc", order_id: "x" }));
-check("no order id is refused", "error" in parseDeposit({ amount: 100 }) && "error" in parseDeposit({ amount: 100, order_id: "" }) && "error" in parseDeposit({ amount: 100, order_id: "x".repeat(101) }));
+const ok = parseDeposit({ amount: 500, order_id: "SHOP-1", provider: "BKash", method: "Cash_Out", return_url: "https://shop.example/thanks", expires_in_minutes: 20 });
+check("a full request is read", !("error" in ok) && ok.amount === 500 && ok.orderId === "SHOP-1" && ok.provider === "bkash" && ok.method === "cash_out" && ok.expiresMinutes === 20 && ok.returnUrl === "https://shop.example/thanks");
+const min = parseDeposit({ amount: "500.50", order_id: 1001, provider: "nagad" });
+check("amount as text and a numeric order id are accepted", !("error" in min) && min.amount === 500.5 && min.orderId === "1001" && min.provider === "nagad" && min.method === null && min.returnUrl === null);
+check("no amount is refused", "error" in parseDeposit({ order_id: "x", provider: "bkash" }));
+check("zero, negative or odd amounts are refused", "error" in parseDeposit({ amount: 0, order_id: "x", provider: "bkash" }) && "error" in parseDeposit({ amount: -5, order_id: "x", provider: "bkash" }) && "error" in parseDeposit({ amount: "5e3", order_id: "x", provider: "bkash" }) && "error" in parseDeposit({ amount: "abc", order_id: "x", provider: "bkash" }));
+check("no order id is refused", "error" in parseDeposit({ amount: 100, provider: "bkash" }) && "error" in parseDeposit({ amount: 100, order_id: "", provider: "bkash" }) && "error" in parseDeposit({ amount: 100, order_id: "x".repeat(101), provider: "bkash" }));
+check("the provider is required (the website's own page chooses it)", "error" in parseDeposit({ amount: 100, order_id: "x" }) && "error" in parseDeposit({ amount: 100, order_id: "x", provider: "" }));
+check("an unknown method is refused", "error" in parseDeposit({ amount: 100, order_id: "x", provider: "nagad", method: "vip" }));
 check("an unknown provider is refused", "error" in parseDeposit({ amount: 100, order_id: "x", provider: "paypal" }));
-check("a return address must be https", "error" in parseDeposit({ amount: 100, order_id: "x", return_url: "http://shop.example" }) && "error" in parseDeposit({ amount: 100, order_id: "x", return_url: "javascript:alert(1)" }));
-check("expiry must be 3 to 60 whole minutes", "error" in parseDeposit({ amount: 100, order_id: "x", expires_in_minutes: 2 }) && "error" in parseDeposit({ amount: 100, order_id: "x", expires_in_minutes: 61 }) && "error" in parseDeposit({ amount: 100, order_id: "x", expires_in_minutes: 5.5 }));
+check("a return address must be https", "error" in parseDeposit({ amount: 100, order_id: "x", provider: "bkash", return_url: "http://shop.example" }) && "error" in parseDeposit({ amount: 100, order_id: "x", provider: "bkash", return_url: "javascript:alert(1)" }));
+check("expiry must be 3 to 60 whole minutes", "error" in parseDeposit({ amount: 100, order_id: "x", provider: "bkash", expires_in_minutes: 2 }) && "error" in parseDeposit({ amount: 100, order_id: "x", provider: "bkash", expires_in_minutes: 61 }) && "error" in parseDeposit({ amount: 100, order_id: "x", provider: "bkash", expires_in_minutes: 5.5 }));
 
 // what the page does with each answer
 check("matched means paid", submitState("matched") === "paid" && submitState("already_paid") === "paid");

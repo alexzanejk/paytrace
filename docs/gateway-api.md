@@ -11,11 +11,13 @@ generated from `dashboard/src/lib/apiDocs.ts` (`depositInstructions`), which is 
 ## The flow
 
 1. Website server: `POST {SUPABASE}/functions/v1/gateway/create-deposit` with `Authorization: Bearer ptk_...` and
-   `{"amount":500,"order_id":"SHOP-1001","return_url":"https://...","provider":"bkash"}` (provider and return_url optional).
-   Returns `pay_url`. The same `order_id` returns the same order, so a retry is safe.
+   `{"amount":500,"order_id":"SHOP-1001","provider":"nagad","method":"cash_out","return_url":"https://..."}` (`provider` required,
+   `method` and `return_url` optional). The website's own page lets the customer choose the method ("Bkash Send Money", "Nagad Cash Out"...);
+   PayTrace's page starts after that choice. The wallet number is assigned at creation; with no number set up for that provider/method the
+   call fails with 409 `no_wallet`. Returns `pay_url`. The same `order_id` returns the same order, so a retry is safe.
 2. Customer opens `pay_url` (`/pay?trackingNumber=...` on the dashboard's address). The page is Bangla by default with an
-   English toggle. If the website did not choose a provider the customer picks one; the page then shows a wallet number from an
-   approved phone that has a number for that provider (online phones first, then the one handed out least recently).
+   English toggle and starts at the payment step: provider banner with logo, the wallet number (an approved phone that has a number for
+   that provider and method; online phones first, then the one handed out least recently), a countdown and the TrxID box.
 3. Customer pays the number, copies the TrxID from the SMS or receipt and pastes it. The server runs `claim_order`, which uses the
    same atomic, one-payment-per-order path as every other order. If the SMS has not arrived yet the page waits (it checks every 4 s).
 4. When the order is paid, held for review, or expires, PayTrace sends a signed **webhook** to the key's result address and the

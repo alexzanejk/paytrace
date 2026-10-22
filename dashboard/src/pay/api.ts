@@ -26,7 +26,7 @@ export const DEMO =
   new URLSearchParams(window.location.search).get("demo") === "1" || (window as unknown as { __PAYTRACE_DEMO__?: boolean }).__PAYTRACE_DEMO__ === true;
 
 const demo = {
-  provider: null as string | null,
+  provider: (new URLSearchParams(window.location.search).get("provider") || "bkash") as string | null,
   trx: null as string | null,
   paidAt: 0,
   endsAt: Date.now() + 15 * 60_000,
@@ -36,7 +36,15 @@ const DEMO_WALLET: Record<string, { n: string; m: "send_money" | "cash_out" }> =
   bkash: { n: "01700000001", m: "cash_out" },
   nagad: { n: "01700000002", m: "send_money" },
   rocket: { n: "01700000003", m: "send_money" },
+  upay: { n: "01700000004", m: "send_money" },
 };
+/** Preview only: switch the pretend order to another provider and start it again. */
+export function demoSwitch(provider: string) {
+  demo.provider = provider;
+  demo.trx = null;
+  demo.paidAt = 0;
+  demo.endsAt = Date.now() + 15 * 60_000;
+}
 function demoView(): OrderView {
   const w = demo.provider ? DEMO_WALLET[demo.provider] : null;
   const paid = demo.paidAt > 0 && Date.now() >= demo.paidAt;
@@ -50,7 +58,7 @@ function demoView(): OrderView {
     method: w?.m ?? null,
     seconds_left: Math.max(0, Math.floor((demo.endsAt - Date.now()) / 1000)),
     trx_id: demo.trx,
-    providers: ["bkash", "nagad", "rocket"],
+    providers: [],
     return_url: null,
   };
 }

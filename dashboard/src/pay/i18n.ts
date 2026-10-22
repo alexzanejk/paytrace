@@ -3,15 +3,13 @@ export type Lang = "bn" | "en";
 
 export const PROVIDER_NAME: Record<string, string> = { bkash: "bKash", nagad: "Nagad", rocket: "Rocket", upay: "Upay" };
 /** Brand colours for the banner and the provider buttons. */
-export const PROVIDER_COLOR: Record<string, string> = { bkash: "#e2136e", nagad: "#ec7a1c", rocket: "#8c3494", upay: "#0b6cb5" };
+export const PROVIDER_COLOR: Record<string, string> = { bkash: "#b8269c", nagad: "#e8472b", rocket: "#7b2d8e", upay: "#0b6cb5" };
 
 type Dict = Record<string, string>;
 
 const en: Dict = {
   amountNote: "Do not send a different amount. If you change the amount, we cannot credit you.",
   expiresIn: "Time left to pay",
-  chooseTitle: "Choose how you want to pay",
-  chooseHelp: "Pick the wallet you will pay from.",
   noWallet: "No payment number is available right now. Please try again in a few minutes or contact the shop.",
   walletNo: "Wallet number",
   sendMoneyOnly: "Send Money to this {p} number only",
@@ -54,6 +52,8 @@ const en: Dict = {
   wrongAmountHint: "If the amount you sent was different, the payment will be held for review.",
   copy: "Copy",
   copied: "Copied",
+  deposit: "Deposit",
+  badLink: "This link is missing its payment method. Please start again from the shop.",
   retry: "Try again",
   loading: "Loading…",
   to: "Pay to",
@@ -63,8 +63,6 @@ const en: Dict = {
 const bn: Dict = {
   amountNote: "অন্য কোনো পরিমাণ পাঠাবেন না। পরিমাণ বদলালে আপনার টাকা জমা হবে না।",
   expiresIn: "পেমেন্টের বাকি সময়",
-  chooseTitle: "কীভাবে পেমেন্ট করবেন বেছে নিন",
-  chooseHelp: "যে ওয়ালেট থেকে পেমেন্ট করবেন সেটি বেছে নিন।",
   noWallet: "এখন কোনো পেমেন্ট নম্বর পাওয়া যাচ্ছে না। কিছুক্ষণ পরে আবার চেষ্টা করুন বা দোকানের সাথে যোগাযোগ করুন।",
   walletNo: "ওয়ালেট নম্বর",
   sendMoneyOnly: "এই {p} নম্বরে শুধুমাত্র Send Money করুন",
@@ -107,6 +105,8 @@ const bn: Dict = {
   wrongAmountHint: "আপনি অন্য পরিমাণ পাঠালে পেমেন্টটি পর্যালোচনার জন্য আটকে থাকবে।",
   copy: "কপি",
   copied: "কপি হয়েছে",
+  deposit: "ডিপোজিট",
+  badLink: "এই লিংকে পেমেন্ট পদ্ধতি নেই। অনুগ্রহ করে দোকান থেকে আবার শুরু করুন।",
   retry: "আবার চেষ্টা করুন",
   loading: "লোড হচ্ছে…",
   to: "পেমেন্ট করুন",
