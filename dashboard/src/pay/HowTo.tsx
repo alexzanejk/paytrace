@@ -1,8 +1,11 @@
 import { Banknote, CirclePlus, HandCoins, Lightbulb, PiggyBank, Send, ShoppingBag, Smartphone, type LucideIcon } from "lucide-react";
 import type { Lang } from "./i18n";
+import nagadCash from "./help/nagad-cashout.jpg";
+import rocketCash from "./help/rocket-cashout.jpg";
+import bkashSendMenu from "./help/bkash-send-menu.png";
 
-/** What the "how do I find the TrxID" popup shows. One per provider and way of paying, as on the owner's reference pages. All the
- *  pictures are drawn here (not screenshots of any provider's app). */
+/** What the "how do I find the TrxID" popup shows, one per provider and way of paying. The Nagad and Rocket pictures and the bKash
+ *  Send Money menu are the owner's own images; the bKash cash-out receipt and the bKash Send Money steps are drawn here. */
 export type HowKind = "bkash_cash" | "nagad_cash" | "rocket_cash" | "bkash_send";
 
 export function howKind(provider: string, method: string | null): HowKind {
@@ -47,75 +50,8 @@ function BkashCashImage({ lang }: { lang: Lang }) {
   );
 }
 
-function NagadCashImage({ lang }: { lang: Lang }) {
-  const bn = lang === "bn";
-  const rows: [string, string, string][] = [
-    [bn ? "ট্রানজেকশন আইডি" : "Transaction ID", "726NPKXU", "id"],
-    [bn ? "পরিমাণ" : "Amount", "180.00 Tk", ""],
-    [bn ? "ফি" : "Fee", "1.24 Tk", ""],
-    [bn ? "ভ্যাট" : "VAT", "0.19 Tk", ""],
-    [bn ? "সর্বমোট খরচ**" : "Total charges**", "1.38 Tk", ""],
-    [bn ? "সর্বমোট" : "Total", "181.58 Tk", ""],
-    [bn ? "সময়" : "Time", "16 Sep 2023, 07:53 PM", ""],
-  ];
-  return (
-    <svg viewBox="0 0 300 330" role="img" aria-label="Example of the Nagad Cash Out confirmation with the transaction ID marked" className="mx-auto block h-auto w-full max-w-[300px] bg-white">
-      <line x1="0" y1="2" x2="300" y2="2" stroke="#0b6b45" strokeWidth="2" />
-      <circle cx="150" cy="44" r="24" fill="none" stroke="#c9a227" strokeWidth="3" />
-      <path d="M138 44l9 9 16-18" fill="none" stroke="#0b6b45" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-      <text x="150" y="94" fontSize="14" fontWeight="700" textAnchor="middle" fill="#0b6b45">{bn ? "ক্যাশ আউট সফল" : "Cash Out successful"}</text>
-      <rect x="100" y="104" width="100" height="8" rx="3" fill="#e5e7eb" />
-      <rect x="115" y="118" width="70" height="7" rx="3" fill="#eee" />
-      {rows.map(([label, value, id], i) => {
-        const y = 150 + i * 20;
-        return (
-          <g key={label}>
-            <text x="14" y={y} fontSize="9.5" fontWeight="700" fill="#2e7d32">{label}</text>
-            {id ? (
-              <>
-                <rect x="196" y={y - 13} width="90" height="19" fill="none" stroke={RED} strokeWidth="2.2" />
-                <text x="241" y={y} fontSize="11" fontWeight="700" textAnchor="middle" fill="#374151">{value}</text>
-              </>
-            ) : (
-              <text x="286" y={y} fontSize="9.5" textAnchor="end" fill="#6b7280">{value}</text>
-            )}
-          </g>
-        );
-      })}
-      <line x1="14" y1="300" x2="286" y2="300" stroke="#e5e7eb" />
-      <text x="90" y="318" fontSize="9" fill="#6b7280">{bn ? "কল" : "Call"}</text>
-      <text x="200" y="318" fontSize="9" fill="#6b7280">{bn ? "মেসেজ" : "Message"}</text>
-    </svg>
-  );
-}
-
-function RocketCashImage() {
-  return (
-    <svg viewBox="0 0 300 330" role="img" aria-label="Example of the Rocket Cash Out message with the TxnId marked" className="mx-auto block h-auto w-full max-w-[300px] bg-white">
-      <rect width="300" height="330" fill="#5f5f66" />
-      <rect width="300" height="40" fill="#5b1470" />
-      <path d="M22 20h14M22 20l6-6M22 20l6 6" stroke="#e9d5f0" strokeWidth="2" fill="none" strokeLinecap="round" />
-      <text x="48" y="25" fontSize="14" fill="#e9d5f0">Confirm Cash Out</text>
-      <circle cx="150" cy="82" r="22" fill="#3d3d42" />
-      <text x="26" y="136" fontSize="10" fill="#9b8aa6">Account No.</text>
-      <text x="170" y="132" fontSize="10" fill="#9b8aa6">Recipient Name</text>
-      <text x="170" y="148" fontSize="11" fontWeight="700" fill="#d6d6d6">Unknown</text>
-      <rect x="22" y="164" width="256" height="136" fill="#fff" />
-      <rect x="22" y="164" width="256" height="30" fill="#8e1f9e" />
-      <circle cx="40" cy="179" r="6.5" fill="#fff" />
-      <text x="40" y="182.5" fontSize="9" fontWeight="700" textAnchor="middle" fill="#8e1f9e">i</text>
-      <text x="56" y="183" fontSize="12" fill="#fff">Info</text>
-      <text x="32" y="214" fontSize="10.5" fill="#374151">Cash Out from A/C ***730 Success.</text>
-      <text x="32" y="230" fontSize="10.5" fill="#374151">TxnId:</text>
-      <rect x="64" y="219" width="72" height="15" fill="none" stroke={RED} strokeWidth="1.6" />
-      <text x="68" y="230" fontSize="10.5" fill="#374151">5508654578</text>
-      <text x="139" y="230" fontSize="10.5" fill="#374151">TxnAmount:</text>
-      <text x="32" y="246" fontSize="10.5" fill="#374151">Tk500.00.Please download https://bit.ly</text>
-      <text x="32" y="262" fontSize="10.5" fill="#374151">/nexuspay</text>
-      <text x="200" y="288" fontSize="10" fill="#8e1f9e">OK</text>
-      <text x="228" y="288" fontSize="10" fill="#8e1f9e">RECEIPT</text>
-    </svg>
-  );
+function Photo({ src, alt }: { src: string; alt: string }) {
+  return <img src={src} alt={alt} className="mx-auto block h-auto max-h-[58vh] w-auto max-w-full border border-neutral-200" />;
 }
 
 const TILES: { icon: LucideIcon; bn: string; en: string; tint: string }[] = [
@@ -129,20 +65,9 @@ const TILES: { icon: LucideIcon; bn: string; en: string; tint: string }[] = [
   { icon: HandCoins, bn: "লোন", en: "Loan", tint: "#a36b3f" },
 ];
 
-/** The row of four menu tiles shown on the page itself for bKash Send Money, with "Send Money" selected. */
+/** The picture shown on the page itself for bKash Send Money: the menu with "Send Money" marked (the owner's own image). */
 export function BkashMenuRow({ lang }: { lang: Lang }) {
-  return (
-    <div className="grid grid-cols-4 gap-2 text-center text-[11px]">
-      {TILES.slice(0, 4).map((tl, i) => (
-        <div key={tl.en} className="flex flex-col items-center gap-1">
-          <span className="grid size-[54px] place-items-center rounded-md" style={{ border: i === 0 ? `2px solid ${RED}` : "1px solid transparent", color: tl.tint }}>
-            <tl.icon className="size-8" strokeWidth={1.6} aria-hidden />
-          </span>
-          <span className="text-neutral-700">{lang === "bn" ? tl.bn : tl.en}</span>
-        </div>
-      ))}
-    </div>
-  );
+  return <img src={bkashSendMenu} alt={lang === "bn" ? "সেন্ড মানি" : "Send Money"} className="mx-auto block h-auto w-full max-w-[420px]" />;
 }
 
 function BkashSendSteps({ lang }: { lang: Lang }) {
@@ -193,7 +118,7 @@ export const howClose = (kind: HowKind, lang: Lang) => (kind === "bkash_send" ? 
 
 export function HowToBody({ kind, lang }: { kind: HowKind; lang: Lang }) {
   if (kind === "bkash_send") return <BkashSendSteps lang={lang} />;
-  if (kind === "nagad_cash") return <NagadCashImage lang={lang} />;
-  if (kind === "rocket_cash") return <RocketCashImage />;
+  if (kind === "nagad_cash") return <Photo src={nagadCash} alt="Nagad Cash Out receipt with the transaction ID marked" />;
+  if (kind === "rocket_cash") return <Photo src={rocketCash} alt="Rocket Cash Out message with the TxnId marked" />;
   return <BkashCashImage lang={lang} />;
 }
