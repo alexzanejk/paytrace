@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { AlertTriangle, CheckCircle2, ChevronDown, Clock, Copy, Loader2, ShieldCheck, XCircle } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertTriangle, CheckCircle2, Loader2, XCircle, X } from "lucide-react";
 import { DEMO, Gone, demoSwitch, getOrder, pickProvider, submitTrx, type OrderView, type SubmitState } from "./api";
-import { clock, money, PROVIDER_COLOR, PROVIDER_NAME, t, type Lang } from "./i18n";
+import { HowToImage } from "./HowToImage";
+import { bannerColor, bdt, bnDigits, clock, headerColor, PROVIDER_NAME, t, type Lang, type Variant } from "./i18n";
 import bkashLogo from "./logos/bkash.png";
 import nagadLogo from "./logos/nagad.png";
 import rocketLogo from "./logos/rocket.png";
 
-const HEADER = "#216a4a";
 const POLL_MS = 4000;
 const LOGO: Record<string, string> = { bkash: bkashLogo, nagad: nagadLogo, rocket: rocketLogo };
+const FONT = '"Noto Sans Bengali","Noto Sans","Noto Sans TC",Roboto,system-ui,sans-serif';
 
 function readLang(): Lang {
   try {
@@ -21,9 +22,10 @@ function readLang(): Lang {
 }
 
 type Screen = "loading" | "gone" | "error" | "ready";
+type Toast = { kind: "ok" | "bad"; text: string } | null;
 
-/** The customer's website has already let them choose the method (for example "Nagad Cash Out"). This page starts at the
- *  payment step: the number to pay, then the TrxID, then the result. */
+/** The page a customer lands on after choosing the method on the website. It starts at the payment step: the number to pay,
+ *  then the TrxID, then the result. Two layouts, matching the owner's reference pages: Cash Out and Send Money. */
 export function PayPage() {
   const tracking = DEMO ? "demo" : new URLSearchParams(window.location.search).get("trackingNumber") ?? "";
   const [lang, setLang] = useState<Lang>(readLang);
@@ -33,12 +35,24 @@ export function PayPage() {
   const [now, setNow] = useState(Date.now());
   const [trx, setTrx] = useState("");
   const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState("");
   const [editing, setEditing] = useState(false);
-  const [help, setHelp] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [touched, setTouched] = useState(false); // the "how do I find the TrxID" link appears once the box is used
+  const [focused, setFocused] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [howOpen, setHowOpen] = useState(false);
+  const [toast, setToast] = useState<Toast>(null);
+  const [wallProblem, setWallProblem] = useState(false);
   const picking = useRef(false);
-  const tr = (key: string, vars?: Record<string, string>) => t(lang, key, vars);
+  const toastTimer = useRef<number | undefined>(undefined);
+
+  const variant: Variant = view?.method === "send_money" ? "send" : "cash";
+  const tr = (key: string, vars?: Record<string, string>) => t(lang, variant, key, vars);
+
+  const showToast = (kind: "ok" | "bad", text: string) => {
+    setToast({ kind, text });
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 2600);
+  };
 
   const changeLang = (l: Lang) => {
     setLang(l);
@@ -66,7 +80,6 @@ export function PayPage() {
     void refresh();
   }, [refresh]);
 
-  // Keep the order fresh until it is finished, and tick the clock.
   const finished = view !== null && view.status !== "pending";
   useEffect(() => {
     if (finished) return;
@@ -84,13 +97,13 @@ export function PayPage() {
     picking.current = true;
     void pickProvider(tracking, view.provider)
       .then((r) => {
-        if ("error" in r) setProblem("noWallet");
+        if ("error" in r) setWallProblem(true);
         else {
           setView(r);
           setFetchedAt(Date.now());
         }
       })
-      .catch(() => setProblem("failed"))
+      .catch(() => setWallProblem(true))
       .finally(() => {
         picking.current = false;
       });
@@ -109,22 +122,32 @@ export function PayPage() {
     if (view?.status === "pending" && left === 0 && !view.trx_id) void refresh();
   }, [left, view, refresh]);
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  const cleanTrx = trx.replace(/\s+/g, "");
+
+  function pressConfirm() {
+    setTouched(true);
+    if (cleanTrx.length < 6) {
+      document.getElementById("trx")?.focus();
+      return;
+    }
+    setConfirmOpen(true);
+  }
+
+  async function sendTrx() {
+    setConfirmOpen(false);
     setBusy(true);
-    setProblem("");
     try {
-      const state: SubmitState = await submitTrx(tracking, trx);
+      const state: SubmitState = await submitTrx(tracking, cleanTrx);
       if (state === "checking" || state === "paid" || state === "review") {
         setEditing(false);
         await refresh();
       } else {
-        setProblem(state === "used" ? "used" : state === "too_many" ? "tooMany" : state === "wrong_method" ? "wrongMethod" : state === "invalid" ? "invalid" : "failed");
+        showToast("bad", tr(state === "used" ? "used" : state === "too_many" ? "tooMany" : state === "wrong_method" ? "wrongMethod" : state === "invalid" ? "invalid" : "failed"));
         if (state === "expired" || state === "closed") await refresh();
       }
-    } catch (e2) {
-      if (e2 instanceof Gone) setScreen("gone");
-      else setProblem("failed");
+    } catch (e) {
+      if (e instanceof Gone) setScreen("gone");
+      else showToast("bad", tr("failed"));
     }
     setBusy(false);
   }
@@ -132,63 +155,208 @@ export function PayPage() {
   async function copy(text: string) {
     try {
       await navigator.clipboard.writeText(text);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
     } catch {
       /* the number is on screen; copying is a convenience */
     }
+    showToast("ok", "Copy Success");
   }
 
   const shop = view?.shop || "the shop";
-  const amount = view ? money(view.amount, view.currency) : "";
   const provider = view?.provider ?? "";
   const pname = PROVIDER_NAME[provider] ?? "";
-  const color = PROVIDER_COLOR[provider] ?? HEADER;
+  const color = bannerColor(provider, variant);
+  const head = view?.provider ? headerColor(provider, variant) : "#216a4a";
+  const amountText = view ? bdt(view.amount, view.currency, variant === "send") : "";
+  const redAmount = view ? (variant === "send" ? bnDigits(bdt(view.amount, view.currency, false)) : bdt(view.amount, view.currency, false)) : "";
+  const shownAmount = lang === "bn" && variant === "send" ? redAmount : bdt(view?.amount ?? 0, view?.currency ?? "BDT", false);
+  const timer = `${tr("expiresIn")}: ${clock(left)}`;
+  const dim = confirmOpen || howOpen;
+
+  const banner = (
+    <div className="flex items-center gap-4 rounded px-4 py-3 text-white" style={{ background: color, minHeight: 76 }}>
+      {LOGO[provider] ? (
+        <img src={LOGO[provider]} alt="" width={60} height={60} className="size-[60px] rounded-full bg-white" />
+      ) : (
+        <span className="grid size-[60px] place-items-center rounded-full bg-white text-2xl font-bold" style={{ color }}>
+          {pname.slice(0, 1)}
+        </span>
+      )}
+      <span className="text-xl font-bold">
+        {pname.toUpperCase()} {tr("deposit")}
+      </span>
+    </div>
+  );
+
+  const walletBox = (
+    <div className={`flex items-center justify-between px-5 ${variant === "send" ? "border-b border-neutral-500 bg-neutral-100" : "bg-neutral-100"}`} style={{ height: 56 }}>
+      <span className="text-xl tabular-nums">{view?.wallet_number}</span>
+      <button type="button" onClick={() => void copy(view?.wallet_number ?? "")} aria-label={tr("copy")} className="text-[#216a4a]">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <rect x="8" y="3" width="12" height="15" rx="2" />
+          <path d="M16 21H6a2 2 0 0 1-2-2V8" />
+          <path d="M11 8h6M11 11h6M11 14h4" />
+        </svg>
+      </button>
+    </div>
+  );
+
+  const floating = focused || cleanTrx.length > 0;
+  const trxBox = (
+    <div className="relative">
+      <label
+        htmlFor="trx"
+        className="pay-float-label pointer-events-none absolute left-4 text-neutral-500"
+        style={{ top: floating ? 6 : 16, fontSize: floating ? 12 : 18, lineHeight: 1.2 }}
+      >
+        {tr("placeholder")}
+      </label>
+      <input
+        id="trx"
+        value={trx}
+        onChange={(e) => setTrx(e.target.value)}
+        onFocus={() => {
+          setFocused(true);
+          setTouched(true);
+        }}
+        onBlur={() => setFocused(false)}
+        autoComplete="off"
+        autoCapitalize="characters"
+        spellCheck={false}
+        maxLength={60}
+        className="w-full bg-transparent px-4 text-lg outline-none"
+        style={{
+          height: 56,
+          paddingTop: floating ? 20 : 0,
+          borderRadius: 4,
+          border: variant === "cash" ? "2px solid #e0392b" : `1px solid ${focused ? "#222" : "#bbb"}`,
+        }}
+      />
+    </div>
+  );
+
+  const linkRow = touched && (
+    <button type="button" onClick={() => setHowOpen(true)} className="pay-fade block w-full py-1 text-center text-[15px] font-bold text-[#1565c0]">
+      {tr("link")}
+    </button>
+  );
+
+  const confirmBtn = (
+    <div className="flex justify-center">
+      <button
+        type="button"
+        onClick={pressConfirm}
+        disabled={busy}
+        className="rounded-[10px] border border-neutral-900 bg-white px-14 py-3 text-sm text-neutral-900 transition-colors hover:bg-neutral-200 active:bg-neutral-300 disabled:opacity-50"
+      >
+        {busy ? "…" : tr("confirm")}
+      </button>
+    </div>
+  );
+
+  const warning = (
+    <section className="space-y-1">
+      <p className="text-[15px] font-bold">{tr("warnTitle")}</p>
+      <p className="pay-warn-pulse text-center text-[11px] font-bold text-red-600">{tr("warnRed")}</p>
+      <p className="text-[11px] leading-snug text-neutral-500">{tr("warnGray", { P: variant === "send" ? pname.toUpperCase() : pname.toUpperCase() })}</p>
+    </section>
+  );
+
+  const checkingPanel = (
+    <section className="space-y-3 rounded-xl border border-neutral-200 p-4 text-center">
+      <Loader2 className="mx-auto size-8 animate-spin" style={{ color: head }} />
+      <h2 className="text-lg font-bold">{tr("checkingTitle")}</h2>
+      <p className="text-sm text-neutral-600">{tr("checkingBody")}</p>
+      <p className="text-sm">
+        {tr("yourTrx")}: <span className="font-mono font-semibold">{view?.trx_id}</span>
+      </p>
+      <button
+        type="button"
+        onClick={() => {
+          setEditing(true);
+          setTrx(view?.trx_id ?? "");
+        }}
+        className="text-sm font-semibold underline"
+        style={{ color: head }}
+      >
+        {tr("change")}
+      </button>
+    </section>
+  );
 
   return (
-    <div className="min-h-screen bg-[#eef3f0] px-3 py-4 text-[#1b1f1d] sm:py-10" style={{ fontFamily: '"Noto Sans Bengali","Noto Sans",Roboto,system-ui,sans-serif' }}>
+    <div className="min-h-screen bg-[#eceff1] sm:px-3 sm:py-8" style={{ fontFamily: FONT, color: "#222" }}>
       {DEMO && (
-        <div className="mx-auto mb-3 w-full max-w-[480px] space-y-2 rounded-lg bg-amber-100 px-3 py-2 text-center text-xs text-amber-900">
+        <div className="mx-auto mb-3 w-full max-w-[680px] space-y-2 bg-amber-100 px-3 py-2 text-center text-xs text-amber-900 sm:rounded-lg">
           <p className="font-semibold">Preview only: nothing real is created or paid. Your website chooses the method before sending the customer here.</p>
           <div className="flex flex-wrap items-center justify-center gap-2">
-            {["bkash", "nagad", "rocket"].map((p) => (
+            {(
+              [
+                ["bkash", "cash_out", "bKash Cash Out"],
+                ["nagad", "cash_out", "Nagad Cash Out"],
+                ["nagad", "send_money", "Nagad Send Money"],
+                ["rocket", "cash_out", "Rocket Cash Out"],
+              ] as const
+            ).map(([p, m, label]) => (
               <button
-                key={p}
+                key={label}
                 type="button"
                 onClick={() => {
-                  demoSwitch(p);
+                  demoSwitch(p, m);
                   setTrx("");
                   setEditing(false);
-                  setProblem("");
+                  setTouched(false);
                   void refresh();
                 }}
-                className={`rounded-md border px-3 py-1 font-semibold ${provider === p ? "border-amber-900 bg-amber-900 text-white" : "border-amber-700"}`}
+                className={`rounded-md border px-3 py-1 font-semibold ${provider === p && view?.method === m ? "border-amber-900 bg-amber-900 text-white" : "border-amber-700"}`}
               >
-                {PROVIDER_NAME[p]}
+                {label}
               </button>
             ))}
           </div>
-          <p>Try any TrxID of 6+ letters or numbers. USEDTRX1 shows the "already used" message.</p>
+          <p>Try any TrxID of 6+ letters or numbers. USEDTRX1 shows the "already used" message; FORMATBAD1 shows the red error message.</p>
         </div>
       )}
-      <main className="mx-auto w-full max-w-[480px] overflow-hidden rounded-2xl bg-white shadow-lg">
-        <header className="px-5 pb-4 pt-5 text-white" style={{ background: HEADER }}>
+
+      {dim && <div className="pay-fade fixed inset-0 z-40 bg-black/45" onClick={() => (howOpen ? setHowOpen(false) : setConfirmOpen(false))} />}
+
+      {toast && (
+        <div
+          role="status"
+          className={`pay-toast fixed right-3 top-3 z-[60] flex items-center gap-3 rounded px-4 py-2.5 text-sm text-white shadow-lg ${toast.kind === "ok" ? "bg-[#21ba45]" : "bg-[#e53935]"}`}
+        >
+          <span>{toast.text}</span>
+          <button type="button" aria-label="Close" onClick={() => setToast(null)}>
+            <X className="size-5" />
+          </button>
+        </div>
+      )}
+
+      <main className="mx-auto w-full max-w-[680px] overflow-hidden bg-white shadow-md sm:rounded-[10px]">
+        <header className="px-5 py-3 text-white" style={{ background: head, minHeight: 74 }}>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              {view && <p className="text-3xl font-bold leading-tight">{amount}</p>}
-              <p className="mt-0.5 truncate text-sm opacity-90">{view ? shop : tr("loading")}</p>
+              <p className="text-xl font-bold leading-tight">{view ? amountText : tr("loading")}</p>
+              <p className="mt-1 text-base font-bold leading-tight">{view ? tr("sub") : ""}</p>
             </div>
-            <div className="flex shrink-0 overflow-hidden rounded-md bg-white/20 text-xs font-semibold" role="group" aria-label="Language">
-              {(["en", "bn"] as Lang[]).map((l) => (
-                <button key={l} type="button" onClick={() => changeLang(l)} aria-pressed={lang === l} className={`px-3 py-1.5 ${lang === l ? "bg-white text-[#1b1f1d]" : "text-white"}`}>
-                  {l === "en" ? "EN" : "বাং"}
-                </button>
-              ))}
+            <div className="flex shrink-0 flex-col items-end gap-1.5">
+              <div className="flex items-center gap-2" aria-label={shop}>
+                <span className="rounded bg-white px-1.5 py-0.5 text-xl font-extrabold leading-none" style={{ color: head }}>
+                  PAY
+                </span>
+                <span className="text-xl font-light tracking-[0.2em]">SERVICE</span>
+              </div>
+              <div className="flex overflow-hidden rounded text-[11px] font-bold shadow" role="group" aria-label="Language">
+                {(["en", "bn"] as Lang[]).map((l) => (
+                  <button key={l} type="button" onClick={() => changeLang(l)} aria-pressed={lang === l} className={`px-3 py-1 ${lang === l ? "bg-neutral-300 text-neutral-800" : "bg-white text-black"}`}>
+                    {l === "en" ? "EN" : "বাং"}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </header>
 
-        <div className="space-y-5 p-5">
+        <div className="space-y-4 px-5 pb-8 pt-5">
           {screen === "loading" && (
             <p className="flex items-center justify-center gap-2 py-10 text-neutral-600">
               <Loader2 className="size-5 animate-spin" /> {tr("loading")}
@@ -208,7 +376,7 @@ export function PayPage() {
 
           {screen === "ready" && view && view.status === "paid" && (
             <>
-              <Notice icon="ok" title={tr("paidTitle")} body={tr("paidBody", { amount })} />
+              <Notice icon="ok" title={tr("paidTitle")} body={tr("paidBody", { amount: shownAmount })} />
               {view.return_url && (
                 <p className="text-center text-sm text-neutral-600">
                   {tr("returning", { shop })}{" "}
@@ -223,117 +391,105 @@ export function PayPage() {
           {screen === "ready" && view && view.status === "review" && <Notice icon="warn" title={tr("reviewTitle")} body={tr("reviewBody", { shop })} />}
           {screen === "ready" && view && view.status === "expired" && <Notice icon="bad" title={tr("expiredTitle")} body={tr("expiredBody", { shop })} />}
           {screen === "ready" && view && view.status === "cancelled" && <Notice icon="bad" title={tr("closedTitle")} body="" />}
-
           {screen === "ready" && view && view.status === "pending" && !view.provider && <Notice icon="bad" title={tr("notFoundTitle")} body={tr("badLink")} />}
 
           {screen === "ready" && view && view.status === "pending" && view.provider && (
             <>
-              <p className="text-sm font-semibold text-red-700">{tr("amountNote")}</p>
-              <p className="flex items-center gap-2 text-sm font-semibold" style={{ color: left < 60 ? "#b3261e" : "#9a5b00" }}>
-                <Clock className="size-4" /> {tr("expiresIn")}: <span className="tabular-nums">{clock(left)}</span>
+              <p className="text-[17px] font-bold leading-snug text-[#e0392b]">{tr("amountNote", { amount: lang === "bn" && variant === "send" ? redAmount : redAmount })}</p>
+              <p className="text-[13px] font-bold" style={{ color: left < 60 ? "#b3261e" : "#d9722b" }}>
+                {timer}
               </p>
 
-              <div className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-white" style={{ background: color }}>
-                {LOGO[provider] ? (
-                  <img src={LOGO[provider]} alt="" width={48} height={48} className="size-12 rounded-full bg-white" />
-                ) : (
-                  <span className="grid size-12 place-items-center rounded-full bg-white text-lg font-bold" style={{ color }}>
-                    {pname.slice(0, 1)}
-                  </span>
-                )}
-                <span className="text-lg font-semibold">
-                  {pname.toUpperCase()} {tr("deposit")}
-                </span>
-              </div>
+              {wallProblem && !view.wallet_number && <p className="rounded bg-amber-50 p-3 text-sm text-amber-900">{tr("noWallet")}</p>}
 
-              {problem === "noWallet" && !view.wallet_number && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{tr("noWallet")}</p>}
-
-              {view.wallet_number && (
+              {view.wallet_number && variant === "cash" && (
                 <>
-                  <section className="space-y-2">
-                    <p className="text-sm font-semibold">
+                  {banner}
+                  <div>
+                    <p className="text-xl font-bold">
                       {tr("walletNo")}
-                      <span className="text-red-600"> *</span>
+                      <span className="text-[#9c27b0]">*</span>
                     </p>
-                    <p className="text-sm text-neutral-600">{tr(view.method === "cash_out" ? "cashOutOnly" : "sendMoneyOnly", { p: pname })}</p>
-                    <div className="flex items-center justify-between rounded-lg bg-neutral-100 px-4 py-3">
-                      <span className="text-xl font-semibold tabular-nums tracking-wide">{view.wallet_number}</span>
-                      <button type="button" onClick={() => void copy(view.wallet_number ?? "")} className="flex items-center gap-1 rounded-md px-2 py-1 text-sm font-medium" style={{ color: HEADER }} aria-label={tr("copy")}>
-                        <Copy className="size-5" /> {copied ? tr("copied") : tr("copy")}
-                      </button>
-                    </div>
-                  </section>
-
-                  <section>
-                    <h2 className="mb-1 text-sm font-semibold">{tr("stepsTitle")}</h2>
-                    <ol className="list-decimal space-y-1 pl-5 text-sm text-neutral-800">
-                      <li>{tr(view.method === "cash_out" ? "stepCash1" : "stepSend1", { p: pname })}</li>
-                      <li>{tr(view.method === "cash_out" ? "stepCash2" : "stepSend2", { amount })}</li>
-                      <li>{tr("step3")}</li>
-                    </ol>
-                  </section>
-
+                    <p className="mb-1 text-[17px]">{tr("walletOnly", { P: pname.toUpperCase() })}</p>
+                    {walletBox}
+                  </div>
                   {view.trx_id && !editing ? (
-                    <section className="space-y-3 rounded-xl border border-neutral-200 p-4 text-center">
-                      <Loader2 className="mx-auto size-8 animate-spin" style={{ color: HEADER }} />
-                      <h2 className="text-lg font-bold">{tr("checkingTitle")}</h2>
-                      <p className="text-sm text-neutral-600">{tr("checkingBody")}</p>
-                      <p className="text-sm">
-                        {tr("yourTrx")}: <span className="font-mono font-semibold">{view.trx_id}</span>
-                      </p>
-                      <button type="button" onClick={() => { setEditing(true); setTrx(view.trx_id ?? ""); }} className="text-sm font-semibold underline" style={{ color: HEADER }}>
-                        {tr("change")}
-                      </button>
-                    </section>
+                    checkingPanel
                   ) : (
-                    <form onSubmit={submit} className="space-y-3">
-                      <label htmlFor="trx" className="block text-sm font-semibold">
+                    <>
+                      <p className="text-xl font-bold leading-snug">
                         {tr("trxLabel")}
-                        <span className="text-red-600"> *</span>
-                      </label>
-                      <button type="button" onClick={() => setHelp((h) => !h)} aria-expanded={help} className="flex items-center gap-1 text-sm font-medium text-blue-700">
-                        {tr("trxHint")} <ChevronDown className={`size-4 transition ${help ? "rotate-180" : ""}`} />
-                      </button>
-                      {help && <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">{tr("trxHelp", { p: pname })}</p>}
-                      <input
-                        id="trx"
-                        value={trx}
-                        onChange={(e) => setTrx(e.target.value)}
-                        autoComplete="off"
-                        autoCapitalize="characters"
-                        spellCheck={false}
-                        maxLength={60}
-                        placeholder={tr("trxPlaceholder")}
-                        className="w-full rounded-lg border-2 px-4 py-3 text-lg outline-none focus:ring-2"
-                        style={{ borderColor: problem && problem !== "failed" ? "#d93025" : "#e0443a" }}
-                      />
-                      {problem && problem !== "noWallet" && <p className="text-sm font-medium text-red-700" role="alert">{tr(problem)}</p>}
-                      <div className="flex justify-center">
-                        <button type="submit" disabled={busy || trx.trim().length < 6} className="rounded-xl border-2 border-neutral-900 px-14 py-3 text-base font-semibold text-neutral-900 disabled:opacity-40">
-                          {busy ? tr("confirming") : tr("confirm")}
-                        </button>
-                      </div>
-                    </form>
+                        <span className="text-[#e0392b]">{tr("required")}</span>
+                      </p>
+                      {linkRow}
+                      {trxBox}
+                      {confirmBtn}
+                    </>
                   )}
+                  {warning}
+                </>
+              )}
 
-                  <section className="space-y-1 rounded-lg bg-neutral-50 p-3 text-xs text-neutral-600">
-                    <p className="flex items-center gap-1.5 font-semibold text-red-700">
-                      <AlertTriangle className="size-4" /> {tr("warnTitle")}
+              {view.wallet_number && variant === "send" && (
+                <>
+                  <div>
+                    <p className="text-lg font-bold">
+                      {tr("walletNoSend")}
+                      <span className="text-[#9c27b0]">*</span>
                     </p>
-                    <p>{tr("warn1")}</p>
-                    <p>{tr("warn2")}</p>
-                    <p>{tr("wrongAmountHint")}</p>
-                  </section>
+                    <p className="mb-1 text-[16px]">{tr("walletOnly", { P: pname.toUpperCase() })}</p>
+                    {walletBox}
+                  </div>
+                  <p className="text-lg font-bold">{tr("walletProvider")}</p>
+                  {banner}
+                  {view.trx_id && !editing ? (
+                    checkingPanel
+                  ) : (
+                    <>
+                      <p className="text-lg font-bold">
+                        {tr("trxLabel")}
+                        <span className="text-[#9c27b0]">*</span>
+                        <span className="text-[#e0392b]">{tr("required")}</span>
+                      </p>
+                      {linkRow}
+                      {trxBox}
+                      {confirmBtn}
+                    </>
+                  )}
+                  {warning}
                 </>
               )}
             </>
           )}
         </div>
-
-        <footer className="flex items-center justify-center gap-1.5 border-t border-neutral-100 px-5 py-3 text-xs text-neutral-500">
-          <ShieldCheck className="size-4" /> {tr("secure")}
-        </footer>
       </main>
+
+      {howOpen && (
+        <div role="dialog" aria-modal="true" aria-label="How to complete a cash transaction?" className="pay-pop fixed left-1/2 top-1/2 z-50 max-h-[92vh] w-[min(92vw,420px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded bg-white p-5 text-center shadow-2xl">
+          <h2 className="mb-3 text-base font-bold">How to complete a cash transaction?</h2>
+          <HowToImage lang={lang} />
+          <p className="my-3 text-[11px] font-bold">Please copy and fill out this label after completing the transfer.</p>
+          <button type="button" onClick={() => setHowOpen(false)} className="rounded bg-[#0b6b45] px-6 py-2 text-sm font-bold text-white">
+            Close
+          </button>
+        </div>
+      )}
+
+      {confirmOpen && (
+        <div role="alertdialog" aria-modal="true" className="pay-pop fixed left-1/2 top-1/2 z-50 w-[min(92vw,440px)] -translate-x-1/2 -translate-y-1/2 rounded bg-white px-6 pb-6 pt-7 text-center shadow-2xl">
+          <p className="text-[17px] leading-relaxed text-neutral-700">
+            This order can only be submitted once, please confirm your Transaction ID: <span className="break-all text-[#e0392b]">{cleanTrx}</span> is correct!
+          </p>
+          <div className="mt-8 flex justify-center gap-4">
+            <button type="button" onClick={() => setConfirmOpen(false)} className="rounded-full bg-neutral-300 px-8 py-2 text-sm font-semibold text-neutral-700 shadow">
+              Cancel
+            </button>
+            <button type="button" onClick={() => void sendTrx()} className="rounded-full bg-[#0b6b45] px-8 py-2 text-sm font-semibold text-white shadow">
+              Confirm
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

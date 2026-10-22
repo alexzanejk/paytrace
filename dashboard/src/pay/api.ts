@@ -27,6 +27,7 @@ export const DEMO =
 
 const demo = {
   provider: (new URLSearchParams(window.location.search).get("provider") || "bkash") as string | null,
+  method: (new URLSearchParams(window.location.search).get("method") || "") as string,
   trx: null as string | null,
   paidAt: 0,
   endsAt: Date.now() + 15 * 60_000,
@@ -39,14 +40,17 @@ const DEMO_WALLET: Record<string, { n: string; m: "send_money" | "cash_out" }> =
   upay: { n: "01700000004", m: "send_money" },
 };
 /** Preview only: switch the pretend order to another provider and start it again. */
-export function demoSwitch(provider: string) {
+export function demoSwitch(provider: string, method: string) {
   demo.provider = provider;
+  demo.method = method;
   demo.trx = null;
   demo.paidAt = 0;
   demo.endsAt = Date.now() + 15 * 60_000;
 }
 function demoView(): OrderView {
-  const w = demo.provider ? DEMO_WALLET[demo.provider] : null;
+  const w0 = demo.provider ? DEMO_WALLET[demo.provider] : null;
+  const m = (demo.method === "send_money" || demo.method === "cash_out" ? demo.method : w0?.m) ?? null;
+  const w = w0 ? { n: w0.n.slice(0, -1) + (m === "cash_out" ? "1" : "2"), m } : null;
   const paid = demo.paidAt > 0 && Date.now() >= demo.paidAt;
   return {
     status: paid ? "paid" : Date.now() > demo.endsAt ? "expired" : "pending",
@@ -105,6 +109,7 @@ export async function submitTrx(tracking: string, trx: string): Promise<SubmitSt
     const t = trx.replace(/\s+/g, "").toUpperCase();
     if (!/^[A-Z0-9]{6,40}$/.test(t)) return "invalid";
     if (t === "USEDTRX1") return "used"; // try this one to see the "already used" message
+    if (t === "FORMATBAD1") return "invalid"; // and this one for the red error message
     demo.trx = t;
     demo.paidAt = Date.now() + 6000; // pretend the SMS arrives and the payment is confirmed 6 seconds later
     return "checking";
