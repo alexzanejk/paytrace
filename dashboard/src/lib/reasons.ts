@@ -4,6 +4,7 @@ const PLAIN: [string, string][] = [
   ["amount_mismatch", "Amount does not match the order"],
   ["phone_mismatch", "Paid from a different phone number"],
   ["order_expired_before_payment", "The order had already expired"],
+  ["wrong_phone", "Arrived on a different phone than the number the customer was shown"],
   ["unsupported_type", "This kind of message cannot credit an order"],
   ["unrecognized_type", "Could not tell what kind of payment this is"],
   ["unverified_format", "Message format not confirmed yet, held to be safe"],

@@ -64,6 +64,7 @@ const REASONS: [string, string][] = [
   ["amount_mismatch", "the amount does not match the order"],
   ["phone_mismatch", "it was paid from a different phone number"],
   ["order_expired_before_payment", "the order had already expired"],
+  ["wrong_phone", "it arrived on a different phone than the number the customer was shown"],
   ["unsupported_type", "this kind of message cannot credit an order"],
   ["unrecognized_type", "could not tell what kind of payment this is"],
   ["unverified_format", "the message format is not confirmed yet"],
