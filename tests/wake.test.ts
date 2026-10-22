@@ -1,5 +1,6 @@
 import { runWake, WAKE_AFTER_SEC, type Pusher, type WakeResult, type WakeRow, type WakeStore } from "../supabase/functions/ingest/wake.ts";
 import { makePusher, wakeMessage } from "../supabase/functions/ingest/fcm.ts";
+import { corsHeaders } from "../supabase/functions/ingest/cors.ts";
 import { cleanInfo } from "../supabase/functions/ingest/health.ts";
 
 let pass = 0, fail = 0;
@@ -132,6 +133,16 @@ check("push_ready is kept as a true/false", cleanInfo({ push_ready: true }).push
   check("wake count and time are kept", i.wake_count === 3 && i.last_wake_at === new Date(at).toISOString(), i);
   check("a nonsense wake time is dropped", cleanInfo({ last_wake_at: 5 }, now).last_wake_at === undefined && cleanInfo({ last_wake_at: "x" }, now).last_wake_at === undefined);
   check("a wake time far in the future is dropped", cleanInfo({ last_wake_at: now.getTime() + 10 * 864e5 }, now).last_wake_at === undefined);
+}
+
+// ---- the dashboard may call the function from the browser; other sites may not ----
+{
+  const DASH = "https://paytrace.example.workers.dev";
+  const ok = corsHeaders(DASH, DASH);
+  check("the dashboard's address is allowed", ok["access-control-allow-origin"] === DASH && ok["access-control-allow-headers"].includes("authorization"), ok);
+  check("another website gets no permission", Object.keys(corsHeaders("https://evil.example", DASH)).length === 0);
+  check("a request with no origin (the phones) gets nothing added", Object.keys(corsHeaders(null, DASH)).length === 0);
+  check("a look-alike address is not allowed", Object.keys(corsHeaders(DASH + ".evil.example", DASH)).length === 0);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -17,6 +17,7 @@ import { makeNotifier, problemMessage, recoveredMessage, reviewMessage, testMess
 import { runWatchdog } from "./watchdog.ts";
 import { runWake } from "./wake.ts";
 import { makePusher } from "./fcm.ts";
+import { corsHeaders } from "./cors.ts";
 
 // Supabase's runtime lets work finish after the response is sent. Absent when run elsewhere (tests).
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
@@ -169,7 +170,7 @@ async function testWake(authHeader: string, deviceId: string): Promise<Response>
   return json({ success: true, configured: true, registered: result !== "bad_token", result });
 }
 
-Deno.serve(async (req) => {
+async function handle(req: Request): Promise<Response> {
   // ---- read payload (POST json or GET query) ----
   let body: Record<string, unknown> = {};
   try {
@@ -386,4 +387,16 @@ Deno.serve(async (req) => {
     defer(notify.send(reviewMessage({ provider: d.provider, amount: d.amount, trxId: d.trxId, reason, dashboardUrl: DASHBOARD_URL })));
   }
   return json({ success: true, message: "Payment received", payment_id: inserted.id, status: matchResult });
+}
+
+// The dashboard's address is the only website allowed to call this from a browser (see cors.ts).
+const DASHBOARD_ORIGIN = new URL(DASHBOARD_URL).origin;
+
+Deno.serve(async (req) => {
+  const cors = corsHeaders(req.headers.get("origin"), DASHBOARD_ORIGIN);
+  // The browser's "may I?" question before a real request.
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+  const res = await handle(req);
+  for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
+  return res;
 });
