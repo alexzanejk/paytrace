@@ -21,7 +21,7 @@ export type SubmitState = "paid" | "checking" | "review" | "used" | "expired" | 
 
 export class Gone extends Error {}
 
-/** `/pay?demo=1` shows the whole customer page with pretend data and talks to no server, so the owner can look at it
+/** `/pay/?demo=1` shows the whole customer page with pretend data and talks to no server, so the owner can look at it
  *  (and try it: pick a wallet, enter any TrxID) before connecting a website. Nothing real is created or paid. */
 export const DEMO =
   new URLSearchParams(window.location.search).get("demo") === "1" || (window as unknown as { __PAYTRACE_DEMO__?: boolean }).__PAYTRACE_DEMO__ === true;

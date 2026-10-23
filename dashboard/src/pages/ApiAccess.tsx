@@ -20,7 +20,7 @@ interface NewKey {
   key: string;
 }
 
-const DOCS_URL = `${window.location.origin}/docs`;
+const DOCS_URL = `${window.location.origin}/docs/`;
 
 /** Websites that use PayTrace: add one, set where its results go, and send its developer the guide. */
 export function ApiAccess() {
@@ -155,12 +155,12 @@ export function ApiAccess() {
             <div className="flex flex-wrap items-center gap-2">
               <code className="min-w-0 flex-1 break-all rounded-lg border border-border bg-muted px-3 py-2 text-xs">{DOCS_URL}</code>
               <CopyButton text={DOCS_URL} label="Copy link" variant="default" />
-              <a href="/docs" target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline", size: "sm" })}>
+              <a href="/docs/" target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline", size: "sm" })}>
                 <ExternalLink className="h-4 w-4" aria-hidden /> Open
               </a>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <a href="/pay?demo=1" target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline", size: "sm" })}>
+              <a href="/pay/?demo=1" target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline", size: "sm" })}>
                 Preview the customer pay page
               </a>
               <span className="text-xs text-muted-foreground">Pretend data; nothing real is created or paid.</span>

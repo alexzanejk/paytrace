@@ -125,7 +125,7 @@ export function SiteCard({ site, onChanged, onRevoke }: { site: SiteKey; onChang
             </Select>
           </div>
           <Button size="sm" onClick={() => void saveLook()} disabled={look === null}>Save look</Button>
-          <a href={`/pay?demo=1&style=${lookValue === AUTO ? 0 : lookValue}`} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline", size: "sm" })}>Preview</a>
+          <a href={`/pay/?demo=1&style=${lookValue === AUTO ? 0 : lookValue}`} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline", size: "sm" })}>Preview</a>
           {lookNote ? <span className="text-xs text-muted-foreground">{lookNote}</span> : null}
         </div>
       </section>

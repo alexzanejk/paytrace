@@ -5,7 +5,7 @@ PayTrace tells the website when the order is **paid**. The customer pays one of 
 transaction ID (TrxID); PayTrace matches it with the SMS the phone already captured. Nothing is credited without a matching,
 unused message for exactly that amount.
 
-The integration guide for partner sites is a public page at `/docs` on the dashboard address (source: `dashboard/src/docs/`). The dashboard's **Websites** page links to it and also has a copyable plain-text brief. It is
+The integration guide for partner sites is a public page at `/docs/` on the dashboard address (source: `dashboard/src/docs/`). The dashboard's **Websites** page links to it and also has a copyable plain-text brief. It is
 generated from `dashboard/src/lib/apiDocs.ts` (`depositInstructions`), which is the reference for the exact fields.
 
 ## The flow
@@ -15,7 +15,7 @@ generated from `dashboard/src/lib/apiDocs.ts` (`depositInstructions`), which is 
    `method` and `return_url` optional). The website's own page lets the customer choose the method ("Bkash Send Money", "Nagad Cash Out"...);
    PayTrace's page starts after that choice. The wallet number is assigned at creation; with no number set up for that provider/method the
    call fails with 409 `no_wallet`. Returns `pay_url`. The same `order_id` returns the same order, so a retry is safe.
-2. Customer opens `pay_url` (`/pay?trackingNumber=...` on the dashboard's address). The page is Bangla by default with an
+2. Customer opens `pay_url` (`/pay/?trackingNumber=...` on the dashboard's address). The page is Bangla by default with an
    English toggle and starts at the payment step: provider banner with logo, the wallet number (an approved phone that has a number for
    that provider and method; online phones first, then the one handed out least recently), a countdown and the TrxID box.
 3. Customer pays the number, copies the TrxID from the SMS or receipt and pastes it. The server runs `claim_order`, which uses the
