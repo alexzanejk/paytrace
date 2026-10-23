@@ -34,22 +34,24 @@ function showLoading(messages) {
 }
 function hideLoading() { clearInterval(ldTimer); ld.hidden = true; }`;
 
-const ARROWS = `<svg class="b-icon" viewBox="0 0 48 48"><circle cx="24" cy="24" r="21" fill="none" stroke="#19b3a6" stroke-width="3"/><path d="M14 20a11 11 0 0 1 19-4M34 12v5h-5M34 28a11 11 0 0 1-19 4M14 36v-5h5" fill="none" stroke="#19b3a6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const ARROWS = `<svg class="b-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="21"/><path d="M14 20a11 11 0 0 1 19-4M34 12v5h-5M34 28a11 11 0 0 1-19 4M14 36v-5h5"/></svg>`;
 
 export const LOADERS: Loader[] = [
   {
     id: "toast",
-    name: "1. Dark box with a ring",
-    note: "A small dark box in the middle of the screen with a white spinning ring. The page behind stays visible.",
-    css: `#ld { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 99999;
-      min-width: 180px; max-width: 80vw; padding: 22px 24px; border-radius: 12px;
-      background: rgba(32, 32, 32, .92); color: #fff; text-align: center; font: 14px/1.45 system-ui, sans-serif; }
+    name: "1. Soft dark box",
+    note: "A small dark box with a thin ring, fading in over the page. The page behind stays visible. Fits any phone width.",
+    css: `#ld { --ld-accent: #8ec9ff; position: fixed; left: 50%; top: 50%; z-index: 99999; transform: translate(-50%, -50%);
+      box-sizing: border-box; width: max-content; min-width: 168px; max-width: min(300px, calc(100vw - 40px)); padding: 24px 22px 20px;
+      border-radius: 14px; background: rgba(36, 38, 42, .9); color: rgba(255, 255, 255, .92); text-align: center;
+      font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Bengali", sans-serif; animation: ld-a-in .18s ease-out both; }
 #ld[hidden] { display: none; }
-#ld p { margin: 0; }
-#ld .a-ring { display: block; width: 34px; height: 34px; margin: 0 auto 12px; border-radius: 50%;
-      border: 3px solid rgba(255, 255, 255, .25); border-top-color: #fff; animation: ld-a .8s linear infinite; }
-@keyframes ld-a { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { #ld .a-ring { animation-duration: 3s; } }`,
+#ld p { margin: 0; overflow-wrap: anywhere; }
+#ld .a-ring { display: block; box-sizing: border-box; width: 36px; height: 36px; margin: 0 auto 14px; border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, .18); border-top-color: var(--ld-accent); animation: ld-a-spin .9s linear infinite; }
+@keyframes ld-a-spin { to { transform: rotate(360deg); } }
+@keyframes ld-a-in { from { opacity: 0; transform: translate(-50%, -48%) scale(.96); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@media (prefers-reduced-motion: reduce) { #ld { animation: none; } #ld .a-ring { animation-duration: 3s; } }`,
     markup: `<i class="a-ring"></i>
 <p id="ld-text"></p>`,
     script: SIMPLE_SCRIPT,
@@ -58,16 +60,18 @@ export const LOADERS: Loader[] = [
   {
     id: "card",
     name: "2. White card on a dimmed page",
-    note: "The page dims and a white card with a teal two-arrow spinner appears in the middle.",
-    css: `#ld { position: fixed; inset: 0; z-index: 99999; display: flex; align-items: center; justify-content: center;
-      background: rgba(0, 0, 0, .45); font: 14px/1.45 system-ui, sans-serif; }
+    note: "The page dims softly and a white card with a thin teal two-arrow icon appears. Clean and familiar.",
+    css: `#ld { --ld-accent: #19b3a6; position: fixed; inset: 0; z-index: 99999; box-sizing: border-box; display: flex; align-items: center; justify-content: center;
+      padding: 20px; background: rgba(15, 23, 42, .42); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Bengali", sans-serif; animation: ld-b-fade .18s ease-out both; }
 #ld[hidden] { display: none; }
-#ld p { margin: 0; }
-#ld .b-card { width: 78vw; max-width: 320px; padding: 24px 18px; border-radius: 8px; background: #fff; color: #555;
-      text-align: center; box-shadow: 0 8px 30px rgba(0, 0, 0, .25); }
-#ld .b-icon { display: block; width: 46px; height: 46px; margin: 0 auto 14px; animation: ld-b 1.4s linear infinite; }
-@keyframes ld-b { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { #ld .b-icon { animation-duration: 4s; } }`,
+#ld p { margin: 0; overflow-wrap: anywhere; }
+#ld .b-card { box-sizing: border-box; width: 100%; max-width: 300px; padding: 26px 20px 22px; border-radius: 10px; background: #fff;
+      color: #5b6470; text-align: center; box-shadow: 0 12px 40px rgba(15, 23, 42, .22); animation: ld-b-pop .2s ease-out both; }
+#ld .b-icon { display: block; width: 44px; height: 44px; margin: 0 auto 14px; color: var(--ld-accent); animation: ld-b-spin 1.4s linear infinite; }
+@keyframes ld-b-spin { to { transform: rotate(360deg); } }
+@keyframes ld-b-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ld-b-pop { from { opacity: 0; transform: translateY(6px) scale(.97); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { #ld, #ld .b-card { animation: none; } #ld .b-icon { animation-duration: 4s; } }`,
     markup: `<div class="b-card">
   ${ARROWS}
   <p id="ld-text"></p>
@@ -76,21 +80,20 @@ export const LOADERS: Loader[] = [
     sample: "পেমেন্ট পরিষেবা প্রদানকারীর সঙ্গে সংযোগ করা হচ্ছে…",
   },
   {
-    id: "glow",
-    name: "3. Full screen with pulses",
-    note: "The whole screen turns green with rings that pulse outward. Hides the page completely.",
-    css: `#ld { position: fixed; inset: 0; z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 26px; padding: 24px; background: linear-gradient(160deg, #0b3d2e, #1b7f5c); color: #fff; text-align: center;
-      font: 15px/1.45 system-ui, sans-serif; }
+    id: "full",
+    name: "3. Clean full screen",
+    note: "A plain white screen with a thin green ring and the message. Hides the page completely, so nothing can be tapped by mistake.",
+    css: `#ld { --ld-accent: #0f5f3f; position: fixed; inset: 0; z-index: 99999; box-sizing: border-box; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 18px; padding: 24px; background: #fff; color: #3f4650; text-align: center;
+      font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Bengali", sans-serif; animation: ld-c-fade .2s ease-out both; }
 #ld[hidden] { display: none; }
-#ld p { margin: 0; }
-#ld .c-orb { position: relative; width: 64px; height: 64px; }
-#ld .c-orb i { position: absolute; inset: 0; border: 3px solid rgba(255, 255, 255, .7); border-radius: 50%; animation: ld-c 1.8s ease-out infinite; }
-#ld .c-orb i:nth-child(2) { animation-delay: .6s; }
-#ld .c-orb i:nth-child(3) { animation-delay: 1.2s; }
-@keyframes ld-c { 0% { transform: scale(.3); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { #ld .c-orb i { animation: none; opacity: .7; } }`,
-    markup: `<div class="c-orb"><i></i><i></i><i></i></div>
+#ld p { max-width: 280px; margin: 0; overflow-wrap: anywhere; }
+#ld .c-ring { box-sizing: border-box; width: 40px; height: 40px; border-radius: 50%; border: 3px solid rgba(15, 95, 63, .14);
+      border-top-color: var(--ld-accent); animation: ld-c-spin .9s linear infinite; }
+@keyframes ld-c-spin { to { transform: rotate(360deg); } }
+@keyframes ld-c-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { #ld { animation: none; } #ld .c-ring { animation-duration: 3s; } }`,
+    markup: `<i class="c-ring"></i>
 <p id="ld-text"></p>`,
     script: SIMPLE_SCRIPT,
     sample: "Submitting your deposit request…",
@@ -98,16 +101,18 @@ export const LOADERS: Loader[] = [
   {
     id: "bar",
     name: "4. Top bar with a small label",
-    note: "A thin moving bar at the top and a small label under it. The page stays visible and untouched.",
-    css: `#ld { position: fixed; left: 0; right: 0; top: 0; z-index: 99999; font: 13px/1.4 system-ui, sans-serif; }
+    note: "A thin moving bar at the top and a small pill with the message. The page stays visible and usable.",
+    css: `#ld { --ld-accent: #1f6feb; position: fixed; left: 0; right: 0; top: 0; z-index: 99999; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Bengali", sans-serif; }
 #ld[hidden] { display: none; }
-#ld p { margin: 0; }
-#ld .d-bar { height: 3px; background: rgba(0, 0, 0, .08); overflow: hidden; }
-#ld .d-bar i { display: block; width: 40%; height: 100%; background: #e11d2e; animation: ld-d 1.1s ease-in-out infinite; }
-#ld .d-pill { width: max-content; max-width: 86vw; margin: 10px auto 0; padding: 8px 14px; border-radius: 999px;
-      background: #fff; color: #333; box-shadow: 0 4px 14px rgba(0, 0, 0, .18); }
-@keyframes ld-d { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
-@media (prefers-reduced-motion: reduce) { #ld .d-bar i { animation: none; width: 100%; opacity: .6; } }`,
+#ld p { margin: 0; overflow-wrap: anywhere; }
+#ld .d-bar { height: 2px; background: rgba(31, 111, 235, .15); overflow: hidden; }
+#ld .d-bar i { display: block; width: 35%; height: 100%; border-radius: 2px; background: var(--ld-accent); animation: ld-d 1.1s ease-in-out infinite; }
+#ld .d-pill { box-sizing: border-box; width: max-content; max-width: calc(100vw - 32px); margin: 12px auto 0; padding: 8px 16px; border-radius: 999px;
+      background: #fff; color: #3f4650; font-size: 13px; box-shadow: 0 2px 12px rgba(15, 23, 42, .16), 0 0 0 1px rgba(15, 23, 42, .06);
+      animation: ld-d-in .2s ease-out both; }
+@keyframes ld-d { 0% { transform: translateX(-100%); } 100% { transform: translateX(290%); } }
+@keyframes ld-d-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { #ld .d-bar i { animation: none; width: 100%; opacity: .6; } #ld .d-pill { animation: none; } }`,
     markup: `<div class="d-bar"><i></i></div>
 <div class="d-pill"><p id="ld-text"></p></div>`,
     script: SIMPLE_SCRIPT,
@@ -116,21 +121,24 @@ export const LOADERS: Loader[] = [
   {
     id: "sheet",
     name: "5. Bottom sheet with dots",
-    note: "A white sheet slides up from the bottom with three bouncing dots. Feels like a phone app.",
-    css: `#ld { position: fixed; inset: 0; z-index: 99999; display: flex; align-items: flex-end; background: rgba(0, 0, 0, .35);
-      font: 14px/1.45 system-ui, sans-serif; }
+    note: "A white sheet slides up from the bottom with three soft dots. Feels like a phone app and respects the phone's bottom edge.",
+    css: `#ld { --ld-accent: #2563eb; position: fixed; inset: 0; z-index: 99999; display: flex; align-items: flex-end; background: rgba(15, 23, 42, .38);
+      font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Bengali", sans-serif; animation: ld-e-fade .2s ease-out both; }
 #ld[hidden] { display: none; }
-#ld p { margin: 0; }
-#ld .e-sheet { width: 100%; padding: 26px 20px 34px; border-radius: 18px 18px 0 0; background: #fff; color: #333;
-      text-align: center; animation: ld-e-up .25s ease-out; }
+#ld p { margin: 0; overflow-wrap: anywhere; }
+#ld .e-sheet { box-sizing: border-box; width: 100%; padding: 12px 20px calc(28px + env(safe-area-inset-bottom, 0px)); border-radius: 16px 16px 0 0;
+      background: #fff; color: #3f4650; text-align: center; animation: ld-e-up .26s cubic-bezier(.2, .8, .2, 1) both; }
+#ld .e-grip { width: 36px; height: 4px; margin: 0 auto 20px; border-radius: 2px; background: #d5d9e0; }
 #ld .e-dots { display: flex; justify-content: center; gap: 8px; margin-bottom: 14px; }
-#ld .e-dots i { width: 10px; height: 10px; border-radius: 50%; background: #2563eb; animation: ld-e 1s ease-in-out infinite; }
+#ld .e-dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--ld-accent); animation: ld-e 1s ease-in-out infinite; }
 #ld .e-dots i:nth-child(2) { animation-delay: .15s; }
 #ld .e-dots i:nth-child(3) { animation-delay: .3s; }
-@keyframes ld-e { 0%, 80%, 100% { transform: scale(.6); opacity: .5; } 40% { transform: scale(1); opacity: 1; } }
+@keyframes ld-e { 0%, 80%, 100% { transform: scale(.6); opacity: .45; } 40% { transform: scale(1); opacity: 1; } }
 @keyframes ld-e-up { from { transform: translateY(100%); } to { transform: none; } }
-@media (prefers-reduced-motion: reduce) { #ld .e-dots i, #ld .e-sheet { animation: none; } }`,
+@keyframes ld-e-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { #ld, #ld .e-sheet, #ld .e-dots i { animation: none; } }`,
     markup: `<div class="e-sheet">
+  <div class="e-grip"></div>
   <div class="e-dots"><i></i><i></i><i></i></div>
   <p id="ld-text"></p>
 </div>`,
@@ -139,21 +147,23 @@ export const LOADERS: Loader[] = [
   },
   {
     id: "steps",
-    name: "6. Card with changing messages and a progress bar",
-    note: "A white card whose message changes while the customer waits (for example 'Submitting', then 'Connecting', then 'Almost ready') with a slowly filling bar. Best when the wait can be a few seconds.",
-    css: `#ld { position: fixed; inset: 0; z-index: 99999; display: flex; align-items: center; justify-content: center;
-      background: rgba(0, 0, 0, .45); font: 14px/1.45 system-ui, sans-serif; }
+    name: "6. Card with changing messages",
+    note: "A white card whose message changes while the customer waits (for example 'Submitting', 'Connecting', 'Almost ready') with a thin progress line. Best when the wait can last a few seconds.",
+    css: `#ld { --ld-accent: #16a34a; position: fixed; inset: 0; z-index: 99999; box-sizing: border-box; display: flex; align-items: center; justify-content: center;
+      padding: 20px; background: rgba(15, 23, 42, .42); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Bengali", sans-serif; animation: ld-f-fade .18s ease-out both; }
 #ld[hidden] { display: none; }
-#ld p { margin: 0; }
-#ld .f-card { width: 78vw; max-width: 320px; padding: 24px 18px 20px; border-radius: 10px; background: #fff; color: #444;
-      text-align: center; box-shadow: 0 8px 30px rgba(0, 0, 0, .25); }
-#ld .f-ring { display: block; width: 30px; height: 30px; margin: 0 auto 14px; border-radius: 50%;
-      border: 3px solid #d1fae5; border-top-color: #16a34a; animation: ld-f-spin .9s linear infinite; }
-#ld .f-bar { height: 4px; margin-top: 16px; border-radius: 2px; background: #e5e7eb; overflow: hidden; }
-#ld .f-bar i { display: block; height: 100%; width: 0; background: #16a34a; animation: ld-f 6s ease-out forwards; }
+#ld p { margin: 0; overflow-wrap: anywhere; }
+#ld .f-card { box-sizing: border-box; width: 100%; max-width: 300px; padding: 24px 20px 20px; border-radius: 10px; background: #fff; color: #5b6470;
+      text-align: center; box-shadow: 0 12px 40px rgba(15, 23, 42, .22); animation: ld-f-pop .2s ease-out both; }
+#ld .f-ring { display: block; box-sizing: border-box; width: 30px; height: 30px; margin: 0 auto 14px; border-radius: 50%;
+      border: 2px solid rgba(22, 163, 74, .16); border-top-color: var(--ld-accent); animation: ld-f-spin .9s linear infinite; }
+#ld .f-bar { height: 3px; margin-top: 18px; border-radius: 2px; background: #e8ebef; overflow: hidden; }
+#ld .f-bar i { display: block; width: 0; height: 100%; background: var(--ld-accent); animation: ld-f 6s ease-out forwards; }
 @keyframes ld-f-spin { to { transform: rotate(360deg); } }
 @keyframes ld-f { to { width: 92%; } }
-@media (prefers-reduced-motion: reduce) { #ld .f-ring { animation-duration: 3s; } }`,
+@keyframes ld-f-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ld-f-pop { from { opacity: 0; transform: translateY(6px) scale(.97); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { #ld, #ld .f-card { animation: none; } #ld .f-ring { animation-duration: 3s; } }`,
     markup: `<div class="f-card">
   <i class="f-ring"></i>
   <p id="ld-text"></p>

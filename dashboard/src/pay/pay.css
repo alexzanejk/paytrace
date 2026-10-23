@@ -60,3 +60,11 @@
 html[data-framed] .min-h-screen {
   min-height: 0 !important;
 }
+
+/* The personal bKash Send Money page also holds the bKash menu picture, so on phones it is
+   scaled down a little so the whole page still fits one screen. */
+@media (max-width: 639px) {
+  main[data-variant="bsend"] {
+    zoom: 0.88;
+  }
+}

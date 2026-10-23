@@ -67,7 +67,7 @@ const TILES: { icon: LucideIcon; bn: string; en: string; tint: string }[] = [
 
 /** The picture shown on the page itself for bKash Send Money: the menu with "Send Money" marked (the owner's own image). */
 export function BkashMenuRow({ lang }: { lang: Lang }) {
-  return <img src={bkashSendMenu} alt={lang === "bn" ? "সেন্ড মানি" : "Send Money"} className="mx-auto block h-auto w-full max-w-[420px]" />;
+  return <img src={bkashSendMenu} alt={lang === "bn" ? "সেন্ড মানি" : "Send Money"} className="mx-auto block h-auto w-full max-w-[290px]" />;
 }
 
 function BkashSendSteps({ lang }: { lang: Lang }) {
