@@ -204,19 +204,23 @@ and Send Money messages earn commission, not other message types.
 
 ## Step 9: Jobs for agents (the "কাজ করুন এখনই" box)
 
-When an agent's balance gets high, you can give them a job: what to do, and the wallet address to do it with. You write it once.
+An **agent** is one wallet on a phone: its bKash, its Nagad, its Rocket or its Upay. When an agent's own balance gets high, that agent gets a
+job on the phone: what to do, how urgent it is, and the wallet address to do it with.
 
-1. **Jobs tab.** Switch **Jobs are on**, set the amount (default 10,000 Tk), and write what the agent should do. You can write
-   `{balance}` and `{provider}`; each agent sees their own balance and provider there.
-2. Type the **wallet address** for each provider (bKash, Nagad, Rocket, Upay). A provider left empty gets no job. Press **Save job**.
-   The preview on the right shows what the agent will see.
-3. On the agent's phone (Home tab) a red box appears within about a minute of the balance reaching your amount: **কাজ করুন এখনই**,
-   then your instruction in a box, then the wallet address with a **Copy** button, and a **Done** button. The Home icon shows a
-   badge with the number of jobs.
-4. The agent does the work outside the app (PayTrace never moves money) and taps **Done**. The job then stays hidden until a newer
-   balance message arrives, and comes back only if that balance is still at or above your amount. **Jobs tab** lists the jobs waiting
-   right now and the ones marked done.
+1. **Jobs tab → The default job.** Switch **Jobs are on**, set the amount (default 10,000 Tk), choose **How urgent** (Normal, Urgent or
+   Critical), write what the agent should do, and paste a **wallet address** for each wallet type. In your text you can write `{agent}`,
+   `{balance}` and `{provider}`; each agent sees their own name, balance and wallet type there. The preview shows what they will see.
+2. **Agents** (further down the same page): one card per agent. Open **This agent's job** to give that one agent its own description,
+   urgency or wallet address, or a name (for example "Karim") that appears on the phone. Anything left empty uses the default job.
+   Switch an agent off to give it no job at all.
+3. On the phone (Home tab) each agent that has reached your amount gets its own card, most urgent first: **কাজ করুন এখনই**, the agent's name and
+   balance, an urgency label (red = Critical, orange = Urgent, calm = Normal), your description in a box, the wallet address with a **Copy**
+   button, and **Done**. It shows within about a minute while the app is open. The Home icon shows how many jobs are waiting.
+4. The agent does the work outside the app (PayTrace never moves money) and taps **Done**. The job then stays hidden until a newer balance
+   message arrives for that wallet, and comes back only if that balance is still at or above your amount. The page also lists the jobs
+   showing right now and the ones marked done.
 
-The balance is the one printed in the phone's newest payment message. If an agent sends money without any new message arriving, the
-balance does not change by itself, which is why Done exists. The phone needs the newest app build. The job only shows while the app
-can reach the internet; the app does not yet ring or notify when a job appears.
+The balance is the one printed in that wallet's newest payment message. If an agent sends money without any new message arriving, the
+balance does not change by itself, which is why Done exists. The phone needs the newest app build. Two agents using the same wallet type on
+the same phone share one balance, because the messages do not say which account they belong to. The app does not yet ring or notify when
+a job appears while it is closed.

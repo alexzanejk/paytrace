@@ -4,17 +4,23 @@ import { must, sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { useQuery } from "@/hooks/useQuery";
 import { useDevices } from "@/hooks/useDevices";
-import { checkJobForm, cleanWallets, DEFAULT_THRESHOLD, fillTemplate, JOB_PROVIDERS, MAX_INSTRUCTION, parseThreshold, type JobProvider, type JobSettings } from "@/lib/jobs";
+import {
+  agentStatus, checkAgentForm, checkJobForm, cleanWallets, DEFAULT_THRESHOLD, fillTemplate, JOB_PROVIDERS, MAX_INSTRUCTION, parseThreshold,
+  URGENCIES, URGENCY_LABEL, type AgentForm, type JobProvider, type JobSettings, type Urgency,
+} from "@/lib/jobs";
 import { PROVIDER_LABEL } from "@/lib/types";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { DeviceChip } from "@/components/DeviceChip";
+import { Disclosure } from "@/components/Disclosure";
 import { ProviderChip } from "@/components/ProviderChip";
 import { EmptyRow } from "@/components/Empty";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -25,6 +31,8 @@ interface OpenJob {
   balance: number;
   balance_at: string;
   wallet: string | null;
+  urgency: Urgency;
+  agent_name: string;
 }
 interface Done {
   id: string;
@@ -33,33 +41,65 @@ interface Done {
   balance: number | null;
   done_at: string;
 }
+interface AgentRow {
+  device_id: string;
+  provider: string;
+  agent_name: string | null;
+  enabled: boolean;
+  instruction: string | null;
+  urgency: Urgency | null;
+  wallet: string | null;
+}
+interface Balance {
+  device_id: string;
+  provider: string;
+  balance: number;
+  at: string;
+}
+
+const URGENCY_TONE = { normal: "idle", urgent: "warn", critical: "bad" } as const;
 
 export function Jobs() {
   const devices = useDevices();
   const { data, error, loading, refresh } = useQuery(
     async () => {
       const row = must(await sb.from("job_settings").select("*").maybeSingle()) as {
-        enabled: boolean; threshold: number | string; instruction: string; wallets: Partial<Record<JobProvider, string>> | null;
+        enabled: boolean; threshold: number | string; instruction: string; wallets: Partial<Record<JobProvider, string>> | null; urgency: Urgency | null;
       } | null;
       const open = must(await sb.from("device_open_jobs").select("*").order("balance", { ascending: false })) as OpenJob[];
       const done = must(await sb.from("job_completions").select("*").order("done_at", { ascending: false }).limit(20)) as Done[];
+      const agents = must(await sb.from("agent_jobs").select("*")) as AgentRow[];
+      const balances = must(await sb.from("device_balances").select("*")) as Balance[];
+      const wallets = must(await sb.from("device_wallets").select("device_id,provider")) as { device_id: string; provider: string }[];
       const settings: JobSettings = {
         enabled: !!row?.enabled,
         threshold: Number(row?.threshold ?? DEFAULT_THRESHOLD),
         instruction: row?.instruction ?? "",
         wallets: row?.wallets ?? {},
+        urgency: row?.urgency ?? "normal",
       };
-      return { settings, open, done };
+      return { settings, open, done, agents, balances, wallets };
     },
     [],
     { refreshMs: 20000 },
+  );
+
+  // An agent is one wallet on one phone: every wallet that has a balance, a deposit number or its own job.
+  const approved = devices.list.filter((d) => d.status === "approved");
+  const agents = approved.flatMap((d) =>
+    JOB_PROVIDERS.filter(
+      (p) =>
+        (data?.balances ?? []).some((b) => b.device_id === d.id && b.provider === p) ||
+        (data?.wallets ?? []).some((w) => w.device_id === d.id && w.provider === p) ||
+        (data?.agents ?? []).some((a) => a.device_id === d.id && a.provider === p),
+    ).map((p) => ({ device: d, provider: p })),
   );
 
   return (
     <Screen loading={loading || devices.loading} error={error ?? devices.error} hasData={!!data}>
       <PageHeader
         title="Jobs"
-        description="Write the work once. When a phone's balance for a provider reaches the amount below, that phone's app shows it as “কাজ করুন এখনই” with the wallet address. The agent taps Done when finished."
+        description="An agent is one wallet on a phone (its bKash, Nagad, Rocket or Upay). When an agent's own balance reaches the amount, the phone shows that agent's job: “কাজ করুন এখনই”, what to do, how urgent, and the wallet address. Write one default job, then change it for any agent."
       />
       {data ? (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -68,12 +108,40 @@ export function Jobs() {
         </div>
       ) : null}
 
-      <h3 className="mb-2 mt-8 text-base font-semibold">Jobs waiting right now</h3>
+      <h3 className="mb-1 mt-8 text-base font-semibold">Agents</h3>
+      <p className="mb-3 text-sm text-muted-foreground">Each card is one agent. Leave a field empty to use the default job above.</p>
+      {agents.length === 0 ? (
+        <Card className="p-6 text-center text-sm text-muted-foreground">No agent yet. An agent appears here once its phone has sent a payment message with a balance.</Card>
+      ) : (
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-2">
+          {agents.map(({ device, provider }) => {
+            const row = (data?.agents ?? []).find((a) => a.device_id === device.id && a.provider === provider);
+            const bal = (data?.balances ?? []).find((b) => b.device_id === device.id && b.provider === provider);
+            const showing = (data?.open ?? []).find((j) => j.device_id === device.id && j.provider === provider);
+            return (
+              <AgentCard
+                key={`${device.id}-${provider}-${row?.agent_name ?? ""}-${row?.urgency ?? ""}-${row?.wallet ?? ""}-${row?.instruction ?? ""}-${row?.enabled}`}
+                deviceId={device.id}
+                phoneName={devices.nameOf(device.id)}
+                provider={provider}
+                row={row}
+                balance={bal ? Number(bal.balance) : null}
+                balanceAt={bal?.at ?? null}
+                showing={!!showing}
+                settings={data!.settings}
+                onSaved={refresh}
+              />
+            );
+          })}
+        </div>
+      )}
+
+      <h3 className="mb-2 mt-8 text-base font-semibold">Jobs showing right now</h3>
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Phone</TableHead>
-            <TableHead>Provider</TableHead>
+            <TableHead>Agent</TableHead>
+            <TableHead className="hidden sm:table-cell">Urgency</TableHead>
             <TableHead className="text-right">Balance</TableHead>
             <TableHead className="hidden sm:table-cell">Balance as of</TableHead>
             <TableHead className="hidden sm:table-cell">Wallet</TableHead>
@@ -81,12 +149,18 @@ export function Jobs() {
         </TableHeader>
         <TableBody>
           {(data?.open ?? []).length === 0 ? (
-            <EmptyRow cols={5} text="No phone has a job right now." />
+            <EmptyRow cols={5} text="No agent has a job right now." />
           ) : (
             data!.open.map((j) => (
               <TableRow key={`${j.device_id}-${j.provider}`}>
-                <TableCell className="max-w-48"><DeviceChip id={j.device_id} name={devices.nameOf(j.device_id)} /></TableCell>
-                <TableCell><ProviderChip provider={j.provider} /></TableCell>
+                <TableCell className="max-w-56">
+                  <span className="font-medium">{j.agent_name}</span>
+                  <span className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                    <ProviderChip provider={j.provider} />
+                    <Badge tone={URGENCY_TONE[j.urgency]} className="sm:hidden">{URGENCY_LABEL[j.urgency]}</Badge>
+                  </span>
+                </TableCell>
+                <TableCell className="hidden sm:table-cell"><Badge tone={URGENCY_TONE[j.urgency]}>{URGENCY_LABEL[j.urgency]}</Badge></TableCell>
                 <TableCell className="text-right tabular">{tk(j.balance)}</TableCell>
                 <TableCell className="hidden sm:table-cell">{when(j.balance_at)}</TableCell>
                 <TableCell className="hidden font-mono text-xs sm:table-cell">{j.wallet ?? "–"}</TableCell>
@@ -96,7 +170,7 @@ export function Jobs() {
         </TableBody>
       </Table>
       <p className="mt-2 text-xs text-muted-foreground">
-        A phone's balance is the one printed in its newest payment message. After an agent taps Done, the job stays hidden until a newer
+        An agent's balance is the one printed in its wallet's newest payment message. After the agent taps Done, the job stays hidden until a newer
         balance message arrives, and comes back only if that balance is still at or above the amount.
       </p>
 
@@ -105,23 +179,21 @@ export function Jobs() {
         <TableHeader>
           <TableRow>
             <TableHead>When (BD)</TableHead>
-            <TableHead>Phone</TableHead>
-            <TableHead className="hidden sm:table-cell">Provider</TableHead>
+            <TableHead>Agent</TableHead>
             <TableHead className="text-right">Balance then</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {(data?.done ?? []).length === 0 ? (
-            <EmptyRow cols={4} text="Nothing has been marked done yet." />
+            <EmptyRow cols={3} text="Nothing has been marked done yet." />
           ) : (
             data!.done.map((d) => (
               <TableRow key={d.id}>
                 <TableCell>{when(d.done_at)}</TableCell>
-                <TableCell className="max-w-48">
+                <TableCell className="max-w-56">
                   <DeviceChip id={d.device_id} name={devices.nameOf(d.device_id)} />
-                  <ProviderChip provider={d.provider} className="mt-0.5 flex text-xs sm:hidden" />
+                  <ProviderChip provider={d.provider} className="mt-0.5 flex text-xs" />
                 </TableCell>
-                <TableCell className="hidden sm:table-cell"><ProviderChip provider={d.provider} /></TableCell>
                 <TableCell className="text-right tabular">{tk(d.balance)}</TableCell>
               </TableRow>
             ))
@@ -132,10 +204,23 @@ export function Jobs() {
   );
 }
 
+function UrgencySelect({ value, onChange, withDefault, defaultLabel }: { value: string; onChange: (v: string) => void; withDefault?: boolean; defaultLabel?: string }) {
+  return (
+    <Select value={value || "default"} onValueChange={(v) => onChange(v === "default" ? "" : v)}>
+      <SelectTrigger aria-label="Urgency"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        {withDefault ? <SelectItem value="default">{defaultLabel ?? "Default"}</SelectItem> : null}
+        {URGENCIES.map((u) => <SelectItem key={u} value={u}>{URGENCY_LABEL[u]}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
+}
+
 function JobForm({ initial, onSaved }: { initial: JobSettings; onSaved: () => void }) {
   const [enabled, setEnabled] = useState(initial.enabled);
   const [threshold, setThreshold] = useState(String(initial.threshold));
   const [instruction, setInstruction] = useState(initial.instruction);
+  const [urgency, setUrgency] = useState<Urgency>(initial.urgency);
   const [wallets, setWallets] = useState<Partial<Record<JobProvider, string>>>(initial.wallets);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
@@ -153,17 +238,18 @@ function JobForm({ initial, onSaved }: { initial: JobSettings; onSaved: () => vo
       p_threshold: parseThreshold(threshold),
       p_instruction: instruction.trim(),
       p_wallets: cleanWallets(wallets),
+      p_urgency: urgency,
     });
     setBusy(false);
     if (error) return setProblem(error.message);
-    setNote(enabled ? "Saved. Phones at or above the amount will see the job within a minute." : "Saved. Jobs are off.");
+    setNote(enabled ? "Saved. Agents at or above the amount will see the job within a minute." : "Saved. Jobs are off.");
     onSaved();
   }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><Briefcase className="h-4 w-4" aria-hidden /> The job</CardTitle>
+        <CardTitle className="flex items-center gap-2"><Briefcase className="h-4 w-4" aria-hidden /> The default job</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={save} className="grid gap-5">
@@ -175,9 +261,15 @@ function JobForm({ initial, onSaved }: { initial: JobSettings; onSaved: () => vo
             <Switch checked={enabled} onCheckedChange={setEnabled} aria-label="Jobs on or off" />
           </div>
 
-          <div className="grid gap-1.5 sm:max-w-xs">
-            <Label htmlFor="job-amount">Show the job when the balance reaches (Tk)</Label>
-            <Input id="job-amount" inputMode="decimal" value={threshold} onChange={(e) => setThreshold(e.target.value)} />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="job-amount">Show the job when an agent's balance reaches (Tk)</Label>
+              <Input id="job-amount" inputMode="decimal" value={threshold} onChange={(e) => setThreshold(e.target.value)} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>How urgent</Label>
+              <UrgencySelect value={urgency} onChange={(v) => setUrgency(v as Urgency)} />
+            </div>
           </div>
 
           <div className="grid gap-1.5">
@@ -190,14 +282,14 @@ function JobForm({ initial, onSaved }: { initial: JobSettings; onSaved: () => vo
               placeholder="e.g. Send the money above Tk 1,000 to the wallet below now, then tap Done."
             />
             <p className="text-xs text-muted-foreground">
-              You can write <code>{"{balance}"}</code> and <code>{"{provider}"}</code>; each agent sees their own balance and provider there.
+              You can write <code>{"{agent}"}</code>, <code>{"{balance}"}</code> and <code>{"{provider}"}</code>; each agent sees their own name, balance and wallet type there.
               {" "}{instruction.length}/{MAX_INSTRUCTION}
             </p>
           </div>
 
           <fieldset className="grid gap-2">
-            <legend className="mb-1 text-sm font-medium">Wallet address for the work</legend>
-            <p className="text-xs text-muted-foreground">One per provider. A provider left empty gets no job.</p>
+            <legend className="mb-1 text-sm font-medium">Wallet address to send to (the default for each wallet type)</legend>
+            <p className="text-xs text-muted-foreground">Paste it here, or paste a different one inside a single agent's card below. A wallet type left empty gets no job unless the agent has its own address.</p>
             {JOB_PROVIDERS.map((p) => (
               <div key={p} className="grid grid-cols-[6rem_minmax(0,1fr)] items-center gap-3">
                 <ProviderChip provider={p} />
@@ -213,7 +305,7 @@ function JobForm({ initial, onSaved }: { initial: JobSettings; onSaved: () => vo
           </fieldset>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save job"}</Button>
+            <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save default job"}</Button>
             {note ? <span className="text-sm text-muted-foreground">{note}</span> : null}
           </div>
           {problem ? <p role="alert" className="text-sm text-destructive">{problem}</p> : null}
@@ -223,19 +315,148 @@ function JobForm({ initial, onSaved }: { initial: JobSettings; onSaved: () => vo
   );
 }
 
+/** One agent: where it stands, and (folded away) its own description, urgency and wallet address. */
+function AgentCard({
+  deviceId, phoneName, provider, row, balance, balanceAt, showing, settings, onSaved,
+}: {
+  deviceId: string; phoneName: string; provider: JobProvider; row: AgentRow | undefined; balance: number | null; balanceAt: string | null;
+  showing: boolean; settings: JobSettings; onSaved: () => void;
+}) {
+  const [form, setForm] = useState<AgentForm>({
+    name: row?.agent_name ?? "", instruction: row?.instruction ?? "", urgency: row?.urgency ?? "", wallet: row?.wallet ?? "",
+  });
+  const [on, setOn] = useState(row?.enabled ?? true);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const [problem, setProblem] = useState("");
+  const own = !!(row && (row.instruction || row.urgency || row.wallet));
+
+  async function save(next: { form: AgentForm; on: boolean }) {
+    setNote("");
+    const bad = checkAgentForm(next.form);
+    if (bad) return setProblem(bad);
+    setProblem("");
+    setBusy(true);
+    const { error } = await sb.rpc("set_agent_job", {
+      p_device: deviceId,
+      p_provider: provider,
+      p_agent_name: next.form.name.trim(),
+      p_enabled: next.on,
+      p_instruction: next.form.instruction.trim(),
+      p_urgency: next.form.urgency,
+      p_wallet: next.form.wallet.trim(),
+    });
+    setBusy(false);
+    if (error) return setProblem(error.message);
+    setNote("Saved.");
+    onSaved();
+  }
+
+  const status = agentStatus({
+    jobsOn: settings.enabled, agentOn: on, balance, threshold: settings.threshold,
+    hasWallet: !!(form.wallet.trim() || settings.wallets[provider]), showing,
+  });
+  const tone = showing ? "warn" : status === "Below the amount" ? "ok" : "idle";
+
+  return (
+    <Card className="flex min-w-0 flex-col gap-3 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h4 className="flex flex-wrap items-center gap-x-2 text-base font-semibold">
+            {form.name.trim() || phoneName}
+            <ProviderChip provider={provider} className="text-sm font-normal" />
+          </h4>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Phone: {phoneName} · balance {balance === null ? "–" : tk(balance)}{balanceAt ? ` (${when(balanceAt)})` : ""}
+          </p>
+        </div>
+        <Badge tone={tone} className="shrink-0">{status}</Badge>
+      </div>
+
+      <Disclosure icon={Briefcase} title="This agent's job" summary={own ? "Own job" : "Using the default job"}>
+        <div className="grid gap-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium">Jobs for this agent are {on ? "on" : "off"}</p>
+              <p className="text-xs text-muted-foreground">Switch off to give this agent no job at all.</p>
+            </div>
+            <Switch checked={on} onCheckedChange={setOn} aria-label={`Jobs on for ${form.name.trim() || phoneName} ${PROVIDER_LABEL[provider]}`} />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor={`an-${deviceId}-${provider}`}>Agent name (shown on the phone)</Label>
+            <Input id={`an-${deviceId}-${provider}`} value={form.name} maxLength={40} placeholder={phoneName} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor={`ai-${deviceId}-${provider}`}>What should this agent do?</Label>
+            <Textarea
+              id={`ai-${deviceId}-${provider}`}
+              value={form.instruction}
+              maxLength={MAX_INSTRUCTION}
+              placeholder={settings.instruction || "Uses the default job's text"}
+              onChange={(e) => setForm((f) => ({ ...f, instruction: e.target.value }))}
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-1.5">
+              <Label>How urgent</Label>
+              <UrgencySelect value={form.urgency} withDefault defaultLabel={`Default (${URGENCY_LABEL[settings.urgency]})`} onChange={(v) => setForm((f) => ({ ...f, urgency: v as "" | Urgency }))} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor={`aw-${deviceId}-${provider}`}>Wallet address</Label>
+              <Input
+                id={`aw-${deviceId}-${provider}`}
+                inputMode="numeric"
+                value={form.wallet}
+                placeholder={settings.wallets[provider] || "Paste the wallet address"}
+                onChange={(e) => setForm((f) => ({ ...f, wallet: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" disabled={busy} onClick={() => void save({ form, on })}>{busy ? "Saving…" : "Save this agent"}</Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy || !own}
+              onClick={() => {
+                const cleared: AgentForm = { name: form.name, instruction: "", urgency: "", wallet: "" };
+                setForm(cleared);
+                void save({ form: cleared, on });
+              }}
+            >
+              Use the default job
+            </Button>
+            {note ? <span className="text-xs text-muted-foreground">{note}</span> : null}
+          </div>
+          {problem ? <p role="alert" className="text-xs text-destructive">{problem}</p> : null}
+        </div>
+      </Disclosure>
+    </Card>
+  );
+}
+
 /** A look at what the agent sees, with sample numbers. */
 function Preview({ settings }: { settings: JobSettings }) {
   const first = JOB_PROVIDERS.find((p) => (settings.wallets[p] ?? "") !== "") ?? "bkash";
   const sample = Math.max(settings.threshold, DEFAULT_THRESHOLD) + 2000;
   const text = settings.instruction || "Your instruction appears here.";
+  const tone =
+    settings.urgency === "critical"
+      ? "border-status-bad/40 bg-status-bad-bg text-status-bad"
+      : settings.urgency === "urgent"
+        ? "border-status-warn/40 bg-status-warn-bg text-status-warn"
+        : "border-border bg-muted text-foreground";
   return (
     <div className="xl:sticky xl:top-4 xl:self-start">
       <p className="mb-2 text-sm font-medium">How it looks on the phone</p>
       <div className="rounded-3xl border border-border bg-muted/40 p-3">
-        <div className="rounded-2xl border border-status-warn/40 bg-status-warn-bg p-4 text-status-warn">
-          <p className="text-xl font-bold">কাজ করুন এখনই</p>
-          <p className="mt-0.5 text-xs">{PROVIDER_LABEL[first]} balance {tk(sample)}</p>
-          <div className="mt-3 rounded-xl bg-card p-3 text-sm text-card-foreground">{fillTemplate(text, first, sample)}</div>
+        <div className={`rounded-2xl border p-4 ${tone}`}>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xl font-bold">কাজ করুন এখনই</p>
+            <Badge tone={URGENCY_TONE[settings.urgency]}>{URGENCY_LABEL[settings.urgency]}</Badge>
+          </div>
+          <p className="mt-0.5 text-xs">Karim · {PROVIDER_LABEL[first]} balance {tk(sample)}</p>
+          <div className="mt-3 rounded-xl bg-card p-3 text-sm text-card-foreground">{fillTemplate(text, first, sample, "Karim")}</div>
           <p className="mt-3 text-xs font-medium">Wallet address</p>
           <div className="mt-1 flex items-center justify-between gap-2 rounded-xl bg-card p-3 text-card-foreground">
             <span className="font-mono text-base tracking-wide">{settings.wallets[first] || "01712345678"}</span>

@@ -59,19 +59,40 @@ fun JobCard(job: Job, onDone: () -> Unit) {
     val clip = LocalClipboardManager.current
     var copied by remember(job.wallet) { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
-    val on = MaterialTheme.colorScheme.onErrorContainer
+    // How loud the card is follows the urgency the owner chose: critical is red, urgent is orange, normal is calm.
+    val container = when (job.urgency) {
+        "critical" -> MaterialTheme.colorScheme.errorContainer
+        "urgent" -> MaterialTheme.colorScheme.tertiaryContainer
+        else -> MaterialTheme.colorScheme.secondaryContainer
+    }
+    val on = when (job.urgency) {
+        "critical" -> MaterialTheme.colorScheme.onErrorContainer
+        "urgent" -> MaterialTheme.colorScheme.onTertiaryContainer
+        else -> MaterialTheme.colorScheme.onSecondaryContainer
+    }
+    val urgencyLabel = when (job.urgency) {
+        "critical" -> "CRITICAL"
+        "urgent" -> "URGENT"
+        else -> "NORMAL"
+    }
+    val who = if (job.agent.isBlank()) EarningsFormat.provider(job.provider) else job.agent + " · " + EarningsFormat.provider(job.provider)
 
     Card(
         Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+        colors = CardDefaults.cardColors(containerColor = container),
     ) {
         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column {
-                Text("কাজ করুন এখনই", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = on)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    Text("কাজ করুন এখনই", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = on)
+                    Text(who + " · balance " + EarningsFormat.money(job.balance), style = MaterialTheme.typography.bodyMedium, color = on)
+                }
                 Text(
-                    EarningsFormat.provider(job.provider) + " balance " + EarningsFormat.money(job.balance),
-                    style = MaterialTheme.typography.bodyMedium,
+                    urgencyLabel,
+                    Modifier.background(on.copy(alpha = 0.14f), RoundedCornerShape(50)).padding(horizontal = 12.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
                     color = on,
                 )
             }

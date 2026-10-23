@@ -4,11 +4,14 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** A job the owner wrote in the dashboard: what to do, and the wallet address to do it with. It shows on this phone while the phone's
- *  newest balance for [provider] is at or above the owner's amount. PayTrace only shows it; the agent does the work outside the app
- *  and taps Done. The instruction text already has {provider} and {balance} filled in by the server. */
+/** A job the owner wrote in the dashboard for one agent: what to do, how urgent it is, and the wallet address to do it with. An agent is
+ *  one wallet on this phone (its bKash, Nagad, Rocket or Upay); the job shows while that wallet's newest balance is at or above the
+ *  owner's amount. PayTrace only shows it; the agent does the work outside the app and taps Done. The instruction text already has
+ *  {agent}, {provider} and {balance} filled in by the server. [urgency] is "normal", "urgent" or "critical". */
 data class Job(
     val provider: String,
+    val agent: String,
+    val urgency: String,
     val balance: Double,
     val balanceAt: String,
     val threshold: Double,
@@ -32,6 +35,8 @@ object JobsParser {
                 if (provider.isBlank() || wallet.isBlank()) null
                 else Job(
                     provider = provider,
+                    agent = j.optString("agent", ""),
+                    urgency = j.optString("urgency", "normal").let { if (it == "urgent" || it == "critical") it else "normal" },
                     balance = j.optDouble("balance", 0.0),
                     balanceAt = j.optString("balance_at", ""),
                     threshold = j.optDouble("threshold", 0.0),

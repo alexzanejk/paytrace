@@ -1,6 +1,6 @@
 // Agent jobs: the form rules and the text filling. Run: node --experimental-strip-types tests/jobs.test.ts
 import assert from "node:assert/strict";
-import { checkJobForm, cleanWallets, fillTemplate, parseThreshold, takaText, validWallet } from "../dashboard/src/lib/jobs.ts";
+import { agentStatus, checkAgentForm, checkJobForm, cleanWallets, fillTemplate, parseThreshold, takaText, validWallet } from "../dashboard/src/lib/jobs.ts";
 import { readFileSync } from "node:fs";
 
 let n = 0;
@@ -25,6 +25,25 @@ t("{provider} and {balance} are filled in, every time", () => {
   assert.equal(fillTemplate("no placeholders", "nagad", 5), "no placeholders");
   assert.equal(takaText(1234.5), "Tk 1,234.50");
 });
+t("{agent} is filled in too", () => {
+  assert.equal(fillTemplate("Hi {agent}: {provider} {balance}", "nagad", 15000, "Karim"), "Hi Karim: Nagad Tk 15,000.00");
+});
+t("an agent's own form: empty is fine (uses the default), bad values are named", () => {
+  assert.equal(checkAgentForm({ name: "", instruction: "", urgency: "", wallet: "" }), null);
+  assert.equal(checkAgentForm({ name: "Karim", instruction: "Do it", urgency: "critical", wallet: "01899999999" }), null);
+  assert.ok(checkAgentForm({ name: "x".repeat(41), instruction: "", urgency: "", wallet: "" }));
+  assert.ok(checkAgentForm({ name: "", instruction: "", urgency: "", wallet: "12" }));
+});
+t("where an agent stands, in words", () => {
+  const base = { jobsOn: true, agentOn: true, balance: 12000, threshold: 10000, hasWallet: true, showing: true };
+  assert.equal(agentStatus(base), "Job showing now");
+  assert.equal(agentStatus({ ...base, jobsOn: false }), "Jobs are off");
+  assert.equal(agentStatus({ ...base, agentOn: false }), "Switched off");
+  assert.equal(agentStatus({ ...base, showing: false, balance: 500 }), "Below the amount");
+  assert.equal(agentStatus({ ...base, showing: false, balance: null }), "No balance yet");
+  assert.equal(agentStatus({ ...base, showing: false, hasWallet: false }), "Needs a wallet address");
+  assert.match(agentStatus({ ...base, showing: false }), /Marked done/);
+});
 t("the form: a good one passes", () => {
   assert.deepEqual(checkJobForm({ enabled: true, threshold: "10000", instruction: "Send it now", wallets: { bkash: "01711111111" } }), []);
 });
@@ -43,6 +62,13 @@ t("the form: a bad amount or a bad wallet is named", () => {
 });
 t("empty wallets are dropped, others trimmed", () => {
   assert.deepEqual(cleanWallets({ bkash: " 01711111111 ", nagad: "  ", rocket: "" }), { bkash: "01711111111" });
+});
+t("the per-agent migration only adds, and only admins can write agent jobs", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/20261023_021_agent_jobs_per_agent.sql", import.meta.url), "utf8");
+  assert.ok(!/\b(drop|delete)\b/i.test(sql.replace(/--.*$/gm, "")));
+  assert.match(sql, /function public\.set_agent_job[\s\S]*?is_admin\(\)/);
+  assert.match(sql, /function public\.set_job_settings\(p_enabled boolean, p_threshold numeric, p_instruction text, p_wallets jsonb, p_urgency text\)[\s\S]*?is_admin\(\)/);
+  assert.match(sql, /revoke all on function public\.device_jobs\(uuid\) from public, anon, authenticated/);
 });
 t("the database migration only adds and never removes", () => {
   const sql = readFileSync(new URL("../supabase/migrations/20261023_020_agent_jobs.sql", import.meta.url), "utf8");

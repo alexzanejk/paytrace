@@ -7,6 +7,10 @@ export type JobProvider = (typeof JOB_PROVIDERS)[number];
 
 const NAMES: Record<string, string> = { bkash: "bKash", nagad: "Nagad", rocket: "Rocket", upay: "Upay" };
 
+export const URGENCIES = ["normal", "urgent", "critical"] as const;
+export type Urgency = (typeof URGENCIES)[number];
+export const URGENCY_LABEL: Record<Urgency, string> = { normal: "Normal", urgent: "Urgent", critical: "Critical" };
+
 export const DEFAULT_THRESHOLD = 10000;
 export const MAX_INSTRUCTION = 1000;
 
@@ -15,6 +19,7 @@ export interface JobSettings {
   threshold: number;
   instruction: string;
   wallets: Partial<Record<JobProvider, string>>;
+  urgency: Urgency;
 }
 
 /** The same rule the database applies: 6 to 60 letters, numbers or . _ - + : @ / characters. */
@@ -31,9 +36,9 @@ export function parseThreshold(text: string): number | null {
 /** "Tk 12,000.00" */
 export const takaText = (n: number): string => "Tk " + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-/** Fills {provider} and {balance} in the owner's text, exactly as the database does for the phone. */
-export function fillTemplate(text: string, provider: string, balance: number): string {
-  return text.split("{provider}").join(NAMES[provider] ?? provider).split("{balance}").join(takaText(balance));
+/** Fills {agent}, {provider} and {balance} in the owner's text, exactly as the database does for the phone. */
+export function fillTemplate(text: string, provider: string, balance: number, agent = "Agent"): string {
+  return text.split("{agent}").join(agent).split("{provider}").join(NAMES[provider] ?? provider).split("{balance}").join(takaText(balance));
 }
 
 export interface JobProblem {
@@ -68,4 +73,30 @@ export function cleanWallets(wallets: Partial<Record<JobProvider, string>>): Par
     if (w !== "") out[p] = w;
   }
   return out;
+}
+
+/** One agent = one wallet (bKash, Nagad, Rocket or Upay) on one phone. Anything left empty uses the default job. */
+export interface AgentForm {
+  name: string;
+  instruction: string;
+  urgency: "" | Urgency;
+  wallet: string;
+}
+
+export function checkAgentForm(f: AgentForm): string | null {
+  if (f.name.trim().length > 40) return "Keep the agent's name under 40 characters.";
+  if (f.instruction.trim().length > MAX_INSTRUCTION) return `Keep the description under ${MAX_INSTRUCTION} characters.`;
+  if (f.wallet.trim() !== "" && !validWallet(f.wallet)) return "A wallet address is 6 to 60 letters or numbers.";
+  return null;
+}
+
+/** Plain words for where this agent stands. */
+export function agentStatus(a: { jobsOn: boolean; agentOn: boolean; balance: number | null; threshold: number; hasWallet: boolean; showing: boolean }): string {
+  if (!a.jobsOn) return "Jobs are off";
+  if (!a.agentOn) return "Switched off";
+  if (a.showing) return "Job showing now";
+  if (a.balance === null) return "No balance yet";
+  if (a.balance < a.threshold) return "Below the amount";
+  if (!a.hasWallet) return "Needs a wallet address";
+  return "Marked done, waiting for a newer balance";
 }

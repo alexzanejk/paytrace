@@ -10,9 +10,9 @@ class JobsTest {
     // The shape the server really sends (taken from the live database test).
     private val sample = """
         {"success":true,"jobs":[
-          {"provider":"bkash","balance":12000.00,"balance_at":"2026-10-23T12:00:00+00:00","threshold":10000.00,
-           "wallet":"01711111111","instruction":"Send Tk 12,000.00 from bKash now"},
-          {"provider":"nagad","balance":10500,"threshold":10000,"wallet":"01822222222","instruction":"Do it"}
+          {"provider":"nagad","agent":"Karim","urgency":"critical","balance":15000.00,"balance_at":"2026-10-23T12:00:00+00:00",
+           "threshold":10000.00,"wallet":"01899999999","instruction":"Karim, urgent: move it today"},
+          {"provider":"bkash","agent":"Counter 1","urgency":"normal","balance":12000,"threshold":10000,"wallet":"01711111111","instruction":"Do it"}
         ]}
     """.trimIndent()
 
@@ -20,11 +20,20 @@ class JobsTest {
         val jobs = JobsParser.parse(sample)
         assertNotNull(jobs)
         assertEquals(2, jobs!!.size)
-        assertEquals("bkash", jobs[0].provider)
-        assertEquals(12000.0, jobs[0].balance, 0.001)
-        assertEquals("01711111111", jobs[0].wallet)
-        assertEquals("Send Tk 12,000.00 from bKash now", jobs[0].instruction)
+        assertEquals("nagad", jobs[0].provider)
+        assertEquals("Karim", jobs[0].agent)
+        assertEquals("critical", jobs[0].urgency)
+        assertEquals(15000.0, jobs[0].balance, 0.001)
+        assertEquals("01899999999", jobs[0].wallet)
+        assertEquals("Karim, urgent: move it today", jobs[0].instruction)
+        assertEquals("Counter 1", jobs[1].agent)
         assertEquals("", jobs[1].balanceAt)
+    }
+
+    @Test fun anUnknownOrMissingUrgencyIsNormal() {
+        val jobs = JobsParser.parse("""{"success":true,"jobs":[{"provider":"bkash","wallet":"0171","instruction":"x"},{"provider":"nagad","urgency":"extreme","wallet":"0181","instruction":"y"}]}""")
+        assertEquals("normal", jobs!![0].urgency)
+        assertEquals("normal", jobs[1].urgency)
     }
 
     @Test fun noJobsIsAnEmptyList() {
