@@ -9,7 +9,7 @@ Call it **from your servers only**, never from a browser or app a customer can o
 
 ```
 POST https://mkjcqwkfbamnuibmurcd.supabase.co/functions/v1/verify-transaction
-Authorization: Bearer <your key>   (made on the dashboard, API access page; starts with ptk_)
+Authorization: Bearer <your key>   (made on the dashboard, Websites page; starts with ptk_)
 Content-Type: application/json
 
 {"transaction_id": "EXAMPLE123", "provider": "bkash", "amount": 500}

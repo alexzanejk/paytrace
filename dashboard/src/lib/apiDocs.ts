@@ -1,4 +1,4 @@
-import { SUPABASE_URL } from "@/lib/supabase";
+import { SUPABASE_URL } from "@/lib/config";
 
 export const VERIFY_URL = `${SUPABASE_URL}/functions/v1/verify-transaction`;
 
@@ -95,7 +95,7 @@ export function depositInstructions(key?: string): string {
     "Redirect the customer to pay_url. They see the number to pay and paste the TrxID there.",
     "",
     "2) LEARN THE RESULT",
-    "a) Webhook (recommended). The owner enters your https address on the dashboard's API access page and gives you the signing secret.",
+    "a) Webhook (recommended). The owner enters your https address on the dashboard's Websites page and gives you the signing secret.",
     "   PayTrace POSTs JSON: { \"event\": \"deposit.paid\", \"data\": { \"tracking_number\", \"order_id\", \"status\", \"amount\", \"currency\", \"provider\", \"trx_id\", \"paid_at\" } }",
     "   Events: deposit.paid, deposit.review (held for a manual check), deposit.expired, deposit.cancelled.",
     "   Header X-PayTrace-Signature: t=<unix seconds>,v1=<hex>. Compute HMAC-SHA256 with the signing secret over \"<t>.<raw request body>\",",

@@ -1,32 +1,18 @@
 import { useState, type FormEvent } from "react";
-import { KeyRound, ShieldAlert } from "lucide-react";
+import { BookOpen, ChevronDown, ExternalLink, KeyRound, Plus, ShieldAlert } from "lucide-react";
 import { must, sb } from "@/lib/supabase";
 import { when } from "@/lib/format";
-import { depositInstructions, developerInstructions, GATEWAY_URL, VERIFY_URL } from "@/lib/apiDocs";
+import { depositInstructions, developerInstructions, VERIFY_URL } from "@/lib/apiDocs";
 import { useQuery } from "@/hooks/useQuery";
 import { Screen } from "@/components/Screen";
-import { EmptyRow } from "@/components/Empty";
-import { Confirm } from "@/components/Confirm";
+import { PageHeader } from "@/components/PageHeader";
 import { CopyButton } from "@/components/CopyButton";
-import { WebhookCard } from "@/components/WebhookCard";
-import { ResultStyleCard } from "@/components/ResultStyleCard";
+import { SiteCard, type SiteKey } from "@/components/SiteCard";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-
-interface ApiKey {
-  id: string;
-  name: string;
-  key_prefix: string;
-  created_at: string;
-  last_used_at: string | null;
-  revoked_at: string | null;
-  webhook_url: string | null;
-  result_style: number | null;
-}
 
 interface NewKey {
   id: string;
@@ -34,7 +20,9 @@ interface NewKey {
   key: string;
 }
 
-/** Make and revoke the keys your websites use to check transaction IDs, and copy what a developer needs. */
+const DOCS_URL = `${window.location.origin}/docs`;
+
+/** Websites that use PayTrace: add one, set where its results go, and send its developer the guide. */
 export function ApiAccess() {
   const { data, error, loading, refresh } = useQuery(
     async () =>
@@ -43,7 +31,7 @@ export function ApiAccess() {
           .from("api_keys")
           .select("id,name,key_prefix,created_at,last_used_at,revoked_at,webhook_url,result_style")
           .order("created_at", { ascending: false }),
-      ) as ApiKey[],
+      ) as SiteKey[],
     [],
     { refreshMs: 15000 },
   );
@@ -67,7 +55,7 @@ export function ApiAccess() {
     refresh();
   }
 
-  async function revoke(k: ApiKey) {
+  async function revoke(k: SiteKey) {
     setRevokeError("");
     const { error: err } = await sb.rpc("revoke_api_key", { p_id: k.id });
     if (err) return setRevokeError(err.message);
@@ -75,71 +63,33 @@ export function ApiAccess() {
     refresh();
   }
 
-  const keys = data ?? [];
+  const all = data ?? [];
+  const active = all.filter((k) => !k.revoked_at);
+  const revoked = all.filter((k) => k.revoked_at);
 
   return (
     <Screen loading={loading} error={error} hasData={!!data}>
-      <div className="grid max-w-4xl grid-cols-[minmax(0,1fr)] gap-5">
-        <Card>
-          <CardHeader>
-            <CardTitle>Let your websites check transaction IDs</CardTitle>
-            <CardDescription>
-              Your website admin and super-admin servers can ask PayTrace whether a customer's transaction ID really
-              arrived, and for how much. Make one key per server, copy the instructions, and send both to your developer.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            <div>
-              <Label>Endpoint (the address your servers call)</Label>
-              <div className="mt-1 flex flex-wrap items-center gap-2">
-                <code className="min-w-0 flex-1 break-all rounded-lg border border-border bg-muted px-3 py-2 text-xs">{VERIFY_URL}</code>
-                <CopyButton text={VERIFY_URL} label="Copy endpoint" />
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <CopyButton text={() => developerInstructions()} label="Copy instructions for the developer" variant="default" />
-              <span className="text-xs text-muted-foreground">
-                Plain text with the endpoint, how to call it and what to show for each answer. It does not include any key.
+      <div className="grid max-w-4xl grid-cols-[minmax(0,1fr)] gap-6">
+        <PageHeader
+          title="Websites"
+          description="Each website that uses PayTrace gets its own key. Add the website, choose where it receives payment results, then send its developer the guide."
+        />
+
+        <ol className="grid gap-3 sm:grid-cols-3">
+          {[
+            ["Add the website", "Give it a name and make its key."],
+            ["Set it up", "Say where it gets “paid” messages and how its result page looks."],
+            ["Send the developer", "The guide link, the key and the secret. That is all they need."],
+          ].map(([t, d], i) => (
+            <li key={t} className="flex gap-3 rounded-lg border border-border p-3 text-sm">
+              <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{i + 1}</span>
+              <span>
+                <span className="block font-medium">{t}</span>
+                <span className="text-xs text-muted-foreground">{d}</span>
               </span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Accept deposits on your websites</CardTitle>
-            <CardDescription>
-              Your website's server creates a deposit order, sends the customer to a PayTrace pay page, and PayTrace tells the
-              website when it is paid. The customer pays one of your phones' numbers and enters the transaction ID. Set the
-              numbers on each phone in the Phones tab first.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            <div>
-              <Label>Endpoint (the address your servers call)</Label>
-              <div className="mt-1 flex flex-wrap items-center gap-2">
-                <code className="min-w-0 flex-1 break-all rounded-lg border border-border bg-muted px-3 py-2 text-xs">{GATEWAY_URL}/create-deposit</code>
-                <CopyButton text={`${GATEWAY_URL}/create-deposit`} label="Copy endpoint" />
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <CopyButton text={() => depositInstructions()} label="Copy deposit instructions for the developer" variant="default" />
-              <span className="text-xs text-muted-foreground">Plain text; it does not include any key. Uses the same keys as below.</span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <a href="/pay?demo=1" target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline" })}>
-                Preview the customer pay page
-              </a>
-              <span className="text-xs text-muted-foreground">
-                Opens the page your customers see with pretend data. Try picking a wallet and entering any TrxID. Nothing real happens.
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <WebhookCard keys={keys} onChanged={refresh} />
-
-        <ResultStyleCard keys={keys} onChanged={refresh} />
+            </li>
+          ))}
+        </ol>
 
         {fresh ? (
           <Card className="border-primary">
@@ -150,8 +100,7 @@ export function ApiAccess() {
               </CardTitle>
               <CardDescription className="flex items-start gap-1.5 text-status-warn">
                 <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                Copy it now. This is the only time it is shown; PayTrace keeps only a scrambled version and cannot show it
-                again. If you lose it, revoke it and make a new one.
+                Copy it now. This is the only time it is shown; PayTrace keeps only a scrambled version and cannot show it again. If you lose it, revoke it and add the website again.
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3">
@@ -160,14 +109,13 @@ export function ApiAccess() {
               </code>
               <div className="flex flex-wrap items-center gap-2">
                 <CopyButton text={fresh.key} label="Copy key" variant="default" />
-                <CopyButton text={() => developerInstructions(fresh.key)} label="Copy instructions with this key" />
+                <CopyButton text={() => depositInstructions(fresh.key)} label="Copy developer brief with this key" />
                 <Button variant="ghost" size="sm" onClick={() => setFresh(null)}>
                   I have saved it
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Whoever holds this key can look up transaction IDs and their amounts. Send it only to the developer, store it in
-                the server's settings, and never put it in a web page or app.
+                Whoever holds this key can create deposits in your name. Send it only to the developer, store it in the server's settings, and never put it in a web page or app.
               </p>
             </CardContent>
           </Card>
@@ -175,70 +123,95 @@ export function ApiAccess() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Make a new key</CardTitle>
-            <CardDescription>Give it the name of the server that will use it, for example "Website admin".</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <Plus className="h-4 w-4" aria-hidden /> Add a website
+            </CardTitle>
+            <CardDescription>Use the website's name, for example "Main shop" or "Game top-up".</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={create} className="flex flex-wrap items-end gap-3">
               <div className="grid min-w-56 flex-1 gap-1">
-                <Label htmlFor="key-name">Name</Label>
-                <Input id="key-name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="Website admin" />
+                <Label htmlFor="key-name">Website name</Label>
+                <Input id="key-name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="Main shop" />
               </div>
               <Button type="submit" disabled={busy || name.trim().length === 0}>
-                {busy ? "Making…" : "Make key"}
+                {busy ? "Adding…" : "Add website and make key"}
               </Button>
             </form>
             {problem ? <p className="mt-2 text-sm text-destructive">{problem}</p> : null}
           </CardContent>
         </Card>
 
-        <section>
-          <h3 className="mb-2 text-base font-semibold">Your keys</h3>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Starts with</TableHead>
-                <TableHead>Made (BD)</TableHead>
-                <TableHead>Last used (BD)</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {keys.length === 0 ? (
-                <EmptyRow cols={6} text="No keys yet. Make one above." />
-              ) : (
-                keys.map((k) => (
-                  <TableRow key={k.id} className={k.revoked_at ? "opacity-60" : undefined}>
-                    <TableCell className="font-medium">{k.name}</TableCell>
-                    <TableCell className="font-mono text-xs">{k.key_prefix}…</TableCell>
-                    <TableCell>{when(k.created_at)}</TableCell>
-                    <TableCell>{k.last_used_at ? when(k.last_used_at) : "never"}</TableCell>
-                    <TableCell>
-                      <Badge tone={k.revoked_at ? "idle" : "ok"}>{k.revoked_at ? "Revoked" : "Active"}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      {k.revoked_at ? null : (
-                        <Confirm
-                          title={`Revoke the key "${k.name}"?`}
-                          description="The server using it stops working right away and its transaction checks will fail. You can make a new key and give it to the server instead."
-                          confirmLabel="Revoke"
-                          onConfirm={() => revoke(k)}
-                        >
-                          <Button size="sm" variant="outline">
-                            Revoke
-                          </Button>
-                        </Confirm>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-          {revokeError ? <p className="mt-2 text-sm text-destructive">{revokeError}</p> : null}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BookOpen className="h-4 w-4" aria-hidden /> Guide for the developer
+            </CardTitle>
+            <CardDescription>
+              A public page that explains every step with code in Node.js, PHP and Python. It contains no secrets, so you can send the link to anyone building a website.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <code className="min-w-0 flex-1 break-all rounded-lg border border-border bg-muted px-3 py-2 text-xs">{DOCS_URL}</code>
+              <CopyButton text={DOCS_URL} label="Copy link" variant="default" />
+              <a href="/docs" target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline", size: "sm" })}>
+                <ExternalLink className="h-4 w-4" aria-hidden /> Open
+              </a>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <a href="/pay?demo=1" target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline", size: "sm" })}>
+                Preview the customer pay page
+              </a>
+              <span className="text-xs text-muted-foreground">Pretend data; nothing real is created or paid.</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <section className="grid gap-3">
+          <h3 className="text-base font-semibold">Your websites</h3>
+          {active.length === 0 ? (
+            <Card className="p-6 text-center text-sm text-muted-foreground">No website yet. Add one above.</Card>
+          ) : (
+            active.map((k) => <SiteCard key={k.id} site={k} onChanged={refresh} onRevoke={() => void revoke(k)} />)
+          )}
+          {revokeError ? <p className="text-sm text-destructive">{revokeError}</p> : null}
+          <p className="text-xs text-muted-foreground">
+            Customers are sent to the deposit numbers you set on the <a className="underline" href="#/devices">Phones</a> tab. Add at least one number there before a website goes live.
+          </p>
         </section>
+
+        {revoked.length > 0 ? (
+          <details className="rounded-lg border border-border p-4">
+            <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+              <ChevronDown className="h-4 w-4" aria-hidden /> Revoked websites ({revoked.length})
+            </summary>
+            <ul className="mt-3 grid gap-2 text-sm">
+              {revoked.map((k) => (
+                <li key={k.id} className="flex flex-wrap items-center justify-between gap-2 text-muted-foreground">
+                  <span>{k.name} <span className="font-mono text-xs">{k.key_prefix}…</span></span>
+                  <span className="flex items-center gap-2 text-xs"><Badge tone="idle">Revoked</Badge>{k.revoked_at ? when(k.revoked_at) : ""}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+
+        <details className="rounded-lg border border-border p-4">
+          <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+            <ChevronDown className="h-4 w-4" aria-hidden /> Optional: let a website check a transaction ID
+          </summary>
+          <div className="mt-3 grid gap-3">
+            <p className="text-sm text-muted-foreground">
+              Separate from deposits. A website's server can ask whether a transaction ID a customer typed really arrived, and for how much. It uses the same website keys as above.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <code className="min-w-0 flex-1 break-all rounded-lg border border-border bg-muted px-3 py-2 text-xs">{VERIFY_URL}</code>
+              <CopyButton text={VERIFY_URL} label="Copy address" />
+              <CopyButton text={() => developerInstructions()} label="Copy instructions" />
+            </div>
+          </div>
+        </details>
       </div>
     </Screen>
   );

@@ -68,7 +68,7 @@ Authentication, then Providers, then Email.
 Your website's admin and super-admin servers can ask PayTrace whether a customer's transaction ID really arrived, and
 for how much. Everything is done on the dashboard, nothing is typed into Supabase:
 
-1. Open the dashboard and go to **API access**.
+1. Open the dashboard and go to **Websites** (formerly API access).
 2. Type the name of the server (for example "Website admin") and press **Make key**. Do this once per server.
 3. The key is shown **once**. Press **Copy key**, or **Copy instructions with this key**, and send it to your developer
    privately. If it is lost, revoke it and make a new one: PayTrace keeps only a scrambled version and cannot show it again.
@@ -167,7 +167,7 @@ Background power consumption management → PayTrace → choose **Allow high bac
 1. **Phones tab:** on each phone press **Add a number**, choose the provider, type the wallet number that phone receives money
    on, and choose how customers pay it: *Customer sends money*, or *Customer cashes out at this agent*. You can switch a number
    off without deleting it. Customers are only ever shown numbers from phones you approved.
-2. **API access tab:** make a key for the website (the same kind of key as for the transaction check).
+2. **Websites tab:** press "Add website and make key" and copy the key. Then on that website's card set its result address and result page look.
 3. In **Where to send payment results**, pick that key and type the https address on your website that should receive "paid"
    messages. Copy the signing secret that appears (shown once) and give it to your developer.
 4. Press **Copy deposit instructions for the developer** and send them, with the key, to whoever builds your site.
@@ -176,5 +176,5 @@ Background power consumption management → PayTrace → choose **Allow high bac
 
 Held payments (wrong amount, wrong phone, late) show in **Review**; approve them by hand once you have checked.
 
-Optional: on **API access**, "How the result page looks" lets you pick, per website key, how the screen after Confirm looks (six
+Optional: on a website's card on the **Websites** tab, "How should this site's result page look?" lets you pick how the screen after Confirm looks (six
 looks). Leave it on Automatic and every site gets its own look. "Preview the looks" shows them all.

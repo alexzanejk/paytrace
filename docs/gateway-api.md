@@ -5,7 +5,7 @@ PayTrace tells the website when the order is **paid**. The customer pays one of 
 transaction ID (TrxID); PayTrace matches it with the SMS the phone already captured. Nothing is credited without a matching,
 unused message for exactly that amount.
 
-The text a developer needs is on the dashboard's **API access** page ("Copy deposit instructions for the developer"). It is
+The integration guide for partner sites is a public page at `/docs` on the dashboard address (source: `dashboard/src/docs/`). The dashboard's **Websites** page links to it and also has a copyable plain-text brief. It is
 generated from `dashboard/src/lib/apiDocs.ts` (`depositInstructions`), which is the reference for the exact fields.
 
 ## The flow
@@ -29,7 +29,7 @@ generated from `dashboard/src/lib/apiDocs.ts` (`depositInstructions`), which is 
 `POST` JSON `{"event":"deposit.paid","data":{"tracking_number","order_id","status","amount","currency","provider","trx_id","paid_at"}}`.
 Events: `deposit.paid`, `deposit.review`, `deposit.expired`, `deposit.cancelled`. Header
 `X-PayTrace-Signature: t=<unix seconds>,v1=<hex>` where `v1` is HMAC-SHA256 of `"<t>.<raw body>"` with the key's signing secret
-(shown once on the API access page when the address is first saved). Answer any 2xx. Failures are retried 1 min, 5 min, 15 min,
+(shown once on the Websites page when the address is first saved). Answer any 2xx. Failures are retried 1 min, 5 min, 15 min,
 1 h, 3 h, 6 h, 12 h (8 tries). A message can arrive twice; handle by `order_id`.
 
 ## Cash Out wallets (agent numbers)
@@ -54,5 +54,5 @@ for a late SMS. 5 TrxID attempts per order. 120 website API calls per minute per
 
 The transaction-submission page is the same for every site. After the customer presses Confirm, the waiting / paid / held / expired
 screens come in six looks (Aurora, Steps, Receipt, Checklist, Ring, Playful) so that different sites do not show an identical
-result page. Each API key has a look (dashboard: API access, "How the result page looks"), or Automatic, which gives each site a
+result page. Each API key has a look (dashboard: Websites, the site's card), or Automatic, which gives each site a
 stable look of its own.
