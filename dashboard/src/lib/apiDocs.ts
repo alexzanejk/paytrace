@@ -1,4 +1,4 @@
-import { SUPABASE_URL } from "@/lib/supabase";
+import { SUPABASE_URL } from "@/lib/config";
 
 export const VERIFY_URL = `${SUPABASE_URL}/functions/v1/verify-transaction`;
 
@@ -83,7 +83,7 @@ export function depositInstructions(key?: string): string {
     `Authorization: Bearer ${k}`,
     "Content-Type: application/json",
     '{ "amount": 500, "order_id": "SHOP-1001", "provider": "nagad", "method": "cash_out", "return_url": "https://yourshop.com/thanks", "expires_in_minutes": 15 }',
-    "- amount: required, 10 to 500000.",
+    "- amount: required, from 500 to 50000 taka.",
     "- order_id: required. YOUR own order number. Sending the same order_id again returns the same order (safe to retry).",
     "- provider: required (\"bkash\", \"nagad\", \"rocket\", \"upay\"). YOUR site shows the deposit methods and lets the customer choose; PayTrace's page starts after that choice.",
     '- method: optional, "send_money" or "cash_out". Use it when you offer both for one provider (for example Nagad Send Money and Nagad Cash Out). Leave it out to accept either.',
@@ -95,7 +95,7 @@ export function depositInstructions(key?: string): string {
     "Redirect the customer to pay_url. They see the number to pay and paste the TrxID there.",
     "",
     "2) LEARN THE RESULT",
-    "a) Webhook (recommended). The owner enters your https address on the dashboard's API access page and gives you the signing secret.",
+    "a) Webhook (recommended). The owner enters your https address on the dashboard's Websites page and gives you the signing secret.",
     "   PayTrace POSTs JSON: { \"event\": \"deposit.paid\", \"data\": { \"tracking_number\", \"order_id\", \"status\", \"amount\", \"currency\", \"provider\", \"trx_id\", \"paid_at\" } }",
     "   Events: deposit.paid, deposit.review (held for a manual check), deposit.expired, deposit.cancelled.",
     "   Header X-PayTrace-Signature: t=<unix seconds>,v1=<hex>. Compute HMAC-SHA256 with the signing secret over \"<t>.<raw request body>\",",

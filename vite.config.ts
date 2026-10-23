@@ -13,11 +13,12 @@ export default defineConfig({
   build: {
     outDir: "../dist",
     emptyOutDir: true,
-    // Two pages: the admin dashboard, and the small customer pay page (served at /pay).
+    // Three pages: the admin dashboard, the small customer pay page (/pay) and the public integration guide (/docs).
     rollupOptions: {
       input: {
         main: fileURLToPath(new URL("./dashboard/index.html", import.meta.url)),
         pay: fileURLToPath(new URL("./dashboard/pay.html", import.meta.url)),
+        docs: fileURLToPath(new URL("./dashboard/docs.html", import.meta.url)),
       },
     },
   },
