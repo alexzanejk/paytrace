@@ -83,7 +83,7 @@ export function depositInstructions(key?: string): string {
     `Authorization: Bearer ${k}`,
     "Content-Type: application/json",
     '{ "amount": 500, "order_id": "SHOP-1001", "provider": "nagad", "method": "cash_out", "return_url": "https://yourshop.com/thanks", "expires_in_minutes": 15 }',
-    "- amount: required, 10 to 500000.",
+    "- amount: required, from 500 to 50000 taka.",
     "- order_id: required. YOUR own order number. Sending the same order_id again returns the same order (safe to retry).",
     "- provider: required (\"bkash\", \"nagad\", \"rocket\", \"upay\"). YOUR site shows the deposit methods and lets the customer choose; PayTrace's page starts after that choice.",
     '- method: optional, "send_money" or "cash_out". Use it when you offer both for one provider (for example Nagad Send Money and Nagad Cash Out). Leave it out to accept either.',
