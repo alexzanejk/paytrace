@@ -129,8 +129,8 @@ async function sendOne(row: { id: number; url: string; secret: string; event: st
     const res = await fetch(row.url, {
       method: "POST", redirect: "manual", signal: AbortSignal.timeout(8000),
       headers: {
-        "content-type": "application/json", "user-agent": "PayTrace-Webhook/1", "x-paytrace-event": row.event,
-        "x-paytrace-signature": await signWebhook(row.secret, t, text),
+        "content-type": "application/json", "user-agent": "Deposit-Webhook/1", "x-webhook-event": row.event,
+        "x-webhook-signature": await signWebhook(row.secret, t, text),
       },
       body: text,
     });

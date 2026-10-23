@@ -14,6 +14,8 @@ export interface OrderView {
   trx_id: string | null;
   providers: string[];
   return_url: string | null;
+  failed_url?: string | null;
+  merchant_order_id?: string | null;
   result_style?: number;
 }
 
@@ -24,7 +26,12 @@ export class Gone extends Error {}
 /** `/pay/?demo=1` shows the whole customer page with pretend data and talks to no server, so the owner can look at it
  *  (and try it: pick a wallet, enter any TrxID) before connecting a website. Nothing real is created or paid. */
 export const DEMO =
-  new URLSearchParams(window.location.search).get("demo") === "1" || (window as unknown as { __PAYTRACE_DEMO__?: boolean }).__PAYTRACE_DEMO__ === true;
+  new URLSearchParams(window.location.search).get("demo") === "1" || (window as unknown as { __DEMO__?: boolean }).__DEMO__ === true;
+
+const demoAddress = (name: string): string | null => {
+  const v = new URLSearchParams(window.location.search).get(name) ?? "";
+  return /^https:\/\/[^\s]{3,300}$/.test(v) ? v : null;
+};
 
 const demo = {
   style: Number(new URLSearchParams(window.location.search).get("style") || 0) || 0,
@@ -59,8 +66,9 @@ function demoView(): OrderView {
   const w = w0 ? { n: w0.n.slice(0, -1) + (m === "cash_out" ? "1" : "2"), m } : null;
   const done = demo.paidAt > 0 && Date.now() >= demo.paidAt;
   const paid = done && demo.outcome === "paid";
+  const status: OrderView["status"] = paid ? "paid" : done && demo.outcome !== "paid" ? demo.outcome : Date.now() > demo.endsAt ? "expired" : "pending";
   return {
-    status: paid ? "paid" : done && demo.outcome !== "paid" ? demo.outcome : Date.now() > demo.endsAt ? "expired" : "pending",
+    status,
     result_style: demo.style,
     amount: Number(new URLSearchParams(window.location.search).get("amount")) || 500,
     currency: "BDT",
@@ -71,7 +79,9 @@ function demoView(): OrderView {
     seconds_left: Math.max(0, Math.floor((demo.endsAt - Date.now()) / 1000)),
     trx_id: demo.trx,
     providers: [],
-    return_url: null,
+    // Preview only: ?return=https://... and ?failed=https://... pretend the site has chosen those pages.
+    return_url: paid ? demoAddress("return") : null,
+    failed_url: status === "expired" ? demoAddress("failed") : null,
   };
 }
 

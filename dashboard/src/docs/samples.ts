@@ -8,7 +8,7 @@ export const LANG_LABEL: Record<Lang, string> = { curl: "curl", node: "Node.js",
 
 export const CREATE: Record<Lang, string> = {
   curl: `curl -X POST ${GATEWAY}/create-deposit \\
-  -H "Authorization: Bearer $PAYTRACE_KEY" \\
+  -H "Authorization: Bearer $GATEWAY_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "amount": 500,
@@ -21,7 +21,7 @@ export const CREATE: Record<Lang, string> = {
 const res = await fetch("${GATEWAY}/create-deposit", {
   method: "POST",
   headers: {
-    Authorization: \`Bearer \${process.env.PAYTRACE_KEY}\`,
+    Authorization: \`Bearer \${process.env.GATEWAY_KEY}\`,
     "Content-Type": "application/json",
   },
   body: JSON.stringify({
@@ -44,7 +44,7 @@ curl_setopt_array($ch, [
   CURLOPT_RETURNTRANSFER => true,
   CURLOPT_TIMEOUT => 15,
   CURLOPT_HTTPHEADER => [
-    "Authorization: Bearer " . getenv("PAYTRACE_KEY"),
+    "Authorization: Bearer " . getenv("GATEWAY_KEY"),
     "Content-Type: application/json",
   ],
   CURLOPT_POSTFIELDS => json_encode([
@@ -57,14 +57,14 @@ curl_setopt_array($ch, [
 ]);
 $data = json_decode(curl_exec($ch), true);
 $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-if ($status !== 200) { throw new Exception($data["message"] ?? $data["error"] ?? "PayTrace error"); }
+if ($status !== 200) { throw new Exception($data["message"] ?? $data["error"] ?? "Gateway error"); }
 header("Location: " . $data["pay_url"]);`,
   python: `# pip install requests. Run this on your SERVER, never in the browser.
 import os, requests
 
 r = requests.post(
     "${GATEWAY}/create-deposit",
-    headers={"Authorization": f"Bearer {os.environ['PAYTRACE_KEY']}"},
+    headers={"Authorization": f"Bearer {os.environ['GATEWAY_KEY']}"},
     json={
         "amount": 500,
         "order_id": "SHOP-1001",
@@ -83,8 +83,8 @@ pay_url = data["pay_url"]  # send the customer here`,
 export const VERIFY: Record<Exclude<Lang, "curl">, string> = {
   node: `import crypto from "node:crypto";
 
-// rawBody must be the EXACT text PayTrace sent (do not parse and re-stringify it).
-export function verifyPayTrace(rawBody, signatureHeader, secret) {
+// rawBody must be the EXACT text the gateway sent (do not parse and re-stringify it).
+export function verifyWebhook(rawBody, signatureHeader, secret) {
   const parts = Object.fromEntries(signatureHeader.split(",").map((p) => p.split("=")));
   const t = parts.t, v1 = parts.v1;
   if (!t || !v1) return false;
@@ -95,9 +95,9 @@ export function verifyPayTrace(rawBody, signatureHeader, secret) {
 }
 
 // Express example
-app.post("/paytrace-webhook", express.raw({ type: "application/json" }), (req, res) => {
+app.post("/deposit-webhook", express.raw({ type: "application/json" }), (req, res) => {
   const raw = req.body.toString("utf8");
-  if (!verifyPayTrace(raw, req.get("x-paytrace-signature") || "", process.env.PAYTRACE_WEBHOOK_SECRET)) {
+  if (!verifyWebhook(raw, req.get("x-webhook-signature") || "", process.env.WEBHOOK_SECRET)) {
     return res.status(400).end();
   }
   const { event, data } = JSON.parse(raw);
@@ -107,11 +107,11 @@ app.post("/paytrace-webhook", express.raw({ type: "application/json" }), (req, r
   res.status(200).end(); // any 2xx means "received"
 });`,
   php: `<?php
-$raw = file_get_contents("php://input");           // the EXACT text PayTrace sent
-$header = $_SERVER["HTTP_X_PAYTRACE_SIGNATURE"] ?? "";
+$raw = file_get_contents("php://input");           // the EXACT text the gateway sent
+$header = $_SERVER["HTTP_X_WEBHOOK_SIGNATURE"] ?? "";
 parse_str(str_replace(",", "&", $header), $p);      // t=...&v1=...
 $t = $p["t"] ?? ""; $v1 = $p["v1"] ?? "";
-$expected = hash_hmac("sha256", $t . "." . $raw, getenv("PAYTRACE_WEBHOOK_SECRET"));
+$expected = hash_hmac("sha256", $t . "." . $raw, getenv("WEBHOOK_SECRET"));
 if (!$t || abs(time() - (int)$t) > 300 || !hash_equals($expected, $v1)) {
   http_response_code(400); exit;
 }
@@ -133,10 +133,10 @@ def verify(raw: bytes, header: str, secret: str) -> bool:
     expected = hmac.new(secret.encode(), f"{t}.".encode() + raw, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, v1)
 
-@app.post("/paytrace-webhook")
+@app.post("/deposit-webhook")
 def webhook():
-    raw = request.get_data()  # the EXACT bytes PayTrace sent
-    if not verify(raw, request.headers.get("X-PayTrace-Signature", ""), os.environ["PAYTRACE_WEBHOOK_SECRET"]):
+    raw = request.get_data()  # the EXACT bytes the gateway sent
+    if not verify(raw, request.headers.get("X-Webhook-Signature", ""), os.environ["WEBHOOK_SECRET"]):
         abort(400)
     msg = json.loads(raw)
     if msg["event"] == "deposit.paid":
@@ -146,12 +146,12 @@ def webhook():
 
 export const STATUS: Record<Lang, string> = {
   curl: `curl -X POST ${GATEWAY}/order-status \\
-  -H "Authorization: Bearer $PAYTRACE_KEY" \\
+  -H "Authorization: Bearer $GATEWAY_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{ "order_id": "SHOP-1001" }'`,
   node: `const res = await fetch("${GATEWAY}/order-status", {
   method: "POST",
-  headers: { Authorization: \`Bearer \${process.env.PAYTRACE_KEY}\`, "Content-Type": "application/json" },
+  headers: { Authorization: \`Bearer \${process.env.GATEWAY_KEY}\`, "Content-Type": "application/json" },
   body: JSON.stringify({ order_id: "SHOP-1001" }),   // or { tracking_number: "..." }
 });
 const order = await res.json();   // { status: "pending" | "paid" | "review" | "expired" | "cancelled", ... }`,
@@ -159,14 +159,14 @@ const order = await res.json();   // { status: "pending" | "paid" | "review" | "
 $ch = curl_init("${GATEWAY}/order-status");
 curl_setopt_array($ch, [
   CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15,
-  CURLOPT_HTTPHEADER => ["Authorization: Bearer " . getenv("PAYTRACE_KEY"), "Content-Type: application/json"],
+  CURLOPT_HTTPHEADER => ["Authorization: Bearer " . getenv("GATEWAY_KEY"), "Content-Type: application/json"],
   CURLOPT_POSTFIELDS => json_encode(["order_id" => "SHOP-1001"]),
 ]);
 $order = json_decode(curl_exec($ch), true);   // $order["status"]`,
   python: `import os, requests
 order = requests.post(
     "${GATEWAY}/order-status",
-    headers={"Authorization": f"Bearer {os.environ['PAYTRACE_KEY']}"},
+    headers={"Authorization": f"Bearer {os.environ['GATEWAY_KEY']}"},
     json={"order_id": "SHOP-1001"},   # or {"tracking_number": "..."}
     timeout=15,
 ).json()   # order["status"]`,
@@ -188,7 +188,25 @@ export const WEBHOOK_BODY = `{
 
 export const CREATE_RESPONSE = `{
   "tracking_number": "c3b20370-3538-4e29-922f-c60a2d17595c",
-  "pay_url": "https://YOUR-PAYTRACE-ADDRESS/pay/?trackingNumber=c3b20370-...",
+  "pay_url": "https://YOUR-GATEWAY-ADDRESS/pay/?trackingNumber=c3b20370-...",
   "status": "pending",
   "expires_at": "2026-10-23T09:30:00.000Z"
 }`;
+
+/** Showing the payment page inside the website's own page, and following the page's "go here now" message. */
+export const EMBED = `<iframe id="pay" src="PAY_URL_FROM_STEP_1" title="Deposit"
+        style="width:100%;border:0;min-height:640px" allow="clipboard-write"></iframe>
+
+<script>
+  const frame = document.getElementById("pay");
+  const payOrigin = new URL(frame.src).origin;      // only listen to the payment page itself
+  window.addEventListener("message", (e) => {
+    const d = e.data;
+    if (e.origin !== payOrigin || !d || d.source !== "deposit-page") return;
+    if (d.type === "height") frame.style.height = d.height + "px";          // no second scroll bar
+    if (d.type === "redirect" && d.url.startsWith(location.origin)) {       // the page you set for this website
+      window.location.href = d.url;                                          // for example your account or deposit history page
+    }
+    if (d.type === "state") console.log(d.state, d.order_id);                // pending, paid, review, expired ... for your own screen
+  });
+</script>`;
