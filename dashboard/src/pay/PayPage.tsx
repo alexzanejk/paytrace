@@ -39,6 +39,7 @@ export function PayPage() {
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [touched, setTouched] = useState(false); // the help link appears once the TrxID box has been tapped, like the reference page
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [howOpen, setHowOpen] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
@@ -226,7 +227,10 @@ export function PayPage() {
         id="trx"
         value={trx}
         onChange={(e) => setTrx(e.target.value)}
-        onFocus={() => setFocused(true)}
+        onFocus={() => {
+          setFocused(true);
+          setTouched(true);
+        }}
         onBlur={() => setFocused(false)}
         autoComplete="off"
         autoCapitalize="characters"
@@ -242,7 +246,7 @@ export function PayPage() {
     </div>
   );
 
-  const linkRow = (
+  const linkRow = touched && (
     <button type="button" onClick={() => setHowOpen(true)} className="-mt-0.5 block w-full text-center text-[13px] font-bold leading-5 text-[#1565c0] min-[440px]:text-[14px]">
       {tr("link")}
     </button>
