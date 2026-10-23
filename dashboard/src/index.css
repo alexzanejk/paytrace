@@ -78,6 +78,32 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
+  /* Keyboard users always see where they are. */
+  :where(a, button, summary, [role="button"], [role="combobox"], input, select, textarea):focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  /* A page fades in so switching sections feels calm, not jumpy. */
+  .page-in {
+    animation: page-in 180ms ease-out both;
+  }
+  @keyframes page-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    .page-in {
+      animation: none;
+    }
+  }
   /* Money and counts line up column to column. */
   .tabular {
     font-variant-numeric: tabular-nums;

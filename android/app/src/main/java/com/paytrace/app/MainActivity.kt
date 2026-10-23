@@ -10,15 +10,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -47,9 +51,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -149,7 +156,12 @@ fun App() {
     LaunchedEffect(tick) { unread = withContext(Dispatchers.IO) { if (SmsStore.canRead(ctx)) SmsStore.unreadTotal(ctx) else 0 } }
 
     Column(Modifier.fillMaxSize().systemBarsPadding()) {
-        Text("PayTrace", Modifier.padding(start = 20.dp, top = 14.dp, bottom = 6.dp), style = MaterialTheme.typography.titleLarge)
+        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(28.dp).background(MaterialTheme.colorScheme.primary, CircleShape), contentAlignment = Alignment.Center) {
+                Text("P", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            }
+            Text("PayTrace", Modifier.padding(start = 10.dp), style = MaterialTheme.typography.titleLarge)
+        }
         TabRow(selectedTabIndex = tab) {
             listOf("Home", if (unread > 0) "Messages ($unread)" else "Messages", "Settings").forEachIndexed { i, title ->
                 Tab(selected = tab == i, onClick = { tab = i }, text = { Text(title) })
@@ -191,7 +203,14 @@ fun Home(settings: AppSettings, tick: Int) {
             ),
         ) {
             Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(if (healthy) "●" else "○", style = MaterialTheme.typography.displayMedium)
+                val dot = when {
+                    healthy -> MaterialTheme.colorScheme.primary
+                    !configured -> MaterialTheme.colorScheme.outline
+                    else -> MaterialTheme.colorScheme.error
+                }
+                Box(Modifier.size(56.dp).background(dot, CircleShape), contentAlignment = Alignment.Center) {
+                    Text(if (healthy) "✓" else "!", color = MaterialTheme.colorScheme.surface, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                }
                 Text(
                     when {
                         healthy -> "Running"
@@ -199,12 +218,13 @@ fun Home(settings: AppSettings, tick: Int) {
                         else -> "Needs attention"
                     },
                     style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold,
                 )
                 Text(
                     if (healthy) "Payment messages are being sent to your dashboard." else "See below.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                Text(settings.deviceName, style = MaterialTheme.typography.bodySmall)
+                Text(settings.deviceName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         EarningsCard(settings)
@@ -215,6 +235,7 @@ fun Home(settings: AppSettings, tick: Int) {
         Text(
             "Leave this phone on, charged and connected to the internet. Totals, logs and settings are in the web dashboard.",
             style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -233,30 +254,39 @@ fun SettingsScreen(settings: AppSettings, tick: Int) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text(
-            when (settings.deviceStatus) {
-                "approved" -> "Connected to your dashboard. Code " + settings.pairCode
-                "pending" -> "Waiting for approval in the dashboard. Code " + settings.pairCode
-                "revoked" -> "Removed in the dashboard. Open Home to ask again."
-                else -> "Not connected yet. Open Home to connect."
-            },
-        )
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("This phone", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    when (settings.deviceStatus) {
+                        "approved" -> "Connected to your dashboard. Code " + settings.pairCode
+                        "pending" -> "Waiting for approval in the dashboard. Code " + settings.pairCode
+                        "revoked" -> "Removed in the dashboard. Open Home to ask again."
+                        else -> "Not connected yet. Open Home to connect."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
 
         SmsAppModeCard(tick)
 
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Extra-strong keep-alive", style = MaterialTheme.typography.titleSmall)
-                Text(
-                    "A backup alarm every 5 minutes restarts PayTrace if the phone stops it. Shows a small alarm icon. Recommended.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
+        Card(Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text("Extra-strong keep-alive", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "A backup alarm every 5 minutes restarts PayTrace if the phone stops it. Shows a small alarm icon. Recommended.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = strong, onCheckedChange = {
+                    strong = it
+                    settings.strongAlarm = it
+                    Keepalive.schedule(ctx)
+                })
             }
-            Switch(checked = strong, onCheckedChange = {
-                strong = it
-                settings.strongAlarm = it
-                Keepalive.schedule(ctx)
-            })
         }
 
         val stopped = remember(tick) { settings.stoppedCount }
@@ -382,7 +412,7 @@ private fun PairCard(settings: AppSettings) {
                 Text("This phone was removed in the dashboard. Tap \"Ask again\" to request a new approval.")
             } else {
                 Text("On a computer, open the PayTrace dashboard, go to Devices and tap Approve next to this code:")
-                Text(settings.pairCode, style = MaterialTheme.typography.headlineMedium)
+                Text(settings.pairCode, style = MaterialTheme.typography.headlineLarge, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
                 Text(settings.deviceName, style = MaterialTheme.typography.bodySmall)
             }
             Button(enabled = !busy, onClick = {

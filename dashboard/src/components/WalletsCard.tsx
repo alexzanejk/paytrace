@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Wallet } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import { PROVIDERS, PROVIDER_LABEL, type DeviceWallet } from "@/lib/types";
+import { Disclosure } from "@/components/Disclosure";
 import { ProviderChip } from "@/components/ProviderChip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,11 +43,12 @@ export function WalletsCard({ deviceId, wallets, onChanged }: { deviceId: string
   }
 
   return (
-    <div className="rounded-lg border border-border p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h4 className="flex items-center gap-1.5 text-sm font-semibold">
-          <Wallet className="h-4 w-4" aria-hidden /> Deposit numbers
-        </h4>
+    <Disclosure
+      icon={Wallet}
+      title="Deposit numbers"
+      summary={wallets.length === 0 ? "None yet" : `${wallets.length} number${wallets.length === 1 ? "" : "s"}`}
+    >
+      <div className="mb-2 flex justify-end">
         <Button size="sm" variant="outline" onClick={() => setAdding((v) => !v)} aria-expanded={adding}>
           {adding ? "Close" : "Add a number"}
         </Button>
@@ -104,6 +106,6 @@ export function WalletsCard({ deviceId, wallets, onChanged }: { deviceId: string
         </form>
       ) : null}
       {problem ? <p className="mt-2 text-xs text-destructive">{problem}</p> : null}
-    </div>
+    </Disclosure>
   );
 }

@@ -3,6 +3,7 @@ import { must, sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { PROVIDER_LABEL, type Order, type Settings } from "@/lib/types";
 import { useQuery } from "@/hooks/useQuery";
+import { PageHeader } from "@/components/PageHeader";
 import { Screen } from "@/components/Screen";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EmptyRow } from "@/components/Empty";
@@ -60,8 +61,39 @@ export function Orders({ settings }: { settings: Settings | null }) {
 
   const orders = data ?? [];
 
+  const sourceOf = (o: Order) =>
+    o.kind === "deposit" ? (
+      <>
+        <span className="font-medium">Website deposit</span>
+        <span className="block text-muted-foreground">
+          {o.merchant_order_id ?? "–"}
+          {o.provider ? ` · ${PROVIDER_LABEL[o.provider] ?? o.provider} ${o.wallet_number ?? ""}` : " · wallet not chosen"}
+        </span>
+      </>
+    ) : (
+      "Entered here"
+    );
+
+  const cancelOf = (o: Order) =>
+    ["pending", "review"].includes(o.status) ? (
+      <Confirm
+        title="Cancel this order?"
+        description={`${o.order_no} will no longer accept a payment.`}
+        confirmLabel="Cancel order"
+        onConfirm={async () => {
+          await sb.from("orders").update({ status: "cancelled" }).eq("id", o.id).in("status", ["pending", "review"]);
+          refresh();
+        }}
+      >
+        <Button size="sm" variant="outline">
+          Cancel
+        </Button>
+      </Confirm>
+    ) : null;
+
   return (
     <Screen loading={loading} error={error} hasData={!!data}>
+      <PageHeader title="Orders" description="Orders you enter here, and deposits created by your websites. A payment is credited to an order only when it matches." />
       <Card className="mb-6">
         <CardHeader>
           <CardTitle>New order</CardTitle>
@@ -96,78 +128,83 @@ export function Orders({ settings }: { settings: Settings | null }) {
         </CardContent>
       </Card>
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Order</TableHead>
-            <TableHead>Created (BD)</TableHead>
-            <TableHead>Source</TableHead>
-            <TableHead>Customer</TableHead>
-            <TableHead>Phone</TableHead>
-            <TableHead className="text-right">Amount</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Claimed TrxID</TableHead>
-            <TableHead />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {orders.length === 0 ? (
-            <EmptyRow cols={9} text="No orders yet." />
-          ) : (
-            orders.map((o) => {
-              const expired = o.status === "pending" && new Date(o.expires_at) < new Date();
-              const open = ["pending", "review"].includes(o.status);
-              return (
-                <TableRow key={o.id}>
-                  <TableCell className="font-mono text-xs">{o.order_no}</TableCell>
-                  <TableCell>{when(o.created_at)}</TableCell>
-                  <TableCell className="text-xs">
-                    {o.kind === "deposit" ? (
-                      <>
-                        <span className="font-medium">Website deposit</span>
-                        <span className="block text-muted-foreground">
-                          {o.merchant_order_id ?? "–"}
-                          {o.provider ? ` · ${PROVIDER_LABEL[o.provider] ?? o.provider} ${o.wallet_number ?? ""}` : " · wallet not chosen"}
-                        </span>
-                      </>
-                    ) : (
-                      "Entered here"
-                    )}
-                  </TableCell>
-                  <TableCell>{o.customer_name ?? "–"}</TableCell>
-                  <TableCell>{o.customer_phone ?? "–"}</TableCell>
-                  <TableCell className="text-right">{tk(o.expected_amount)}</TableCell>
-                  <TableCell>
-                    <StatusBadge status={expired ? "expired" : o.status} />
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {o.claimed_trx_id
-                      ? `${PROVIDER_LABEL[o.claimed_provider ?? ""] ?? o.claimed_provider} ${o.claimed_trx_id}`
-                      : "–"}
-                  </TableCell>
-                  <TableCell>
-                    {open ? (
-                      <Confirm
-                        title="Cancel this order?"
-                        description={`${o.order_no} will no longer accept a payment.`}
-                        confirmLabel="Cancel order"
-                        onConfirm={async () => {
-                          await sb.from("orders").update({ status: "cancelled" }).eq("id", o.id).in("status", ["pending", "review"]);
-                          refresh();
-                        }}
-                      >
-                        <Button size="sm" variant="outline">
-                          Cancel
-                        </Button>
-                      </Confirm>
-                    ) : null}
-                  </TableCell>
-                </TableRow>
-              );
-            })
-          )}
-        </TableBody>
-      </Table>
+      <div className="hidden xl:block">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Order</TableHead>
+              <TableHead>Created (BD)</TableHead>
+              <TableHead>Source</TableHead>
+              <TableHead>Customer</TableHead>
+              <TableHead>Phone</TableHead>
+              <TableHead className="text-right">Amount</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Claimed TrxID</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {orders.length === 0 ? (
+              <EmptyRow cols={9} text="No orders yet." />
+            ) : (
+              orders.map((o) => {
+                const expired = o.status === "pending" && new Date(o.expires_at) < new Date();
+                return (
+                  <TableRow key={o.id}>
+                    <TableCell className="font-mono text-xs">{o.order_no}</TableCell>
+                    <TableCell>{when(o.created_at)}</TableCell>
+                    <TableCell className="text-xs">{sourceOf(o)}</TableCell>
+                    <TableCell>{o.customer_name ?? "–"}</TableCell>
+                    <TableCell>{o.customer_phone ?? "–"}</TableCell>
+                    <TableCell className="text-right">{tk(o.expected_amount)}</TableCell>
+                    <TableCell>
+                      <StatusBadge status={expired ? "expired" : o.status} />
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {o.claimed_trx_id
+                        ? `${PROVIDER_LABEL[o.claimed_provider ?? ""] ?? o.claimed_provider} ${o.claimed_trx_id}`
+                        : "–"}
+                    </TableCell>
+                    <TableCell>{cancelOf(o)}</TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="space-y-3 xl:hidden">
+        {orders.length === 0 ? <p className="py-8 text-center text-muted-foreground">No orders yet.</p> : null}
+        {orders.map((o) => {
+          const expired = o.status === "pending" && new Date(o.expires_at) < new Date();
+          return (
+            <Card key={o.id} className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-mono text-xs">{o.order_no}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{when(o.created_at)}</p>
+                </div>
+                <p className="whitespace-nowrap text-lg font-semibold tabular">{tk(o.expected_amount)}</p>
+              </div>
+              <div className="mt-2 text-sm">
+                {o.customer_name ?? "–"}
+                {o.customer_phone ? <span className="text-muted-foreground"> · {o.customer_phone}</span> : null}
+              </div>
+              <div className="mt-1 text-xs">{sourceOf(o)}</div>
+              {o.claimed_trx_id ? (
+                <p className="mt-1 font-mono text-xs">
+                  {PROVIDER_LABEL[o.claimed_provider ?? ""] ?? o.claimed_provider} {o.claimed_trx_id}
+                </p>
+              ) : null}
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <StatusBadge status={expired ? "expired" : o.status} />
+                {cancelOf(o)}
+              </div>
+            </Card>
+          );
+        })}
+      </div>
     </Screen>
   );
 }

@@ -3,13 +3,13 @@ import { ArrowDownToLine, Banknote, Clock, HandCoins, Scale } from "lucide-react
 import { must, sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { PROVIDERS, PROVIDER_LABEL, TYPE_LABEL, type DeviceBalance, type ProviderBalance } from "@/lib/types";
-import { groupSummary, isCounted, periodRange, rangeLabel, summarize, type DayTotal } from "@/lib/period";
+import { dayLabel, groupSummary, isCounted, periodRange, rangeLabel, summarize, type DayTotal } from "@/lib/period";
 import { openPaymentsWith } from "@/lib/filters";
 import { useQuery } from "@/hooks/useQuery";
 import { useDevices } from "@/hooks/useDevices";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
-import { StatCard } from "@/components/StatCard";
+import { StatCard, STAT_GRID } from "@/components/StatCard";
 import { DeviceChip } from "@/components/DeviceChip";
 import { ProviderChip } from "@/components/ProviderChip";
 import { DeviceHealthBadge } from "@/components/DeviceHealthBadge";
@@ -69,13 +69,13 @@ export function Overview() {
               value={device}
               onChange={setDevice}
               options={approved.map((d) => ({ value: d.id, label: devices.nameOf(d.id) }))}
-              className="w-48"
+              className="w-[calc(55%-0.25rem)] sm:w-48"
             />
           </>
         }
       />
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div className={`mb-6 ${STAT_GRID}`}>
         <StatCard label="Payments received" value={tk(sum.received.amount)} sub={`${sum.received.n} payments · fees ${tk(sum.received.fee)}`} icon={ArrowDownToLine} />
         <StatCard label="Agent Cash Out" value={tk(sum.cashOut.amount)} sub={`${sum.cashOut.n} receipts`} icon={HandCoins} />
         <StatCard label="Commission earned" value={tk(sum.commission)} sub={`fees on cash out ${tk(sum.cashOut.fee)}`} icon={Banknote} />
@@ -85,13 +85,13 @@ export function Overview() {
 
       <section className="mb-6">
         <h3 className="mb-2 text-base font-semibold">Last known balance</h3>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className={STAT_GRID}>
           {PROVIDERS.map((p) => {
             const b = (data?.balances ?? []).find((x) => x.provider === p);
             return (
               <Card key={p} className="p-4">
                 <ProviderChip provider={p} className="font-medium" />
-                <p className="mt-1 text-2xl font-semibold tabular">{b ? tk(b.balance) : "–"}</p>
+                <p className="mt-1 whitespace-nowrap text-lg font-semibold tabular sm:text-xl 2xl:text-2xl">{b ? tk(b.balance) : "–"}</p>
                 <p className="mt-1 truncate text-xs text-muted-foreground">
                   {b ? `${when(b.at)}${b.device_id ? " · " + devices.nameOf(b.device_id) : ""}` : "No message with a balance yet"}
                 </p>
@@ -109,11 +109,11 @@ export function Overview() {
             <TableHeader>
               <TableRow>
                 <TableHead>Phone</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead className="hidden sm:table-cell">Status</TableHead>
                 <TableHead className="text-right">Received</TableHead>
                 <TableHead className="text-right">Cash Out</TableHead>
-                <TableHead className="text-right">Commission</TableHead>
-                <TableHead className="text-right">Transactions</TableHead>
+                <TableHead className="hidden text-right sm:table-cell">Commission</TableHead>
+                <TableHead className="hidden text-right sm:table-cell">Transactions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -128,12 +128,18 @@ export function Overview() {
                       className="cursor-pointer"
                       onClick={() => openPaymentsWith({ device: d.id, from: range.from, to: range.to })}
                     >
-                      <TableCell className="max-w-56"><DeviceChip id={d.id} name={devices.nameOf(d.id)} className="font-medium" /></TableCell>
-                      <TableCell><DeviceHealthBadge device={d} /></TableCell>
+                      <TableCell className="max-w-56 whitespace-normal">
+                        <DeviceChip id={d.id} name={devices.nameOf(d.id)} className="font-medium" />
+                        <span className="mt-0.5 block text-xs text-muted-foreground sm:hidden">
+                          comm. {tk(s.commission)} · {s.received.n + s.cashOut.n} transactions
+                        </span>
+                        <span className="mt-1 block sm:hidden"><DeviceHealthBadge device={d} /></span>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell"><DeviceHealthBadge device={d} /></TableCell>
                       <TableCell className="text-right tabular">{tk(s.received.amount)}</TableCell>
                       <TableCell className="text-right tabular">{tk(s.cashOut.amount)}</TableCell>
-                      <TableCell className="text-right tabular">{tk(s.commission)}</TableCell>
-                      <TableCell className="text-right tabular">{s.received.n + s.cashOut.n}</TableCell>
+                      <TableCell className="hidden text-right tabular sm:table-cell">{tk(s.commission)}</TableCell>
+                      <TableCell className="hidden text-right tabular sm:table-cell">{s.received.n + s.cashOut.n}</TableCell>
                     </TableRow>
                   );
                 })
@@ -141,11 +147,11 @@ export function Overview() {
               {perDevice.has("none") ? (
                 <TableRow>
                   <TableCell><DeviceChip id={null} name="Unknown phone" /></TableCell>
-                  <TableCell />
+                  <TableCell className="hidden sm:table-cell" />
                   <TableCell className="text-right tabular">{tk(perDevice.get("none")!.received.amount)}</TableCell>
                   <TableCell className="text-right tabular">{tk(perDevice.get("none")!.cashOut.amount)}</TableCell>
-                  <TableCell className="text-right tabular">{tk(perDevice.get("none")!.commission)}</TableCell>
-                  <TableCell className="text-right tabular">{perDevice.get("none")!.received.n + perDevice.get("none")!.cashOut.n}</TableCell>
+                  <TableCell className="hidden text-right tabular sm:table-cell">{tk(perDevice.get("none")!.commission)}</TableCell>
+                  <TableCell className="hidden text-right tabular sm:table-cell">{perDevice.get("none")!.received.n + perDevice.get("none")!.cashOut.n}</TableCell>
                 </TableRow>
               ) : null}
             </TableBody>
@@ -159,12 +165,12 @@ export function Overview() {
         <TableHeader>
           <TableRow>
             <TableHead>Day</TableHead>
-            <TableHead>Provider</TableHead>
+            <TableHead className="hidden sm:table-cell">Provider</TableHead>
             <TableHead>Type</TableHead>
-            <TableHead className="text-right">Count</TableHead>
+            <TableHead className="hidden text-right sm:table-cell">Count</TableHead>
             <TableHead className="text-right">Amount</TableHead>
-            <TableHead className="text-right">Fee</TableHead>
-            <TableHead className="text-right">Commission</TableHead>
+            <TableHead className="hidden text-right sm:table-cell">Fee</TableHead>
+            <TableHead className="hidden text-right sm:table-cell">Commission</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -173,13 +179,22 @@ export function Overview() {
           ) : (
             breakdown.map((r) => (
               <TableRow key={`${r.day}-${r.provider}-${r.txn_type}`}>
-                <TableCell>{r.day}</TableCell>
-                <TableCell><ProviderChip provider={r.provider} /></TableCell>
-                <TableCell>{TYPE_LABEL[r.txn_type] ?? r.txn_type}</TableCell>
-                <TableCell className="text-right tabular">{r.n}</TableCell>
+                <TableCell>
+                  {dayLabel(r.day).slice(0, 6)}
+                  <span className="hidden sm:inline">{dayLabel(r.day).slice(6)}</span>
+                  <ProviderChip provider={r.provider} className="mt-0.5 flex text-xs sm:hidden" />
+                </TableCell>
+                <TableCell className="hidden sm:table-cell"><ProviderChip provider={r.provider} /></TableCell>
+                <TableCell>
+                  {TYPE_LABEL[r.txn_type] ?? r.txn_type}
+                  <span className="block text-xs text-muted-foreground sm:hidden">
+                    {r.n} · comm. {tk(r.commission)}
+                  </span>
+                </TableCell>
+                <TableCell className="hidden text-right tabular sm:table-cell">{r.n}</TableCell>
                 <TableCell className="text-right tabular">{tk(r.amount)}</TableCell>
-                <TableCell className="text-right tabular">{tk(r.fee)}</TableCell>
-                <TableCell className="text-right tabular">{tk(r.commission)}</TableCell>
+                <TableCell className="hidden text-right tabular sm:table-cell">{tk(r.fee)}</TableCell>
+                <TableCell className="hidden text-right tabular sm:table-cell">{tk(r.commission)}</TableCell>
               </TableRow>
             ))
           )}
