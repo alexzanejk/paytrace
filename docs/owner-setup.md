@@ -200,3 +200,23 @@ records and calculates this; **you pay partners yourself** and record the payout
 How it is counted: a day runs 12:00 AM to 11:59 PM Bangladesh time. Only payments counted in your money totals earn commission
 (matched, unmatched and tracked-only Cash Out receipts); payments held in **Review** earn it once you approve them. Only Cash Out
 and Send Money messages earn commission, not other message types.
+
+
+## Step 9: Jobs for agents (the "কাজ করুন এখনই" box)
+
+When an agent's balance gets high, you can give them a job: what to do, and the wallet address to do it with. You write it once.
+
+1. **Jobs tab.** Switch **Jobs are on**, set the amount (default 10,000 Tk), and write what the agent should do. You can write
+   `{balance}` and `{provider}`; each agent sees their own balance and provider there.
+2. Type the **wallet address** for each provider (bKash, Nagad, Rocket, Upay). A provider left empty gets no job. Press **Save job**.
+   The preview on the right shows what the agent will see.
+3. On the agent's phone (Home tab) a red box appears within about a minute of the balance reaching your amount: **কাজ করুন এখনই**,
+   then your instruction in a box, then the wallet address with a **Copy** button, and a **Done** button. The Home icon shows a
+   badge with the number of jobs.
+4. The agent does the work outside the app (PayTrace never moves money) and taps **Done**. The job then stays hidden until a newer
+   balance message arrives, and comes back only if that balance is still at or above your amount. **Jobs tab** lists the jobs waiting
+   right now and the ones marked done.
+
+The balance is the one printed in the phone's newest payment message. If an agent sends money without any new message arriving, the
+balance does not change by itself, which is why Done exists. The phone needs the newest app build. The job only shows while the app
+can reach the internet; the app does not yet ring or notify when a job appears.

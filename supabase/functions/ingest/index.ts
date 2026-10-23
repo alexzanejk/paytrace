@@ -279,6 +279,28 @@ async function handle(req: Request): Promise<Response> {
     return json({ success: true, ...((data ?? { enabled: false }) as Record<string, unknown>), device_status: "approved" });
   }
 
+  // ---- jobs: the work the owner wrote in the dashboard, shown when this phone's balance reaches the amount they set ----
+  if (body.action === "jobs") {
+    if (!device) return json({ success: true, jobs: [] }); // shared-secret setups have no phone record
+    const { data, error } = await db.rpc("device_jobs", { p_device: device.id });
+    if (error) {
+      console.error("device_jobs failed", error.code);
+      return json({ success: false, message: "could not load jobs" }, 500);
+    }
+    return json({ success: true, jobs: (data as { jobs?: unknown[] } | null)?.jobs ?? [] });
+  }
+  // The agent says the work is done; the job stays hidden until a newer balance message arrives.
+  if (body.action === "job_done") {
+    if (!device) return json({ success: false, message: "not paired" }, 403);
+    const provider = String(body.provider ?? "");
+    const { data, error } = await db.rpc("device_job_done", { p_device: device.id, p_provider: provider });
+    if (error) {
+      console.error("device_job_done failed", error.code);
+      return json({ success: false, message: "could not save" }, 500);
+    }
+    return json({ success: true, done: data === true });
+  }
+
   const str = (k: string) => (body[k] == null ? "" : String(body[k]).slice(0, 2000));
   const raw = str("raw_message");
   const hint = str("platform").toLowerCase();

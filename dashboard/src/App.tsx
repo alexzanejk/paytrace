@@ -12,6 +12,7 @@ import { Payments } from "@/pages/Payments";
 import { Orders } from "@/pages/Orders";
 import { Commission } from "@/pages/Commission";
 import { Devices } from "@/pages/Devices";
+import { Jobs } from "@/pages/Jobs";
 import { Logs } from "@/pages/Logs";
 import { ApiAccess } from "@/pages/ApiAccess";
 import { SettingsPage } from "@/pages/SettingsPage";
@@ -75,6 +76,7 @@ export default function App() {
       {tab === "orders" && <Orders settings={settings} />}
       {tab === "commission" && <Commission />}
       {tab === "devices" && <Devices />}
+      {tab === "jobs" && <Jobs />}
       {tab === "logs" && <Logs />}
       {tab === "api" && <ApiAccess />}
       {tab === "settings" && <SettingsPage onSaved={setSettings} />}
