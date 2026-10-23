@@ -200,3 +200,29 @@ records and calculates this; **you pay partners yourself** and record the payout
 How it is counted: a day runs 12:00 AM to 11:59 PM Bangladesh time. Only payments counted in your money totals earn commission
 (matched, unmatched and tracked-only Cash Out receipts); payments held in **Review** earn it once you approve them. Only Cash Out
 and Send Money messages earn commission, not other message types.
+
+
+## Step 9: Jobs for agents (the "কাজ করুন এখনই" box)
+
+An **agent** is one wallet on a phone: its bKash, its Nagad, its Rocket or its Upay. When an agent's own balance reaches your amount
+(10,000 Tk by default), that agent gets a job on the phone: what to do, **how urgent it is** (Urgent by default), and **your Trust Wallet
+address with its network (BNB Smart Chain)** to send to.
+
+1. **Jobs tab → The default job.** Switch **Jobs are on**, check the amount (default 10,000 Tk) and **How urgent** (Urgent), and write what the
+   agent should do. You can write `{agent}`, `{balance}` and `{provider}`; each agent sees their own name, balance and wallet type there.
+2. Paste your **Trust Wallet address** (it starts with `0x` and is 42 characters; PayTrace refuses anything else, so a mistyped address is
+   caught before an agent sees it). The **Network** is filled in as *BNB Smart Chain (BEP20)*. The preview shows what the agent will see.
+3. **Agents** (further down the same page): one card per agent. Open **This agent's job** to give that one agent its own description,
+   urgency, wallet address or network, or a name (for example "Karim") that appears on the phone. Anything left empty uses the default.
+   Switch an agent off to give it no job at all.
+4. On the phone (Home tab) each agent that has reached your amount gets its own card, most urgent first: **কাজ করুন এখনই**, the agent's name and
+   balance, an urgency label (red = Critical, orange = Urgent, calm = Normal), your description in a box, the wallet address with a **Copy**
+   button, the **network** with a warning to send only on that network, and **Done**. It shows within about a minute while the app is open.
+   The Home icon shows how many jobs are waiting.
+5. The agent does the work outside the app (PayTrace never moves money) and taps **Done**. The job then stays hidden until a newer balance
+   message arrives for that wallet, and comes back only if that balance is still at or above your amount.
+
+The balance is the one printed in that wallet's newest payment message. If an agent sends money without any new message arriving, the
+balance does not change by itself, which is why Done exists. The phone needs the newest app build. Two agents using the same wallet type on
+the same phone share one balance, because the messages do not say which account they belong to. The app does not yet ring or notify when
+a job appears while it is closed. Always send a small test amount to a new wallet address first.
