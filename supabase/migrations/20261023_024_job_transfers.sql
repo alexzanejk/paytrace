@@ -96,6 +96,7 @@ begin
 exception when others then
   return new;
 end $$;
+revoke all on function public.trg_job_transfer_check() from public, anon, authenticated;
 create trigger payments_job_transfer_check after insert on public.payments
   for each row execute function public.trg_job_transfer_check();
 
