@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
-import { CREATE, CREATE_RESPONSE, EMBED, GATEWAY, LANG_LABEL, STATUS, VERIFY, WEBHOOK_BODY, type Lang } from "./samples";
+import { CREATE, CREATE_RESPONSE, EMBED, FULLSCREEN, GATEWAY, LANG_LABEL, STATUS, VERIFY, WEBHOOK_BODY, type Lang } from "./samples";
 
 /** Public integration guide for partner websites that add deposits. No login; it contains no secrets. */
 
@@ -222,6 +222,11 @@ export function DocsPage() {
               <strong>Where customers go afterwards</strong> is set by the owner per website, on the dashboard&apos;s <em>Websites</em> page: one address for after a paid deposit (for example your account, deposit history or home page) and one for an expired or cancelled deposit.
               A few seconds after the result the page sends a <M>redirect</M> message with that address; the code above moves your whole window there. If you send a <M>return_url</M> with a deposit, that address is used for that deposit instead.
             </p>
+            <p className="text-neutral-700">
+              <strong>Recommended for phones: a deposit page that is only the payment frame.</strong> Make one page on your site (for example <M>/deposit-frame</M>) with no header, menu or footer, where the frame fills the whole screen.
+              Send the customer to that page, and put your own <M>pay_url</M> in it. Nothing of your site or ours is shown around the payment page.
+            </p>
+            <Code text={FULLSCREEN} />
             <Note tone="warn" title="Use https and check the sender">
               Your page must be <M>https</M>. Only follow messages whose <M>origin</M> is the payment page, as in the code. A <M>state</M> message is for your screen only; credit money only from the webhook.
             </Note>

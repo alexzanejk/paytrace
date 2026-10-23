@@ -210,3 +210,26 @@ export const EMBED = `<iframe id="pay" src="PAY_URL_FROM_STEP_1" title="Deposit"
     if (d.type === "state") console.log(d.state, d.order_id);                // pending, paid, review, expired ... for your own screen
   });
 </script>`;
+
+/** A deposit page that is nothing but the payment frame, filling the screen (no site header or menu around it). */
+export const FULLSCREEN = `<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html, body { margin: 0; height: 100%; background: #fff; }
+    iframe { display: block; width: 100%; height: 100%; border: 0; }   /* the page scrolls inside the frame */
+  </style>
+</head>
+<body>
+  <iframe id="pay" src="PAY_URL_FROM_STEP_1" title="Deposit" allow="clipboard-write"></iframe>
+  <script>
+    const payOrigin = new URL(document.getElementById("pay").src).origin;
+    window.addEventListener("message", (e) => {
+      const d = e.data;
+      if (e.origin !== payOrigin || !d || d.source !== "deposit-page") return;
+      if (d.type === "redirect" && d.url.startsWith(location.origin)) window.location.href = d.url;
+    });
+  </script>
+</body>
+</html>`;
