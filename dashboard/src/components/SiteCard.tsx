@@ -21,6 +21,8 @@ export interface SiteKey {
   revoked_at: string | null;
   webhook_url: string | null;
   result_style: number | null;
+  redirect_success_url: string | null;
+  redirect_failed_url: string | null;
 }
 
 const AUTO = "auto";
@@ -33,6 +35,11 @@ export function SiteCard({ site, onChanged, onRevoke }: { site: SiteKey; onChang
   const [secret, setSecret] = useState<string | null>(null);
   const [look, setLook] = useState<string | null>(null);
   const [lookNote, setLookNote] = useState("");
+  const [okUrl, setOkUrl] = useState<string | null>(null);
+  const [badUrl, setBadUrl] = useState<string | null>(null);
+  const [goNote, setGoNote] = useState("");
+  const okValue = okUrl ?? site.redirect_success_url ?? "";
+  const badValue = badUrl ?? site.redirect_failed_url ?? "";
   const lookValue = look ?? (site.result_style === null ? AUTO : String(site.result_style));
 
   async function saveHook(clear: boolean) {
@@ -45,6 +52,16 @@ export function SiteCard({ site, onChanged, onRevoke }: { site: SiteKey; onChang
     if (made) setSecret(made);
     setUrl("");
     setHookNote(clear ? "Turned off." : "Saved.");
+    onChanged();
+  }
+
+  async function saveGo() {
+    setGoNote("");
+    const { error } = await sb.rpc("set_key_redirects", { p_id: site.id, p_success: okValue, p_failed: badValue });
+    if (error) return setGoNote(error.message);
+    setGoNote("Saved.");
+    setOkUrl(null);
+    setBadUrl(null);
     onChanged();
   }
 
@@ -127,6 +144,28 @@ export function SiteCard({ site, onChanged, onRevoke }: { site: SiteKey; onChang
           <Button size="sm" onClick={() => void saveLook()} disabled={look === null}>Save look</Button>
           <a href={`/pay/?demo=1&style=${lookValue === AUTO ? 0 : lookValue}`} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline", size: "sm" })}>Preview</a>
           {lookNote ? <span className="text-xs text-muted-foreground">{lookNote}</span> : null}
+        </div>
+      </section>
+
+      <section className="grid gap-2">
+        <h4 className="text-sm font-semibold">3. Where should the customer go afterwards?</h4>
+        <p className="text-xs text-muted-foreground">
+          A few seconds after the result the customer is sent back to this website, to the page you choose here, for example their account, deposit history or home page.
+          The customer only ever sees the website's own addresses. A deposit that sends its own "return_url" uses that one instead.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="grid gap-1 text-xs font-medium">
+            After a paid deposit
+            <Input value={okValue} onChange={(e) => { setOkUrl(e.target.value); setGoNote(""); }} placeholder="https://yourshop.com/account/deposits" aria-label={`Page after a paid deposit for ${site.name}`} />
+          </label>
+          <label className="grid gap-1 text-xs font-medium">
+            After an expired or cancelled deposit
+            <Input value={badValue} onChange={(e) => { setBadUrl(e.target.value); setGoNote(""); }} placeholder="https://yourshop.com/deposit" aria-label={`Page after a failed deposit for ${site.name}`} />
+          </label>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" onClick={() => void saveGo()} disabled={okUrl === null && badUrl === null}>Save pages</Button>
+          {goNote ? <span className="text-xs text-muted-foreground">{goNote}</span> : null}
         </div>
       </section>
 

@@ -29,7 +29,7 @@ export function ApiAccess() {
       must(
         await sb
           .from("api_keys")
-          .select("id,name,key_prefix,created_at,last_used_at,revoked_at,webhook_url,result_style")
+          .select("id,name,key_prefix,created_at,last_used_at,revoked_at,webhook_url,result_style,redirect_success_url,redirect_failed_url")
           .order("created_at", { ascending: false }),
       ) as SiteKey[],
     [],
@@ -78,7 +78,7 @@ export function ApiAccess() {
         <ol className="grid gap-3 sm:grid-cols-3">
           {[
             ["Add the website", "Give it a name and make its key."],
-            ["Set it up", "Say where it gets “paid” messages and how its result page looks."],
+            ["Set it up", "Say where it gets “paid” messages, how its result page looks and where customers go afterwards."],
             ["Send the developer", "The guide link, the key and the secret. That is all they need."],
           ].map(([t, d], i) => (
             <li key={t} className="flex gap-3 rounded-lg border border-border p-3 text-sm">

@@ -1,14 +1,15 @@
 import { useState, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
-import { CREATE, CREATE_RESPONSE, GATEWAY, LANG_LABEL, STATUS, VERIFY, WEBHOOK_BODY, type Lang } from "./samples";
+import { CREATE, CREATE_RESPONSE, EMBED, GATEWAY, LANG_LABEL, STATUS, VERIFY, WEBHOOK_BODY, type Lang } from "./samples";
 
-/** Public integration guide for partner websites that add PayTrace deposits. No login; it contains no secrets. */
+/** Public integration guide for partner websites that add deposits. No login; it contains no secrets. */
 
 const SECTIONS = [
   ["overview", "How it works"],
   ["start", "Before you start"],
   ["create", "1. Create a deposit"],
-  ["redirect", "2. Send the customer to PayTrace"],
+  ["redirect", "2. Show the payment page"],
+  ["embed", "Keep customers on your site"],
   ["webhook", "3. Receive the result"],
   ["status", "4. Check an order (optional)"],
   ["statuses", "Order statuses"],
@@ -105,9 +106,9 @@ const M = ({ children }: { children: ReactNode }) => <code className="rounded bg
 function Flow() {
   const steps: [string, string, string][] = [
     ["Your site", "Customer picks a method on YOUR page, for example “Nagad Cash Out”.", "#334155"],
-    ["Your server", "Calls PayTrace: create a deposit. Gets a pay link.", "#1f6f50"],
-    ["PayTrace page", "Customer sees the number to pay, pays, and enters the TrxID.", "#b8269c"],
-    ["PayTrace", "Matches the TrxID with the real payment message on the phone.", "#ee7621"],
+    ["Your server", "Calls the gateway: create a deposit. Gets a pay link.", "#1f6f50"],
+    ["Payment page", "Customer sees the number to pay, pays, and enters the TrxID.", "#b8269c"],
+    ["Gateway", "Matches the TrxID with the real payment message on the phone.", "#ee7621"],
     ["Your server", "Gets a signed “paid” message. Credits the customer once.", "#1f6f50"],
   ];
   return (
@@ -128,7 +129,7 @@ export function DocsPage() {
     <div className="min-h-screen bg-white text-[#1b1f23]" style={{ fontFamily: 'system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif' }}>
       <header className="sticky top-0 z-20 border-b border-neutral-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
-          <p className="font-bold">PayTrace <span className="font-normal text-neutral-500">Deposit Gateway: Integration Guide</span></p>
+          <p className="font-bold">Deposit Gateway <span className="font-normal text-neutral-500">Integration Guide</span></p>
           <a href="#create" className="rounded-md bg-[#1f6f50] px-3 py-1.5 text-sm font-semibold text-white">Quick start</a>
         </div>
       </header>
@@ -144,9 +145,9 @@ export function DocsPage() {
 
         <main className="min-w-0 space-y-10">
           <div className="space-y-3">
-            <h1 className="text-3xl font-extrabold tracking-tight">Accept deposits with PayTrace</h1>
+            <h1 className="text-3xl font-extrabold tracking-tight">Accept deposits</h1>
             <p className="max-w-2xl text-lg text-neutral-600">
-              Your customer pays a bKash, Nagad or Rocket number, enters the transaction ID (TrxID), and PayTrace confirms it against the real payment and tells your server.
+              Your customer pays a bKash, Nagad or Rocket number, enters the transaction ID (TrxID), and the gateway confirms it against the real payment and tells your server.
               You build four small things: one call to create a deposit, a redirect, a webhook receiver, and (optionally) a status check.
             </p>
           </div>
@@ -154,28 +155,28 @@ export function DocsPage() {
           <Section id="overview" title="How it works">
             <Flow />
             <p className="text-neutral-700">
-              <strong>Your site</strong> shows the deposit methods and lets the customer choose (for example “bKash Send Money” or “Nagad Cash Out”). PayTrace&apos;s page starts after that choice, at the payment and TrxID step, so you do not build it.
-              Money is never credited because a customer clicked something: you credit only when PayTrace tells your server the order is <M>paid</M>.
+              <strong>Your site</strong> shows the deposit methods and lets the customer choose (for example “bKash Send Money” or “Nagad Cash Out”). The payment page starts after that choice, at the payment and TrxID step, so you do not build it.
+              Money is never credited because a customer clicked something: you credit only when the gateway tells your server the order is <M>paid</M>.
             </p>
           </Section>
 
           <Section id="start" title="Before you start">
-            <p className="text-neutral-700">Ask the PayTrace owner for these. They make them on the dashboard&apos;s <em>Websites</em> page, one set per website.</p>
+            <p className="text-neutral-700">Ask the gateway owner for these. They make them on the dashboard&apos;s <em>Websites</em> page, one set per website.</p>
             <Table
               head={["You need", "What it is", "Where it goes"]}
               rows={[
                 ["API key", <>Starts with <M>ptk_</M>. Identifies your site.</>, "Server settings only. Never in a web page, app or repository."],
                 ["Webhook address", "An https address on YOUR server that receives “paid” messages. You give it to the owner.", "Your server code."],
-                ["Webhook secret", <>Starts with <M>whsec_</M>. Lets you check a message really came from PayTrace.</>, "Server settings only."],
+                ["Webhook secret", <>Starts with <M>whsec_</M>. Lets you check a message really came from the gateway.</>, "Server settings only."],
               ]}
             />
             <Note tone="key" title="Keep keys on your server">
-              Anyone holding your API key can create orders in your name. Call PayTrace only from your server. If a key leaks, ask the owner to revoke it and make a new one.
+              Anyone holding your API key can create orders in your name. Call the gateway only from your server. If a key leaks, ask the owner to revoke it and make a new one.
             </Note>
           </Section>
 
           <Section id="create" title="1. Create a deposit">
-            <p className="text-neutral-700">When the customer has chosen a method and an amount, your server asks PayTrace for a deposit.</p>
+            <p className="text-neutral-700">When the customer has chosen a method and an amount, your server asks the gateway for a deposit.</p>
             <p><span className="rounded bg-[#1f6f50] px-2 py-0.5 text-xs font-bold text-white">POST</span> <code className="ml-2 break-all font-mono text-sm">{GATEWAY}/create-deposit</code></p>
             <Table
               head={["Header", "Value"]}
@@ -197,29 +198,47 @@ export function DocsPage() {
             <p className="text-sm font-semibold">Successful answer (HTTP 200)</p>
             <Code text={CREATE_RESPONSE} />
             <Note title="Save the order">
-              Store <M>order_id</M> (yours) and <M>tracking_number</M> (PayTrace&apos;s) with your pending deposit so you can match the webhook later.
+              Store <M>order_id</M> (yours) and <M>tracking_number</M> (the gateway&apos;s) with your pending deposit so you can match the webhook later.
             </Note>
           </Section>
 
-          <Section id="redirect" title="2. Send the customer to PayTrace">
+          <Section id="redirect" title="2. Show the payment page">
             <p className="text-neutral-700">
-              Redirect the customer&apos;s browser to <M>pay_url</M>. PayTrace shows the number to pay and a countdown, the customer pays in their wallet app, then pastes the TrxID and presses Confirm.
-              PayTrace shows a waiting screen and then the result, in Bangla or English, and sends the customer to your <M>return_url</M> after a confirmed payment.
+              Redirect the customer&apos;s browser to <M>pay_url</M>. The page shows the number to pay and a countdown, the customer pays in their wallet app, then pastes the TrxID and presses Confirm.
+              The page shows a waiting screen and then the result, in Bangla or English, and sends the customer to your <M>return_url</M> after a confirmed payment.
             </p>
             <Note tone="warn" title="Do not trust the browser">
               A customer can open your <M>return_url</M> without paying. Credit the customer only when your server has received a verified <M>deposit.paid</M> webhook (or <M>order-status</M> says <M>paid</M>).
             </Note>
           </Section>
 
+          <Section id="embed" title="Keep customers on your site">
+            <p className="text-neutral-700">
+              Instead of redirecting, put the payment page inside your own page with an <M>iframe</M>. The customer stays on your address and your header and menu stay around it.
+              The page is made to be framed: it has no branding of its own, so it looks like part of your site.
+            </p>
+            <Code text={EMBED} />
+            <p className="text-neutral-700">
+              <strong>Where customers go afterwards</strong> is set by the owner per website, on the dashboard&apos;s <em>Websites</em> page: one address for after a paid deposit (for example your account, deposit history or home page) and one for an expired or cancelled deposit.
+              A few seconds after the result the page sends a <M>redirect</M> message with that address; the code above moves your whole window there. If you send a <M>return_url</M> with a deposit, that address is used for that deposit instead.
+            </p>
+            <Note tone="warn" title="Use https and check the sender">
+              Your page must be <M>https</M>. Only follow messages whose <M>origin</M> is the payment page, as in the code. A <M>state</M> message is for your screen only; credit money only from the webhook.
+            </Note>
+            <Note tone="info" title="What a curious customer can still see">
+              Someone who opens the browser&apos;s developer tools can see the frame&apos;s address. To hide even that, ask the owner about putting the payment page on a domain that belongs to you.
+            </Note>
+          </Section>
+
           <Section id="webhook" title="3. Receive the result">
             <p className="text-neutral-700">
-              PayTrace sends a <M>POST</M> with JSON to your webhook address whenever an order is paid, held for review, expired or cancelled.
+              The gateway sends a <M>POST</M> with JSON to your webhook address whenever an order is paid, held for review, expired or cancelled.
             </p>
             <Table
               head={["Event", "Meaning", "What to do"]}
               rows={[
                 ["deposit.paid", "The payment was found and matches the amount.", "Credit the customer, once."],
-                ["deposit.review", "A person at PayTrace is checking it (for example the amount differed).", "Do nothing yet. You will get deposit.paid if it is approved."],
+                ["deposit.review", "A person at the gateway is checking it (for example the amount differed).", "Do nothing yet. You will get deposit.paid if it is approved."],
                 ["deposit.expired", "Time ran out without a confirmed payment.", "Mark the deposit as expired. The customer can start again."],
                 ["deposit.cancelled", "The order was cancelled.", "Mark it cancelled."],
               ]}
@@ -227,12 +246,12 @@ export function DocsPage() {
             <Code text={WEBHOOK_BODY} />
             <p className="text-sm font-semibold">Check the signature on every message</p>
             <p className="text-neutral-700">
-              Each request has a header <M>X-PayTrace-Signature: t=1700000000,v1=abc123…</M>. Compute HMAC-SHA256 with your webhook secret over the text <M>{"<t>.<raw request body>"}</M>, compare it with <M>v1</M> in constant time, and reject messages where <M>t</M> is more than 5 minutes old.
+              Each request has a header <M>X-Webhook-Signature: t=1700000000,v1=abc123…</M>. Compute HMAC-SHA256 with your webhook secret over the text <M>{"<t>.<raw request body>"}</M>, compare it with <M>v1</M> in constant time, and reject messages where <M>t</M> is more than 5 minutes old.
               Use the raw body exactly as received.
             </p>
             <Tabs samples={VERIFY} langs={["node", "php", "python"]} />
             <Note title="Answer quickly with a 2xx">
-              Reply <M>200</M> as soon as you have stored the message. Anything else (or no answer within 8 seconds) is retried after 1 minute, 5 minutes, 15 minutes, 1 hour, 3 hours, 6 hours and 12 hours, then PayTrace gives up, so use the status check (step 4) to catch up on anything you missed.
+              Reply <M>200</M> as soon as you have stored the message. Anything else (or no answer within 8 seconds) is retried after 1 minute, 5 minutes, 15 minutes, 1 hour, 3 hours, 6 hours and 12 hours, then the gateway gives up, so use the status check (step 4) to catch up on anything you missed.
               The same event can arrive more than once, so credit by <M>order_id</M> only if you have not already credited it.
             </Note>
           </Section>
@@ -253,7 +272,7 @@ export function DocsPage() {
                 ["paid", "Confirmed. This is the only status you credit on."],
                 ["review", "Held for a manual check (wrong amount, late payment, or unusual). Not credited. Wait for paid."],
                 ["expired", "Time ran out."],
-                ["cancelled", "Cancelled by the PayTrace owner."],
+                ["cancelled", "Cancelled by the gateway owner."],
               ]}
             />
           </Section>
@@ -302,7 +321,7 @@ export function DocsPage() {
           </Section>
 
           <footer className="border-t border-neutral-200 pt-6 text-sm text-neutral-500">
-            PayTrace Deposit Gateway. This guide has no secrets in it. Questions about your keys or deposit numbers go to the PayTrace owner.
+            Deposit Gateway. This guide has no secrets in it. Questions about your keys or deposit numbers go to the gateway owner.
           </footer>
         </main>
       </div>

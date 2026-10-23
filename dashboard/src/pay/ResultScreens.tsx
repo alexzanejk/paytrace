@@ -83,10 +83,10 @@ function Footer({ p, dark = false }: { p: ResultProps; dark?: boolean }) {
   const muted = dark ? "text-white/70" : "text-neutral-500";
   return (
     <div className="mt-5 space-y-2 text-center text-sm">
-      {p.phase === "paid" && p.returnUrl && (
+      {(p.phase === "paid" || p.phase === "expired") && p.returnUrl && (
         <p className={muted}>
           {L.returning}{" "}
-          <a className="font-semibold underline" href={p.returnUrl} rel="noreferrer noopener">
+          <a className="font-semibold underline" href={p.returnUrl} target="_top" rel="noreferrer noopener">
             {L.back}
           </a>
         </p>

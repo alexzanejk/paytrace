@@ -24,11 +24,21 @@ generated from `dashboard/src/lib/apiDocs.ts` (`depositInstructions`), which is 
    customer is redirected to `return_url` after a confirmed payment. The website must only credit on `status: "paid"` from the
    webhook or from `order-status`, never because the browser was redirected.
 
+## Showing the page inside the website (iframe) and sending the customer back
+
+The pay page can be shown in an `<iframe>` on the website (it allows framing from any https page; the dashboard itself never can be
+framed), so the customer stays on the website's own address and the page carries no brand name. Instead of the page navigating, it
+tells the parent with `postMessage` (`{source:"deposit-page", type:"height"|"state"|"redirect", ...}`: no secrets), and also tries to
+move the top window itself. After a paid deposit it goes to the website's success page (`api_keys.redirect_success_url`, set on
+Websites → "Where should the customer go afterwards?"; a per-deposit `return_url` wins), after an expired/cancelled one to
+`redirect_failed_url`. The listener code is in the public guide (`/docs/`, "Keep customers on your site"). Webhook header names are
+neutral (`X-Webhook-Signature`, `X-Webhook-Event`, user-agent `Deposit-Webhook/1`).
+
 ## Webhook
 
 `POST` JSON `{"event":"deposit.paid","data":{"tracking_number","order_id","status","amount","currency","provider","trx_id","paid_at"}}`.
 Events: `deposit.paid`, `deposit.review`, `deposit.expired`, `deposit.cancelled`. Header
-`X-PayTrace-Signature: t=<unix seconds>,v1=<hex>` where `v1` is HMAC-SHA256 of `"<t>.<raw body>"` with the key's signing secret
+`X-Webhook-Signature: t=<unix seconds>,v1=<hex>` where `v1` is HMAC-SHA256 of `"<t>.<raw body>"` with the key's signing secret
 (shown once on the Websites page when the address is first saved). Answer any 2xx. Failures are retried 1 min, 5 min, 15 min,
 1 h, 3 h, 6 h, 12 h (8 tries). A message can arrive twice; handle by `order_id`.
 

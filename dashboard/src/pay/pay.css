@@ -55,3 +55,8 @@
   .r-spin, .r-spin-slow, .r-ping, .r-scan, .r-stamp, .r-draw, .r-bar, .r-bounce, .r-pop, .r-fall, .r-fill, .r-blink, .r-rise { animation: none; }
   .r-draw, .r-fill { stroke-dashoffset: 0; }
 }
+
+/* Inside a website's frame the page is only as tall as its content; the website sizes the frame from our height message. */
+html[data-framed] .min-h-screen {
+  min-height: 0 !important;
+}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, XCircle, X } from "lucide-react";
 import { DEMO, Gone, demoStyle, demoSwitch, getOrder, pickProvider, submitTrx, type OrderView, type SubmitState } from "./api";
+import { leaveTo, reportHeight, tellParent } from "./embed";
 import { BkashMenuRow, HowToBody, howCaption, howClose, howKind, howTitle } from "./HowTo";
 import { ResultScreen, RESULT_STYLE_NAMES, type Phase } from "./ResultScreens";
 import { bannerColor, bdt, bnDigits, clock, headerColor, mmss, PROVIDER_NAME, t, variantFor, type Lang, type Variant } from "./i18n";
@@ -109,13 +110,19 @@ export function PayPage() {
       });
   }, [view, tracking]);
 
-  // After a successful payment, go back to the website.
+  // After the result, go back to the website: to its success page after a paid order, to its "failed" page after an expired or cancelled one.
+  const leaveUrl = view?.status === "paid" ? view.return_url : view?.status === "expired" || view?.status === "cancelled" ? view.failed_url ?? null : null;
   useEffect(() => {
-    if (view?.status !== "paid" || !view.return_url) return;
-    const to = view.return_url;
-    const timer = window.setTimeout(() => window.location.assign(to), 4000);
+    if (!leaveUrl) return;
+    const timer = window.setTimeout(() => leaveTo(leaveUrl), view?.status === "paid" ? 4000 : 8000);
     return () => window.clearTimeout(timer);
-  }, [view?.status, view?.return_url]);
+  }, [leaveUrl, view?.status]);
+
+  // Let a website that shows this page in a frame know the state and the height.
+  useEffect(() => {
+    if (view) tellParent({ type: "state", state: view.status, order_id: view.merchant_order_id ?? null });
+  }, [view?.status, view?.merchant_order_id]);
+  useEffect(() => reportHeight(), []);
 
   const left = view ? Math.max(0, view.seconds_left - Math.floor((now - fetchedAt) / 1000)) : 0;
   useEffect(() => {
@@ -345,7 +352,7 @@ export function PayPage() {
             shop={shop}
             provider={pname}
             trx={view.trx_id ?? ""}
-            returnUrl={view.return_url}
+            returnUrl={view.return_url ?? view.failed_url ?? null}
             onChange={() => {
               setEditing(true);
               setTrx(view.trx_id ?? "");
@@ -423,7 +430,7 @@ export function PayPage() {
               {view.return_url && (
                 <p className="text-center text-sm text-neutral-600">
                   {tr("returning", { shop })}{" "}
-                  <a className="font-semibold underline" href={view.return_url} rel="noreferrer noopener">
+                  <a className="font-semibold underline" href={view.return_url} target="_top" rel="noreferrer noopener">
                     {tr("returnNow")}
                   </a>
                 </p>
@@ -432,7 +439,18 @@ export function PayPage() {
           )}
 
           {screen === "ready" && view && view.status === "review" && <Notice icon="warn" title={tr("reviewTitle")} body={tr("reviewBody", { shop })} />}
-          {screen === "ready" && view && view.status === "expired" && <Notice icon="bad" title={tr("expiredTitle")} body={tr("expiredBody", { shop })} />}
+          {screen === "ready" && view && view.status === "expired" && (
+            <>
+              <Notice icon="bad" title={tr("expiredTitle")} body={tr("expiredBody", { shop })} />
+              {view.failed_url && (
+                <p className="text-center text-sm text-neutral-600">
+                  <a className="font-semibold underline" href={view.failed_url} target="_top" rel="noreferrer noopener">
+                    {tr("returnNow")}
+                  </a>
+                </p>
+              )}
+            </>
+          )}
           {screen === "ready" && view && view.status === "cancelled" && <Notice icon="bad" title={tr("closedTitle")} body="" />}
           {screen === "ready" && view && view.status === "pending" && !view.provider && <Notice icon="bad" title={tr("notFoundTitle")} body={tr("badLink")} />}
 
