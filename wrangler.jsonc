@@ -4,6 +4,8 @@
   "assets": {
     // Built by `npm run build` (Vite). Cloudflare build command: npm ci && npm run build
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    // /docs/ and /pay/ are real folders (docs/index.html, pay/index.html), so they are found before the dashboard fallback.
+    "html_handling": "auto-trailing-slash"
   }
 }

@@ -188,7 +188,7 @@ export const WEBHOOK_BODY = `{
 
 export const CREATE_RESPONSE = `{
   "tracking_number": "c3b20370-3538-4e29-922f-c60a2d17595c",
-  "pay_url": "https://YOUR-PAYTRACE-ADDRESS/pay?trackingNumber=c3b20370-...",
+  "pay_url": "https://YOUR-PAYTRACE-ADDRESS/pay/?trackingNumber=c3b20370-...",
   "status": "pending",
   "expires_at": "2026-10-23T09:30:00.000Z"
 }`;

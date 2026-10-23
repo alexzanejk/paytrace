@@ -91,7 +91,7 @@ export function depositInstructions(key?: string): string {
     "- return_url: optional, https only. The customer is sent back here after a confirmed payment.",
     "- expires_in_minutes: optional, 3 to 60, default 15.",
     '- customer_name, customer_phone: optional, for your own records.',
-    'Answer 200: { "tracking_number": "...", "pay_url": "https://.../pay?trackingNumber=...", "status": "pending", "expires_at": "..." }',
+    'Answer 200: { "tracking_number": "...", "pay_url": "https://.../pay/?trackingNumber=...", "status": "pending", "expires_at": "..." }',
     "Redirect the customer to pay_url. They see the number to pay and paste the TrxID there.",
     "",
     "2) LEARN THE RESULT",

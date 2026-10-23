@@ -61,7 +61,7 @@ async function createDeposit(req: Request, body: Record<string, unknown>): Promi
   if (data?.error) return json({ error: data.error }, 400);
   return json({
     tracking_number: data.tracking_number,
-    pay_url: `${DASHBOARD_URL}/pay?trackingNumber=${data.tracking_number}`,
+    pay_url: `${DASHBOARD_URL}/pay/?trackingNumber=${data.tracking_number}`,
     status: data.status, expires_at: data.expires_at,
   });
 }
