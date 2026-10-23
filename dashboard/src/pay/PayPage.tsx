@@ -372,7 +372,7 @@ export function PayPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#eceff1] sm:px-3 sm:py-8" style={{ fontFamily: FONT, color: "#222" }}>
+    <div data-page="form" className="min-h-screen bg-[#eceff1] sm:px-3 sm:py-8" style={{ fontFamily: FONT, color: "#222" }}>
       {demoBar}
 
       {dim && <div className="pay-fade fixed inset-0 z-40 bg-black/45" onClick={() => (howOpen ? setHowOpen(false) : setConfirmOpen(false))} />}
