@@ -11,7 +11,7 @@ import rocketLogo from "./logos/rocket.png";
 
 const POLL_MS = 4000;
 const LOGO: Record<string, string> = { bkash: bkashLogo, nagad: nagadLogo, rocket: rocketLogo };
-const FONT = '"Noto Sans Bengali","Noto Sans","Noto Sans TC",Roboto,system-ui,sans-serif';
+const FONT = 'Roboto,"Noto Sans Bengali","Noto Sans","Noto Sans TC",system-ui,sans-serif';
 
 function readLang(): Lang {
   try {
@@ -177,7 +177,7 @@ export function PayPage() {
   const redAmount = view ? (variant === "send" ? bnDigits(bdt(view.amount, view.currency, false)) : bdt(view.amount, view.currency, false)) : "";
   const shownAmount = lang === "bn" && variant === "send" ? redAmount : bdt(view?.amount ?? 0, view?.currency ?? "BDT", false);
   const timer = `${tr("expiresIn")}: ${clock(left)}`;
-  const timerLine = (
+  const timerLine = left > 180 ? null : (
     <span className="shrink-0 text-xs font-bold" style={{ color: left < 60 ? "#b3261e" : "#d9722b" }}>
       {timer}
     </span>
@@ -372,7 +372,7 @@ export function PayPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#eceff1] sm:px-3 sm:py-8" style={{ fontFamily: FONT, color: "#222" }}>
+    <div data-page="form" className="min-h-screen bg-[#eceff1] sm:px-3 sm:py-8" style={{ fontFamily: FONT, color: "#222" }}>
       {demoBar}
 
       {dim && <div className="pay-fade fixed inset-0 z-40 bg-black/45" onClick={() => (howOpen ? setHowOpen(false) : setConfirmOpen(false))} />}
@@ -398,10 +398,10 @@ export function PayPage() {
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1 min-[440px]:gap-1.5">
               <div className="flex items-center gap-1.5 min-[440px]:gap-2" aria-label={shop}>
-                <span className="rounded bg-white px-1.5 py-0.5 text-base font-extrabold leading-none min-[440px]:text-xl" style={{ color: head }}>
+                <span className="rounded bg-white px-1.5 py-0.5 text-[15px] font-extrabold leading-none min-[440px]:text-xl" style={{ color: head }}>
                   PAY
                 </span>
-                <span className="text-base font-light tracking-[0.2em] min-[440px]:text-xl">SERVICE</span>
+                <span className="text-[15px] font-light tracking-[0.14em] min-[440px]:text-xl min-[440px]:tracking-[0.2em]">SERVICE</span>
               </div>
               <div className="flex overflow-hidden rounded text-[11px] font-bold shadow" role="group" aria-label="Language">
                 {(["en", "bn"] as Lang[]).map((l) => (
@@ -473,7 +473,7 @@ export function PayPage() {
                   {banner}
                   <div>
                     <div className="flex items-baseline justify-between gap-2">
-                      <p className="text-lg font-bold min-[440px]:text-xl">
+                      <p className="text-base font-bold min-[440px]:text-xl">
                         {tr("walletNo")}
                         <span className="text-[#9c27b0]">*</span>
                       </p>

@@ -11,6 +11,11 @@ export function isFramed(): boolean {
   }
 }
 
+/** Mark the page as framed before it first paints, so the framed look (see pay.css) never flashes the standalone look. */
+export function markFramed(): void {
+  if (isFramed()) document.documentElement.dataset.framed = "1";
+}
+
 export function tellParent(message: Record<string, unknown>): void {
   if (!isFramed()) return;
   try {

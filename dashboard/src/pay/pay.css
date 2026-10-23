@@ -68,3 +68,19 @@ html[data-framed] .min-h-screen {
     zoom: 0.88;
   }
 }
+
+/* Inside a website's frame the page is one continuous white page, like the reference: no grey surround, no card shadow, no rounded
+   corners, and a white canvas, so nothing of the website shows through below the content and no "card" edge is visible. */
+html[data-framed],
+html[data-framed] body,
+html[data-framed] #root > div {
+  background: #fff !important;
+}
+html[data-framed] [data-page="form"] {
+  padding: 0 !important;
+}
+html[data-framed] main {
+  margin-top: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
