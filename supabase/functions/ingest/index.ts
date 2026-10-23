@@ -265,7 +265,15 @@ async function handle(req: Request): Promise<Response> {
       await log("phone_problem", null, { device_id: device.id, name: device.name, problem });
       defer(notify.send(problemMessage({ name: device.name, code: device.pair_code, problem, dashboardUrl: DASHBOARD_URL })));
     }
-    return json({ success: true, message: "heartbeat ok", device_status: "approved" });
+    // The jobs this phone has right now ride back on the reply (the short form), so the app can ring and notify within 30 seconds
+    // without a second request. Left out when the lookup fails: the app then changes nothing.
+    const { data: jobData, error: jobError } = await db.rpc("device_jobs", { p_device: device.id });
+    const brief = jobError
+      ? null
+      : (((jobData as { jobs?: Array<Record<string, unknown>> } | null)?.jobs) ?? []).map((j) => ({
+          provider: j.provider, agent: j.agent, urgency: j.urgency, balance: j.balance, balance_at: j.balance_at,
+        }));
+    return json({ success: true, message: "heartbeat ok", device_status: "approved", ...(brief ? { jobs: brief } : {}) });
   }
 
   // ---- earnings: what this phone's own app shows. Empty unless the owner switched it on for this phone. ----

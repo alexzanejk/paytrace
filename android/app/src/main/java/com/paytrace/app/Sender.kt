@@ -80,7 +80,7 @@ object Sender {
             }
             val code = conn.responseCode
             val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-            val text = stream?.bufferedReader()?.use { it.readText() }?.take(500) ?: ""
+            val text = stream?.bufferedReader()?.use { it.readText() }?.take(3000) ?: ""
             val dev = deviceStatusOf(text)
             if (dev != null && s.secret.isBlank()) s.deviceStatus = if (dev == "unknown") "unpaired" else dev
             if (code !in 200..299) return Result(false, "HTTP $code", text, dev)

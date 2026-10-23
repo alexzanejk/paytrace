@@ -221,8 +221,14 @@ address with its network (BNB Smart Chain)** to send to.
    The Home icon shows how many jobs are waiting.
 5. The agent does the work outside the app (PayTrace never moves money) and taps **Done**. The job then stays hidden until a newer balance
    message arrives for that wallet, and comes back only if that balance is still at or above your amount.
+6. **The phone rings.** When a job appears, the phone plays an alarm sound and vibrates for **5 seconds**, and shows a notification
+   (**কাজ করুন এখনই**, the agent, the balance, and URGENT or CRITICAL) even when the PayTrace app is closed. Tapping the notification opens the job.
+   If the job is still not done, it rings again every **10 minutes**. The agent can switch the sound off, or test it, under **Settings → Ring
+   when a job appears**. The sound follows the phone's **alarm volume** (not the ringtone volume) and rings even when the phone is on silent,
+   but not in Do Not Disturb.
 
 The balance is the one printed in that wallet's newest payment message. If an agent sends money without any new message arriving, the
 balance does not change by itself, which is why Done exists. The phone needs the newest app build. Two agents using the same wallet type on
-the same phone share one balance, because the messages do not say which account they belong to. The app does not yet ring or notify when
-a job appears while it is closed. Always send a small test amount to a new wallet address first.
+the same phone share one balance, because the messages do not say which account they belong to. The ring is sent along with the phone's normal 30-second check-in, so it
+arrives within about 30 seconds of a new balance message, and only while the phone is on, online and PayTrace is running. Always send a small
+test amount to a new wallet address first.

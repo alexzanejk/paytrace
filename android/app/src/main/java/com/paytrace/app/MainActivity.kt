@@ -328,6 +328,27 @@ fun SettingsScreen(settings: AppSettings, tick: Int) {
             }
         }
 
+        var jobSound by remember { mutableStateOf(settings.jobSound) }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                        Text("Ring when a job appears", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "Plays an alarm sound and vibrates for 5 seconds when a job appears, and again every 10 minutes while it is not done. Follows the phone's alarm volume.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = jobSound, onCheckedChange = {
+                        jobSound = it
+                        settings.jobSound = it
+                    })
+                }
+                OutlinedButton(onClick = { JobAlarm.ring(ctx) }) { Text("Test the sound") }
+            }
+        }
+
         val stopped = remember(tick) { settings.stoppedCount }
         Text("Keep this phone running", style = MaterialTheme.typography.titleMedium)
         if (stopped > 0) {
