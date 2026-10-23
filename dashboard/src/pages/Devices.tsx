@@ -16,6 +16,8 @@ import { ProviderChip } from "@/components/ProviderChip";
 import { DeviceHealthBadge } from "@/components/DeviceHealthBadge";
 import { DeviceDetails } from "@/components/DeviceDetails";
 import { WalletsCard } from "@/components/WalletsCard";
+import { CommissionCard } from "@/components/CommissionCard";
+import type { CommissionBalance, RateRow } from "@/lib/commission";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -38,7 +40,10 @@ export function Devices() {
       const totals = must(await sb.from("device_day_totals").select("*").eq("day", day)) as DayTotal[];
       const balances = must(await sb.from("device_balances").select("*")) as DeviceBalance[];
       const wallets = must(await sb.from("device_wallets").select("*").order("created_at", { ascending: true })) as DeviceWallet[];
-      return { devices, totals, balances, wallets };
+      // Partner commission (added later; reading these never changes anything above).
+      const rates = must(await sb.from("commission_rates").select("device_id,provider,kind,rate_pct,effective_from")) as RateRow[];
+      const commission = must(await sb.from("device_commission_balance").select("*")) as CommissionBalance[];
+      return { devices, totals, balances, wallets, rates, commission };
     },
     [day],
     { refreshMs: 10000 },
@@ -172,6 +177,8 @@ export function Devices() {
               totals={totals.filter((t) => t.device_id === d.id)}
               balances={(data?.balances ?? []).filter((b) => b.device_id === d.id)}
               wallets={(data?.wallets ?? []).filter((w) => w.device_id === d.id)}
+              rates={(data?.rates ?? []).filter((r) => r.device_id === d.id)}
+              commission={(data?.commission ?? []).find((c) => c.device_id === d.id)}
               error={failed[d.id]}
               onChanged={refresh}
               onRemove={() => setStatus(d, "revoked")}
@@ -191,6 +198,8 @@ function DeviceCard({
   totals,
   balances,
   wallets,
+  rates,
+  commission,
   error,
   onChanged,
   onRemove,
@@ -202,6 +211,8 @@ function DeviceCard({
   totals: DayTotal[];
   balances: DeviceBalance[];
   wallets: DeviceWallet[];
+  rates: RateRow[];
+  commission: CommissionBalance | undefined;
   error: string | undefined;
   onChanged: () => void;
   onRemove: () => void;
@@ -333,6 +344,8 @@ function DeviceCard({
       </Table>
 
       <WalletsCard deviceId={d.id} wallets={wallets} onChanged={onChanged} />
+
+      <CommissionCard device={d} rates={rates} balance={commission} onChanged={onChanged} />
 
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" onClick={() => openPaymentsWith({ device: d.id, from: day, to: day })}>

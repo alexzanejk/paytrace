@@ -207,6 +207,7 @@ fun Home(settings: AppSettings, tick: Int) {
                 Text(settings.deviceName, style = MaterialTheme.typography.bodySmall)
             }
         }
+        EarningsCard(settings)
         if (!smsOk) Warning("SMS permission is off. Open the phone's app settings for PayTrace and allow SMS, or no payment can be detected.")
         if (smsOk && !readOk) Warning("Reading old SMS is off. Allow it in the phone's app settings for PayTrace, or a payment message that arrives while the phone is off cannot be recovered.")
         if (!configured) PairCard(settings)
