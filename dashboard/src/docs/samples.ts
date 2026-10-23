@@ -235,7 +235,8 @@ export const FULLSCREEN = `<!doctype html>
 </html>`;
 
 /** The website's own "Next" button: show progress at once, then go to the page that holds the frame. */
-export const PROGRESS = `nextButton.addEventListener("click", async () => {
+export const PROGRESS = `// showLoading() and hideLoading() come from the loading animation you pasted into this page (pick one in the guide).
+nextButton.addEventListener("click", async () => {
   nextButton.disabled = true;                          // no double taps
   showLoading("Submitting your deposit request…");      // a spinner and this text, shown BEFORE anything is sent
   try {
