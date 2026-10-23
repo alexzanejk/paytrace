@@ -7,9 +7,17 @@
     <meta name="referrer" content="no-referrer" />
     <meta name="theme-color" content="#0f5f3f" />
     <title>Payment</title>
+    <style>
+      /* Shown at once, before the page's code has loaded, so there is never a blank screen. React replaces it. */
+      html, body { margin: 0; background: #fff; }
+      .boot-head { height: 76px; background: #0f5f3f; }
+      .boot-spin { width: 34px; height: 34px; margin: 56px auto; border: 4px solid #d7ddd9; border-top-color: #0f5f3f; border-radius: 50%; animation: boot-r 0.9s linear infinite; }
+      @keyframes boot-r { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) { .boot-spin { animation: none; } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="boot-head"></div><div class="boot-spin" role="status" aria-label="Loading"></div></div>
     <script type="module" src="/src/pay/main.tsx"></script>
   </body>
 </html>

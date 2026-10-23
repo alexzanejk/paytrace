@@ -233,3 +233,21 @@ export const FULLSCREEN = `<!doctype html>
   </script>
 </body>
 </html>`;
+
+/** The website's own "Next" button: show progress at once, then go to the page that holds the frame. */
+export const PROGRESS = `nextButton.addEventListener("click", async () => {
+  nextButton.disabled = true;                          // no double taps
+  showLoading("Submitting your deposit request…");      // a spinner and this text, shown BEFORE anything is sent
+  try {
+    // your own server calls the gateway (step 1) and answers with the address of your page that holds the frame
+    const res = await fetch("/api/deposits", { method: "POST", headers: { "Content-Type": "application/json" },
+                                              body: JSON.stringify({ method: "bkash_cash_out", amount }) });
+    if (!res.ok) throw new Error((await res.json()).message || "Please try again");
+    const { frame_page } = await res.json();            // for example "/deposit-frame?order=SHOP-1001"
+    window.location.href = frame_page;                   // the spinner stays on screen until the next page appears
+  } catch (err) {
+    hideLoading();
+    nextButton.disabled = false;
+    showError(err.message);                              // for example: this method is not available right now
+  }
+});`;

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
-import { CREATE, CREATE_RESPONSE, EMBED, FULLSCREEN, GATEWAY, LANG_LABEL, STATUS, VERIFY, WEBHOOK_BODY, type Lang } from "./samples";
+import { CREATE, CREATE_RESPONSE, EMBED, FULLSCREEN, GATEWAY, PROGRESS, LANG_LABEL, STATUS, VERIFY, WEBHOOK_BODY, type Lang } from "./samples";
 
 /** Public integration guide for partner websites that add deposits. No login; it contains no secrets. */
 
@@ -227,6 +227,11 @@ export function DocsPage() {
               Send the customer to that page, and put your own <M>pay_url</M> in it. Nothing of your site or ours is shown around the payment page.
             </p>
             <Code text={FULLSCREEN} />
+            <p className="text-neutral-700">
+              <strong>Show progress the moment the customer presses Next.</strong> Creating the deposit and loading the payment page takes a second or two. If nothing moves on screen in that time, customers think the button did not work and press it again.
+              Show a spinner with a short message (for example “Submitting your deposit request…”) straight away, before any request is sent, and keep it until the next page appears.
+            </p>
+            <Code text={PROGRESS} />
             <Note tone="warn" title="Use https and check the sender">
               Your page must be <M>https</M>. Only follow messages whose <M>origin</M> is the payment page, as in the code. A <M>state</M> message is for your screen only; credit money only from the webhook.
             </Note>
