@@ -178,3 +178,25 @@ Held payments (wrong amount, wrong phone, late) show in **Review**; approve them
 
 Optional: on a website's card on the **Websites** tab, "How should this site's result page look?" lets you pick how the screen after Confirm looks (six
 looks). Leave it on Automatic and every site gets its own look. "Preview the looks" shows them all.
+
+
+## Step 8: Partner commission (people who provide bKash, Nagad, Rocket or Upay accounts)
+
+A partner is a person whose phone (running the PayTrace app) receives money for you through their agent account (Cash Out) or
+personal account (Send Money). They earn a **percentage of the day's total** that comes through their phone. PayTrace only
+records and calculates this; **you pay partners yourself** and record the payout.
+
+1. **Phones tab → the partner's phone → Partner commission.** Type the percentage for each provider (bKash, Nagad, Rocket, Upay)
+   and each kind: **Cash Out (agent account)** and **Send Money (personal account)**. Leave a box empty to keep its rate, type 0 for
+   none. Pick the day the new rates start (default today); earlier days keep the rate they had. Press **Save rates**.
+2. Switch on **Show earnings in this phone's app** if the partner should see their earnings in their PayTrace app. It appears as an
+   **Earnings** card on the app's Home tab (today, this month, the last 7 days, their rates, what is still to receive). Phones with the
+   switch off look exactly as before. The phone needs the app version that has the card.
+3. **Commission tab:** see each partner's earned, paid and still-owed amounts, and the day-by-day rows (day, phone, provider, kind,
+   the day's total, the rate that applied, the commission). **Download CSV** for your own records.
+4. When you pay a partner (bKash, Nagad, bank or cash), record it under **Payouts you made** (partner, amount, date, a note such as the
+   TrxID). A wrong entry is **voided**, never removed.
+
+How it is counted: a day runs 12:00 AM to 11:59 PM Bangladesh time. Only payments counted in your money totals earn commission
+(matched, unmatched and tracked-only Cash Out receipts); payments held in **Review** earn it once you approve them. Only Cash Out
+and Send Money messages earn commission, not other message types.

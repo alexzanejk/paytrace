@@ -75,6 +75,8 @@ export interface Device {
   approved_at: string | null;
   last_seen_at: string | null;
   info: DeviceInfo | null;
+  /** The Earnings card in this phone's own app (partner commission). */
+  show_earnings?: boolean;
 }
 
 export interface EventRow {

@@ -268,6 +268,17 @@ async function handle(req: Request): Promise<Response> {
     return json({ success: true, message: "heartbeat ok", device_status: "approved" });
   }
 
+  // ---- earnings: what this phone's own app shows. Empty unless the owner switched it on for this phone. ----
+  if (body.action === "earnings") {
+    if (!device) return json({ success: true, enabled: false }); // shared-secret setups have no phone record
+    const { data, error } = await db.rpc("device_earnings", { p_device: device.id });
+    if (error) {
+      console.error("device_earnings failed", error.code);
+      return json({ success: false, message: "could not load earnings" }, 500);
+    }
+    return json({ success: true, ...((data ?? { enabled: false }) as Record<string, unknown>), device_status: "approved" });
+  }
+
   const str = (k: string) => (body[k] == null ? "" : String(body[k]).slice(0, 2000));
   const raw = str("raw_message");
   const hint = str("platform").toLowerCase();

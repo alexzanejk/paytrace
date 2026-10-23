@@ -10,6 +10,7 @@ import { Overview } from "@/pages/Overview";
 import { Review } from "@/pages/Review";
 import { Payments } from "@/pages/Payments";
 import { Orders } from "@/pages/Orders";
+import { Commission } from "@/pages/Commission";
 import { Devices } from "@/pages/Devices";
 import { Logs } from "@/pages/Logs";
 import { ApiAccess } from "@/pages/ApiAccess";
@@ -72,6 +73,7 @@ export default function App() {
       {tab === "review" && <Review />}
       {tab === "payments" && <Payments />}
       {tab === "orders" && <Orders settings={settings} />}
+      {tab === "commission" && <Commission />}
       {tab === "devices" && <Devices />}
       {tab === "logs" && <Logs />}
       {tab === "api" && <ApiAccess />}
