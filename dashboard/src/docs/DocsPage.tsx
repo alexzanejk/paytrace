@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
-import { CREATE, CREATE_RESPONSE, EMBED, FULLSCREEN, GATEWAY, LANG_LABEL, STATUS, VERIFY, WEBHOOK_BODY, type Lang } from "./samples";
+import { LoaderPicker } from "./LoaderPicker";
+import { CREATE, CREATE_RESPONSE, EMBED, FULLSCREEN, GATEWAY, PROGRESS, LANG_LABEL, STATUS, VERIFY, WEBHOOK_BODY, type Lang } from "./samples";
 
 /** Public integration guide for partner websites that add deposits. No login; it contains no secrets. */
 
@@ -10,6 +11,7 @@ const SECTIONS = [
   ["create", "1. Create a deposit"],
   ["redirect", "2. Show the payment page"],
   ["embed", "Keep customers on your site"],
+  ["loaders", "Show progress on Next"],
   ["webhook", "3. Receive the result"],
   ["status", "4. Check an order (optional)"],
   ["statuses", "Order statuses"],
@@ -232,6 +234,24 @@ export function DocsPage() {
             </Note>
             <Note tone="info" title="What a curious customer can still see">
               Someone who opens the browser&apos;s developer tools can see the frame&apos;s address. To hide even that, ask the owner about putting the payment page on a domain that belongs to you.
+            </Note>
+          </Section>
+
+          <Section id="loaders" title="Show progress on Next">
+            <p className="text-neutral-700">
+              Creating the deposit and loading the payment page takes a second or two. If nothing moves on screen in that time, customers think the button did not work and press it again.
+              Show an animation with a short message the moment Next is pressed, before any request is sent, and keep it until the next page appears.
+            </p>
+            <p className="text-neutral-700">
+              <strong>Step 1.</strong> Pick one of the six animations below and paste its code once into the page that has your Next button. Each one defines the same two functions, <M>showLoading(text)</M> and <M>hideLoading()</M>, so you can switch to another later without touching anything else.
+            </p>
+            <LoaderPicker renderCode={(text) => <Code text={text} />} />
+            <p className="text-neutral-700">
+              <strong>Step 2.</strong> Call those two functions from your Next button. This works with any of the six:
+            </p>
+            <Code text={PROGRESS} />
+            <Note tone="info" title="Change the text and colours">
+              The message is whatever you pass to <M>showLoading</M>, in any language. Colours and sizes are plain CSS in the pasted block; change them to match your site.
             </Note>
           </Section>
 
