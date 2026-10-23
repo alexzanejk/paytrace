@@ -186,25 +186,25 @@ export function PayPage() {
   const how = howKind(provider, view?.method ?? null);
 
   const banner = (
-    <div className="flex items-center gap-3 rounded px-3 py-2 text-white min-[440px]:gap-4 min-[440px]:px-4 max-[439px]:min-h-[60px] min-[440px]:min-h-[76px]" style={{ background: color }}>
+    <div className="flex items-center gap-3 rounded px-3 py-2 text-white min-[360px]:gap-4 min-[360px]:px-4 max-[359px]:min-h-[60px] min-[360px]:min-h-[76px]" style={{ background: color }}>
       {LOGO[provider] ? (
-        <img src={LOGO[provider]} alt="" width={60} height={60} className="size-11 rounded-full bg-white min-[440px]:size-[60px]" />
+        <img src={LOGO[provider]} alt="" width={60} height={60} className="size-11 rounded-full bg-white min-[360px]:size-[60px]" />
       ) : (
-        <span className="grid size-11 place-items-center rounded-full bg-white text-2xl font-bold min-[440px]:size-[60px]" style={{ color }}>
+        <span className="grid size-11 place-items-center rounded-full bg-white text-2xl font-bold min-[360px]:size-[60px]" style={{ color }}>
           {pname.slice(0, 1)}
         </span>
       )}
-      <span className="text-lg font-bold min-[440px]:text-xl">
+      <span className="text-lg font-bold min-[360px]:text-xl">
         {variant === "bsend" && lang === "bn" ? tr("bannerName") : `${pname.toUpperCase()} ${tr("deposit")}`}
       </span>
     </div>
   );
 
   const walletBox = (
-    <div className={`flex h-11 items-center justify-between px-4 min-[440px]:h-14 min-[440px]:px-5 ${variant === "send" ? "border-b border-neutral-500 bg-neutral-100" : "bg-neutral-100"}`}>
-      <span className="text-lg tabular-nums min-[440px]:text-xl">{view?.wallet_number}</span>
+    <div className={`flex h-11 items-center justify-between px-4 min-[360px]:h-14 min-[360px]:px-5 ${variant === "send" ? "border-b border-neutral-500 bg-neutral-100" : "bg-neutral-100"}`}>
+      <span className="text-lg tabular-nums min-[360px]:text-xl">{view?.wallet_number}</span>
       <button type="button" onClick={() => void copy(view?.wallet_number ?? "")} aria-label={tr("copy")} className="text-[#216a4a]">
-        <svg viewBox="0 0 24 24" className="size-6 min-[440px]:size-[30px]" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <svg viewBox="0 0 24 24" className="size-6 min-[360px]:size-[30px]" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <rect x="8" y="3" width="12" height="15" rx="2" />
           <path d="M16 21H6a2 2 0 0 1-2-2V8" />
           <path d="M11 8h6M11 11h6M11 14h4" />
@@ -236,7 +236,7 @@ export function PayPage() {
         autoCapitalize="characters"
         spellCheck={false}
         maxLength={60}
-        className="h-12 w-full bg-transparent px-4 text-base outline-none min-[440px]:h-14 min-[440px]:text-lg"
+        className="h-12 w-full bg-transparent px-4 text-base outline-none min-[360px]:h-14 min-[360px]:text-lg"
         style={{
           paddingTop: floating ? 18 : 0,
           borderRadius: 4,
@@ -247,7 +247,7 @@ export function PayPage() {
   );
 
   const linkRow = touched && (
-    <button type="button" onClick={() => setHowOpen(true)} className="-mt-0.5 block w-full text-center text-[13px] font-bold leading-5 text-[#1565c0] min-[440px]:text-[14px]">
+    <button type="button" onClick={() => setHowOpen(true)} className="-mt-0.5 block w-full text-center text-[13px] font-bold leading-5 text-[#1565c0] min-[360px]:text-[14px]">
       {tr("link")}
     </button>
   );
@@ -258,7 +258,7 @@ export function PayPage() {
         type="button"
         onClick={pressConfirm}
         disabled={busy}
-        className={`rounded-[10px] border border-neutral-900 bg-white py-2.5 text-sm min-[440px]:py-3 text-neutral-900 transition-colors hover:bg-neutral-200 active:bg-neutral-300 disabled:opacity-50 ${variant === "bsend" ? "w-full" : "px-14"}`}
+        className={`rounded-[10px] border border-neutral-900 bg-white py-2.5 text-sm min-[360px]:py-3 text-neutral-900 transition-colors hover:bg-neutral-200 active:bg-neutral-300 disabled:opacity-50 ${variant === "bsend" ? "w-full" : "px-14"}`}
       >
         {busy ? "…" : tr("confirm")}
       </button>
@@ -266,10 +266,10 @@ export function PayPage() {
   );
 
   const warning = (
-    <section className="space-y-0.5 min-[440px]:space-y-1">
-      <p className="text-sm font-bold min-[440px]:text-[15px]">{tr("warnTitle")}</p>
-      <p className="pay-warn-pulse text-center text-[10.5px] font-bold leading-tight text-red-600 min-[440px]:text-[11px]">{tr("warnRed")}</p>
-      <p className="text-[10px] leading-snug text-neutral-500 min-[440px]:text-[11px]">{tr("warnGray", { P: variant === "send" ? pname.toUpperCase() : pname.toUpperCase() })}</p>
+    <section className="space-y-0.5 min-[360px]:space-y-1">
+      <p className="text-sm font-bold min-[360px]:text-[13px] min-[360px]:leading-[19px]">{tr("warnTitle")}</p>
+      <p className="pay-warn-pulse text-center text-[10.5px] font-bold leading-tight text-red-600 min-[360px]:text-[12.8px] min-[360px]:leading-[19px]">{tr("warnRed")}</p>
+      <p className="text-[10px] leading-snug text-neutral-500 min-[360px]:text-[12.8px] min-[360px]:leading-[19px]">{tr("warnGray", { P: variant === "send" ? pname.toUpperCase() : pname.toUpperCase() })}</p>
     </section>
   );
 
@@ -390,18 +390,18 @@ export function PayPage() {
       )}
 
       <main data-variant={variant} className="mx-auto w-full max-w-[680px] overflow-hidden bg-white shadow-md sm:rounded-[10px]">
-        <header className="px-4 py-2 text-white min-[440px]:px-5 min-[440px]:py-3 max-[439px]:min-h-[60px] min-[440px]:min-h-[74px]" style={{ background: head }}>
+        <header className="px-4 py-2 text-white min-[360px]:px-5 min-[360px]:py-2 max-[359px]:min-h-[60px] min-[360px]:min-h-[74px]" style={{ background: head }}>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-lg font-bold leading-tight min-[440px]:text-xl">{view ? amountText : tr("loading")}</p>
-              <p className={`mt-0.5 font-bold leading-tight min-[440px]:mt-1 ${variant === "bsend" ? "text-[13px] min-[440px]:text-sm" : "text-sm min-[440px]:text-base"}`}>{view ? tr("sub") : ""}</p>
+              <p className="text-lg font-bold leading-tight min-[360px]:text-xl">{view ? amountText : tr("loading")}</p>
+              <p className={`mt-0.5 font-bold leading-tight min-[360px]:mt-1 ${variant === "bsend" ? "text-[13px] min-[360px]:text-sm" : "text-sm min-[360px]:text-base"}`}>{view ? tr("sub") : ""}</p>
             </div>
-            <div className="flex shrink-0 flex-col items-end gap-1 min-[440px]:gap-1.5">
-              <div className="flex items-center gap-1.5 min-[440px]:gap-2" aria-label={shop}>
-                <span className="rounded bg-white px-1.5 py-0.5 text-[15px] font-extrabold leading-none min-[440px]:text-xl" style={{ color: head }}>
+            <div className="flex shrink-0 flex-col items-end gap-1 min-[360px]:gap-1.5">
+              <div className="flex items-center gap-1.5 min-[360px]:gap-2" aria-label={shop}>
+                <span className="rounded bg-white px-1.5 py-0.5 text-[15px] font-extrabold leading-none min-[360px]:text-xl" style={{ color: head }}>
                   PAY
                 </span>
-                <span className="text-[15px] font-light tracking-[0.14em] min-[440px]:text-xl min-[440px]:tracking-[0.2em]">SERVICE</span>
+                <span className="text-[15px] font-light tracking-[0.14em] min-[360px]:text-xl min-[360px]:tracking-[0.2em]">SERVICE</span>
               </div>
               <div className="flex overflow-hidden rounded text-[11px] font-bold shadow" role="group" aria-label="Language">
                 {(["en", "bn"] as Lang[]).map((l) => (
@@ -414,7 +414,7 @@ export function PayPage() {
           </div>
         </header>
 
-        <div className="space-y-2 px-4 pb-3 pt-3 min-[440px]:px-7 min-[440px]:pb-7 min-[440px]:pt-7">
+        <div className="space-y-2 px-4 pb-3 pt-3 min-[360px]:px-7 min-[360px]:pb-7 min-[360px]:pt-7">
           {screen === "loading" && (
             <p className="flex items-center justify-center gap-2 py-10 text-neutral-600">
               <Loader2 className="size-5 animate-spin" /> {tr("loading")}
@@ -464,7 +464,7 @@ export function PayPage() {
 
           {screen === "ready" && view && view.status === "pending" && view.provider && (
             <>
-              <p className="text-[15px] font-bold leading-snug text-[#e0392b] min-[440px]:text-[17px]">{tr("amountNote", { amount: lang === "bn" && variant === "send" ? redAmount : redAmount })}</p>
+              <p className="text-[15px] font-bold leading-snug text-[#e0392b] min-[360px]:text-base min-[360px]:leading-6">{tr("amountNote", { amount: lang === "bn" && variant === "send" ? redAmount : redAmount })}</p>
 
               {wallProblem && !view.wallet_number && <p className="rounded bg-amber-50 p-3 text-sm text-amber-900">{tr("noWallet")}</p>}
 
@@ -473,33 +473,33 @@ export function PayPage() {
                   {banner}
                   <div>
                     <div className="flex items-baseline justify-between gap-2">
-                      <p className="text-base font-bold min-[440px]:text-xl">
+                      <p className="text-base font-bold min-[360px]:leading-6">
                         {tr("walletNo")}
                         <span className="text-[#9c27b0]">*</span>
                       </p>
                       {variant !== "bsend" && timerLine}
                     </div>
-                    <p className="mb-1 text-sm min-[440px]:text-[17px]">{tr("walletOnly", { P: pname.toUpperCase() })}</p>
+                    <p className="mb-1 text-sm min-[360px]:text-base min-[360px]:leading-6">{tr("walletOnly", { P: pname.toUpperCase() })}</p>
                     {walletBox}
                   </div>
                   {view.trx_id && !editing ? (
                     checkingPanel
                   ) : (
-                    <div className="space-y-2">
-                      <p className="text-base font-bold leading-snug min-[440px]:text-xl">
+                    <div className="space-y-2 min-[360px]:space-y-3">
+                      <p className="text-base font-bold leading-snug min-[360px]:leading-6">
                         {tr("trxLabel")}
                         <span className="text-[#e0392b]">{tr("required")}</span>
                       </p>
                       {linkRow}
                       {trxBox}
-                      <div className="pt-1 min-[440px]:pt-2">{confirmBtn}</div>
+                      <div className="pt-1">{confirmBtn}</div>
                     </div>
                   )}
                   {variant === "bsend" && (
                     <>
                       <BkashMenuRow lang={lang} />
-                      <p className="text-center text-base font-bold text-[#e0392b] min-[440px]:text-xl">{tr("menuLabel")}</p>
-                      <p className="text-center text-xs font-bold min-[440px]:text-sm" style={{ color: left < 60 ? "#b3261e" : "#555" }}>
+                      <p className="text-center text-base font-bold text-[#e0392b] min-[360px]:text-xl">{tr("menuLabel")}</p>
+                      <p className="text-center text-xs font-bold min-[360px]:text-sm" style={{ color: left < 60 ? "#b3261e" : "#555" }}>
                         {tr("timeLeft")} <span className="text-[#e0392b]">{mmss(left)}</span>
                       </p>
                     </>
@@ -512,29 +512,29 @@ export function PayPage() {
                 <>
                   <div>
                     <div className="flex items-baseline justify-between gap-2">
-                      <p className="text-base font-bold min-[440px]:text-lg">
+                      <p className="text-base font-bold min-[360px]:leading-6">
                         {tr("walletNoSend")}
                         <span className="text-[#9c27b0]">*</span>
                       </p>
                       {timerLine}
                     </div>
-                    <p className="mb-1 text-sm min-[440px]:text-[16px]">{tr("walletOnly", { P: pname.toUpperCase() })}</p>
+                    <p className="mb-1 text-sm min-[360px]:text-base min-[360px]:leading-6">{tr("walletOnly", { P: pname.toUpperCase() })}</p>
                     {walletBox}
                   </div>
-                  <p className="text-base font-bold min-[440px]:text-lg">{tr("walletProvider")}</p>
+                  <p className="text-base font-bold min-[360px]:leading-6">{tr("walletProvider")}</p>
                   {banner}
                   {view.trx_id && !editing ? (
                     checkingPanel
                   ) : (
-                    <div className="space-y-2">
-                      <p className="text-base font-bold min-[440px]:text-lg">
+                    <div className="space-y-2 min-[360px]:space-y-3">
+                      <p className="text-base font-bold min-[360px]:leading-6">
                         {tr("trxLabel")}
                         <span className="text-[#9c27b0]">*</span>
                         <span className="text-[#e0392b]">{tr("required")}</span>
                       </p>
                       {linkRow}
                       {trxBox}
-                      <div className="pt-1 min-[440px]:pt-2">{confirmBtn}</div>
+                      <div className="pt-1">{confirmBtn}</div>
                     </div>
                   )}
                   {warning}
