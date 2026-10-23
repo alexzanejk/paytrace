@@ -20,7 +20,80 @@ data class Job(
     val instruction: String,
 )
 
+/** One "I sent it" the partner submitted: the amount and P2P charge they typed, and how the check against the next Cash Out message went.
+ *  [status] is "checking", "mismatch" (they may fix the numbers once, [attempts] is 1), "review" (the owner will look), "verified" or "rejected". */
+data class Transfer(
+    val id: String,
+    val provider: String,
+    val amount: Double,
+    val charge: Double,
+    val status: String,
+    val attempts: Int,
+    val submittedAt: String,
+) {
+    val canFix: Boolean get() = status == "mismatch" && attempts < 2
+}
+
+/** Everything the phone shows about work: the jobs open now and its recent sends. */
+data class JobsSnapshot(val jobs: List<Job>, val transfers: List<Transfer>)
+
+/** What the server said about a submitted send. [error] is null on success; [message] is wording for the partner. */
+data class SendResult(val ok: Boolean, val status: String, val error: String?) {
+    val message: String
+        get() = when (error) {
+            null -> ""
+            "already_waiting" -> "The last send for this wallet is still being checked. Wait for it to turn green first."
+            "too_much" -> "That is more than the wallet's balance. Check the amount and the charge."
+            "no_balance" -> "PayTrace has not seen a balance message for this wallet yet."
+            "bad_amount", "bad_provider" -> "Type the amount in taka, for example 10000."
+            "not_fixable" -> "These numbers cannot be changed any more. The owner will check them."
+            "offline" -> "Could not reach the server. Check the internet and try again."
+            else -> "Could not save. Try again."
+        }
+}
+
+/** Reads what the partner typed in the amount boxes: plain numbers, commas allowed, Bangla digits allowed, at most two decimals. */
+object MoneyInput {
+    private val shape = Regex("[0-9]{1,9}(\\.[0-9]{1,2})?")
+
+    fun parse(text: String): Double? {
+        val ascii = text.trim().map { c -> if (c in '০'..'৯') '0' + (c - '০') else c }.joinToString("")
+            .replace(",", "").replace(" ", "")
+        return if (shape.matches(ascii)) ascii.toDoubleOrNull() else null
+    }
+}
+
 object JobsParser {
+    /** The sends the partner has submitted, newest first. Empty when the reply has none (an older server) or is not a success. */
+    fun parseTransfers(text: String): List<Transfer> = try {
+        val o = JSONObject(text)
+        val a = if (o.optBoolean("success", false)) o.optJSONArray("transfers") else null
+        if (a == null) emptyList()
+        else (0 until a.length()).mapNotNull { i ->
+            val t = a.optJSONObject(i) ?: return@mapNotNull null
+            val id = t.optString("id")
+            val provider = t.optString("provider")
+            val status = t.optString("status")
+            if (id.isBlank() || provider.isBlank() || status.isBlank()) null
+            else Transfer(id, provider, t.optDouble("amount", 0.0), t.optDouble("charge", 0.0), status, t.optInt("attempts", 1), t.optString("submitted_at", ""))
+        }
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    /** The server's answer to "I sent it" / "fix the numbers". Null text means the phone could not reach the server. */
+    fun parseSend(text: String?): SendResult {
+        if (text == null) return SendResult(false, "", "offline")
+        return try {
+            val o = JSONObject(text)
+            if (!o.optBoolean("success", false)) SendResult(false, "", "failed")
+            else if (o.optBoolean("ok", false)) SendResult(true, o.optString("status", "checking"), null)
+            else SendResult(false, "", o.optString("error", "failed"))
+        } catch (e: Exception) {
+            SendResult(false, "", "failed")
+        }
+    }
+
     /** Reads the server's reply. Null when it is not a successful answer (the app then keeps what it showed before). */
     fun parse(text: String): List<Job>? = try {
         val o = JSONObject(text)
@@ -75,8 +148,24 @@ object JobsApi {
         }
     }
 
-    /** The jobs this phone has right now. Null when the server cannot be reached. */
-    fun fetch(s: AppSettings): List<Job>? = post(s, """{"action":"jobs"}""")?.let { JobsParser.parse(it) }
+    /** The jobs this phone has right now and its recent sends. Null when the server cannot be reached. */
+    fun fetch(s: AppSettings): JobsSnapshot? {
+        val text = post(s, """{"action":"jobs"}""") ?: return null
+        val jobs = JobsParser.parse(text) ?: return null
+        return JobsSnapshot(jobs, JobsParser.parseTransfers(text))
+    }
+
+    /** The partner says they sent [amount] with P2P [charge]; the next Cash Out message for this wallet will check it. */
+    fun sent(s: AppSettings, provider: String, amount: Double, charge: Double): SendResult {
+        val body = JSONObject().put("action", "job_sent").put("provider", provider).put("amount", amount).put("charge", charge).toString()
+        return JobsParser.parseSend(post(s, body))
+    }
+
+    /** The one correction allowed after a send did not add up. */
+    fun fix(s: AppSettings, id: String, amount: Double, charge: Double): SendResult {
+        val body = JSONObject().put("action", "job_fix").put("id", id).put("amount", amount).put("charge", charge).toString()
+        return JobsParser.parseSend(post(s, body))
+    }
 
     /** Tells the server the agent finished the job for [provider]. True when the server recorded it. */
     fun done(s: AppSettings, provider: String): Boolean {

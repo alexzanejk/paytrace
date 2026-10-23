@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -18,21 +19,26 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 
 /** Small cards for the Home screen: status, the job to do now, and what the partner has earned. Looks only; the numbers come from the server. */
 
@@ -55,7 +61,7 @@ fun StatusPill(healthy: Boolean, configured: Boolean) {
 
 /** "কাজ করুন এখনই": what to do, in a box, and the wallet address to do it with. */
 @Composable
-fun JobCard(job: Job, onDone: () -> Unit) {
+fun JobCard(job: Job, onSent: suspend (Double, Double) -> String?) {
     val clip = LocalClipboardManager.current
     var copied by remember(job.wallet) { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
@@ -121,17 +127,124 @@ fun JobCard(job: Job, onDone: () -> Unit) {
                     Text("Send only on this network, or the money can be lost.", style = MaterialTheme.typography.bodySmall, color = on)
                 }
             }
-            Button(onClick = { confirm = true }, Modifier.fillMaxWidth()) { Text("Done") }
+            Button(onClick = { confirm = true }, Modifier.fillMaxWidth()) { Text("I sent it") }
         }
     }
 
     if (confirm) {
-        AlertDialog(
-            onDismissRequest = { confirm = false },
-            title = { Text("Is the work finished?") },
-            text = { Text("Tap Yes only after you have done it. The job comes back only if a newer balance is still above the amount.") },
-            confirmButton = { Button(onClick = { confirm = false; onDone() }) { Text("Yes, done") } },
-            dismissButton = { TextButton(onClick = { confirm = false }) { Text("Not yet") } },
+        SendDialog(
+            title = "How much did you send?",
+            text = "Type exactly what left the wallet, then the P2P charge. PayTrace checks it against the next cash-out message.",
+            initialAmount = "",
+            initialCharge = "",
+            onSubmit = onSent,
+            onClose = { confirm = false },
+        )
+    }
+}
+
+/** Asks how much was sent and what the P2P charge was. [onSubmit] returns null when the server accepted it, or the words to show if not. */
+@Composable
+fun SendDialog(
+    title: String,
+    text: String,
+    initialAmount: String,
+    initialCharge: String,
+    onSubmit: suspend (Double, Double) -> String?,
+    onClose: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var amount by remember { mutableStateOf(initialAmount) }
+    var charge by remember { mutableStateOf(initialCharge) }
+    var busy by remember { mutableStateOf(false) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onClose() },
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(text, style = MaterialTheme.typography.bodyMedium)
+                OutlinedTextField(
+                    amount, { amount = it; problem = null }, Modifier.fillMaxWidth(),
+                    label = { Text("Amount you sent (Tk)") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                )
+                OutlinedTextField(
+                    charge, { charge = it; problem = null }, Modifier.fillMaxWidth(),
+                    label = { Text("P2P charge (Tk)") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                )
+                problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = !busy,
+                onClick = {
+                    val a = MoneyInput.parse(amount)
+                    val c = if (charge.isBlank()) 0.0 else MoneyInput.parse(charge)
+                    if (a == null || a <= 0.0 || c == null) {
+                        problem = "Type the amount and the charge in taka, for example 10000 and 50."
+                    } else {
+                        busy = true
+                        scope.launch {
+                            val err = onSubmit(a, c)
+                            busy = false
+                            if (err == null) onClose() else problem = err
+                        }
+                    }
+                },
+            ) { Text(if (busy) "Sending…" else "Send for checking") }
+        },
+        dismissButton = { TextButton(onClick = onClose, enabled = !busy) { Text("Cancel") } },
+    )
+}
+
+/** What happened to a send the partner submitted: waiting (yellow), verified (green), or not adding up (red). */
+@Composable
+fun TransferCard(t: Transfer, onFix: suspend (Double, Double) -> String?) {
+    var fixing by remember { mutableStateOf(false) }
+    val green = Color(0xFF146C43) to Color(0xFFD7F2E3)
+    val amber = Color(0xFF8A5300) to Color(0xFFFFE8C2)
+    val red = MaterialTheme.colorScheme.onErrorContainer to MaterialTheme.colorScheme.errorContainer
+    val (on, container) = when (t.status) {
+        "verified" -> green
+        "checking" -> amber
+        else -> red
+    }
+    val headline = when (t.status) {
+        "verified" -> "Verified ✓ Job complete"
+        "checking" -> "Waiting for confirmation"
+        "mismatch" -> "Doesn't add up"
+        "review" -> "Doesn't add up. The owner will check"
+        else -> "Not accepted"
+    }
+    val detail = when (t.status) {
+        "verified" -> "The next cash-out message matches what you sent."
+        "checking" -> "PayTrace confirms it with the next cash-out message for this wallet. Nothing more to do."
+        "mismatch" -> "The amount or the charge you typed does not match the wallet's balance. Check them and fix once."
+        "review" -> "The owner has been told. You do not need to do anything."
+        else -> "The owner did not accept this send. Ask them."
+    }
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = container)) {
+        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(headline, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = on)
+            Text(
+                "Sent " + EarningsFormat.money(t.amount) + " · charge " + EarningsFormat.money(t.charge) + " · " + EarningsFormat.provider(t.provider),
+                style = MaterialTheme.typography.bodyMedium, color = on,
+            )
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = on)
+            if (t.canFix) Button(onClick = { fixing = true }, Modifier.fillMaxWidth()) { Text("Fix the numbers") }
+        }
+    }
+    if (fixing) {
+        SendDialog(
+            title = "Fix the numbers",
+            text = "You can change them once. Look at your wallet history and type exactly what left the wallet.",
+            initialAmount = t.amount.toLong().toString(),
+            initialCharge = if (t.charge == 0.0) "" else t.charge.toString(),
+            onSubmit = { a, c -> onFix(a, c) },
+            onClose = { fixing = false },
         )
     }
 }

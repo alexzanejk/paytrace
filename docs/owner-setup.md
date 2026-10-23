@@ -217,10 +217,20 @@ address with its network (BNB Smart Chain)** to send to.
    Switch an agent off to give it no job at all.
 4. On the phone (Home tab) each agent that has reached your amount gets its own card, most urgent first: **কাজ করুন এখনই**, the agent's name and
    balance, an urgency label (red = Critical, orange = Urgent, calm = Normal), your description in a box, the wallet address with a **Copy**
-   button, the **network** with a warning to send only on that network, and **Done**. It shows within about a minute while the app is open.
+   button, the **network** with a warning to send only on that network, and **I sent it**. It shows within about a minute while the app is open.
    The Home icon shows how many jobs are waiting.
-5. The agent does the work outside the app (PayTrace never moves money) and taps **Done**. The job then stays hidden until a newer balance
-   message arrives for that wallet, and comes back only if that balance is still at or above your amount.
+5. The agent does the work outside the app (PayTrace never moves money), then taps **I sent it** and types the **exact amount sent** and the
+   **P2P charge**. PayTrace remembers the wallet's last balance and expects it to have dropped by exactly that. The job hides and a **yellow**
+   card says *Waiting for confirmation*. When the **next Cash Out message** for that wallet arrives, PayTrace checks it:
+   the balance in that message, minus the cash-out amount and its commission, must equal the old balance minus the amount sent minus the charge.
+   - **Match: green, Verified.** Nagad and Rocket print their commission, so the match is exact. bKash does not, so a normal bKash commission
+     (0.30% to 0.60% of the cash-out) counts as a match; a typing slip smaller than that can slip through, so compare with your own wallet history
+     when it matters.
+   - **No match: red.** The agent can **fix the numbers once**. If they still do not add up it goes to you.
+   - **Jobs tab → Sent-money checks** lists every send with its result and how far off it was. For the red ones you can **Accept** (after checking your
+     own wallet history) or **Reject**.
+   The job comes back with the next balance message if the balance is still at or above your amount. Only a Cash Out message **after** the send
+   can confirm it, and only one send per wallet can wait at a time.
 6. **The phone rings.** When a job appears, the phone plays an alarm sound and vibrates for **5 seconds**, and shows a notification
    (**কাজ করুন এখনই**, the agent, the balance, and URGENT or CRITICAL) even when the PayTrace app is closed. Tapping the notification opens the job.
    If the job is still not done, it rings again every **10 minutes**. The agent can switch the sound off, or test it, under **Settings → Ring

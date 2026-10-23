@@ -5,13 +5,14 @@ import { tk, when } from "@/lib/format";
 import { useQuery } from "@/hooks/useQuery";
 import { useDevices } from "@/hooks/useDevices";
 import {
-  addressOf, addressProblem, agentStatus, checkAgentForm, checkJobForm, DEFAULT_NETWORK, DEFAULT_THRESHOLD, fillTemplate, JOB_PROVIDERS, MAX_INSTRUCTION,
+  addressOf, addressProblem, agentStatus, leftoverText, TRANSFER_LABEL, TRANSFER_TONE, transferOpen, type TransferStatus, checkAgentForm, checkJobForm, DEFAULT_NETWORK, DEFAULT_THRESHOLD, fillTemplate, JOB_PROVIDERS, MAX_INSTRUCTION,
   networkProblem, parseThreshold, URGENCIES, URGENCY_LABEL, walletsFromAddress, type AgentForm, type JobProvider, type JobSettings, type Urgency,
 } from "@/lib/jobs";
 import { PROVIDER_LABEL } from "@/lib/types";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { DeviceChip } from "@/components/DeviceChip";
+import { Confirm } from "@/components/Confirm";
 import { Disclosure } from "@/components/Disclosure";
 import { ProviderChip } from "@/components/ProviderChip";
 import { EmptyRow } from "@/components/Empty";
@@ -42,6 +43,20 @@ interface Done {
   balance: number | null;
   done_at: string;
 }
+interface TransferRow {
+  id: string;
+  device_id: string;
+  provider: string;
+  amount: number;
+  charge: number;
+  base_balance: number;
+  status: TransferStatus;
+  attempts: number;
+  diff: number | null;
+  submitted_at: string;
+  checked_at: string | null;
+  note: string | null;
+}
 interface AgentRow {
   device_id: string;
   provider: string;
@@ -70,6 +85,7 @@ export function Jobs() {
       } | null;
       const open = must(await sb.from("device_open_jobs").select("*").order("balance", { ascending: false })) as OpenJob[];
       const done = must(await sb.from("job_completions").select("*").order("done_at", { ascending: false }).limit(20)) as Done[];
+      const transfers = must(await sb.from("job_transfers").select("*").order("submitted_at", { ascending: false }).limit(30)) as TransferRow[];
       const agents = must(await sb.from("agent_jobs").select("*")) as AgentRow[];
       const balances = must(await sb.from("device_balances").select("*")) as Balance[];
       const wallets = must(await sb.from("device_wallets").select("device_id,provider")) as { device_id: string; provider: string }[];
@@ -81,7 +97,7 @@ export function Jobs() {
         urgency: row?.urgency ?? "urgent",
         network: row?.network ?? DEFAULT_NETWORK,
       };
-      return { settings, open, done, agents, balances, wallets };
+      return { settings, open, done, transfers, agents, balances, wallets };
     },
     [],
     { refreshMs: 20000 },
@@ -173,8 +189,61 @@ export function Jobs() {
         </TableBody>
       </Table>
       <p className="mt-2 text-xs text-muted-foreground">
-        An agent's balance is the one printed in its wallet's newest payment message. After the agent taps Done, the job stays hidden until a newer
+        An agent's balance is the one printed in its wallet's newest payment message. After the agent taps “I sent it” and types the amount, the job stays hidden until a newer
         balance message arrives, and comes back only if that balance is still at or above the amount.
+      </p>
+
+      <h3 className="mb-1 mt-8 text-base font-semibold">Sent-money checks</h3>
+      <p className="mb-3 text-sm text-muted-foreground">
+        After sending money out, the partner types the amount and the P2P charge in the app. PayTrace expects the wallet balance to drop by exactly that, and checks it
+        against the next Cash Out message for the same wallet. A match turns the job green. A miss lets the partner fix the numbers once, then it comes to you.
+      </p>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>When (BD)</TableHead>
+            <TableHead>Agent</TableHead>
+            <TableHead className="hidden text-right sm:table-cell">Sent</TableHead>
+            <TableHead className="hidden text-right sm:table-cell">Charge</TableHead>
+            <TableHead className="hidden sm:table-cell">Result</TableHead>
+            <TableHead className="hidden sm:table-cell">Off by</TableHead>
+            <TableHead className="hidden text-right sm:table-cell"><span className="sr-only">Actions</span></TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {(data?.transfers ?? []).length === 0 ? (
+            <EmptyRow cols={7} text="No partner has submitted a send yet." />
+          ) : (
+            data!.transfers.map((t) => (
+              <TableRow key={t.id}>
+                <TableCell>{when(t.submitted_at)}</TableCell>
+                <TableCell className="max-w-56">
+                  <DeviceChip id={t.device_id} name={devices.nameOf(t.device_id)} />
+                  <ProviderChip provider={t.provider} className="mt-0.5 flex text-xs" />
+                  <div className="mt-1.5 flex flex-col items-start gap-1.5 sm:hidden">
+                    <span className="text-xs text-muted-foreground tabular">Sent {tk(Number(t.amount))} · charge {tk(Number(t.charge))}</span>
+                    <Badge tone={TRANSFER_TONE[t.status]}>{TRANSFER_LABEL[t.status]}</Badge>
+                    {transferOpen(t.status) ? <SettleButtons id={t.id} onDone={refresh} /> : null}
+                  </div>
+                </TableCell>
+                <TableCell className="hidden text-right tabular sm:table-cell">{tk(Number(t.amount))}</TableCell>
+                <TableCell className="hidden text-right tabular sm:table-cell">{tk(Number(t.charge))}</TableCell>
+                <TableCell className="hidden sm:table-cell">
+                  <Badge tone={TRANSFER_TONE[t.status]}>{TRANSFER_LABEL[t.status]}</Badge>
+                  {t.note ? <span className="mt-0.5 block text-xs text-muted-foreground">{t.note}</span> : null}
+                </TableCell>
+                <TableCell className="hidden tabular sm:table-cell">{leftoverText(t.diff === null ? null : Number(t.diff))}</TableCell>
+                <TableCell className="hidden text-right sm:table-cell">
+                  {transferOpen(t.status) ? <SettleButtons id={t.id} onDone={refresh} /> : null}
+                </TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
+      <p className="mt-2 text-xs text-muted-foreground">
+        “Off by” is what the cash-out message implies minus what the partner's numbers predicted. For bKash, which does not print its commission, a normal commission
+        (0.30% to 0.60% of the cash-out) counts as a match, so a very small typo can slip through; compare with your own wallet history if it matters.
       </p>
 
       <h3 className="mb-2 mt-8 text-base font-semibold">Marked done recently</h3>
@@ -204,6 +273,39 @@ export function Jobs() {
         </TableBody>
       </Table>
     </Screen>
+  );
+}
+
+function SettleButtons({ id, onDone }: { id: string; onDone: () => void }) {
+  const [problem, setProblem] = useState("");
+  async function settle(decision: "verified" | "rejected") {
+    setProblem("");
+    const { error } = await sb.rpc("resolve_job_transfer", { p_id: id, p_decision: decision });
+    if (error) setProblem(error.message);
+    else onDone();
+  }
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex gap-1">
+        <Confirm
+          title="Accept this send?"
+          description="Only do this after you have checked your own wallet history. The job will count as done."
+          confirmLabel="Accept"
+          onConfirm={() => settle("verified")}
+        >
+          <Button size="sm" variant="outline">Accept</Button>
+        </Confirm>
+        <Confirm
+          title="Reject this send?"
+          description="The partner will see that it was not accepted. The job comes back with the next balance message if it is still above the amount."
+          confirmLabel="Reject"
+          onConfirm={() => settle("rejected")}
+        >
+          <Button size="sm" variant="ghost">Reject</Button>
+        </Confirm>
+      </div>
+      {problem ? <p role="alert" className="text-xs text-destructive">{problem}</p> : null}
+    </div>
   );
 }
 
