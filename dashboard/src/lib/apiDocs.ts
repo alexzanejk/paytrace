@@ -93,6 +93,7 @@ export function depositInstructions(key?: string): string {
     '- customer_name, customer_phone: optional, for your own records.',
     'Answer 200: { "tracking_number": "...", "pay_url": "https://.../pay/?trackingNumber=...", "status": "pending", "expires_at": "..." }',
     "Redirect the customer to pay_url, OR show it inside your own page in an iframe so they never leave your site (allow=\"clipboard-write\").",
+    "For phones, make ONE page on your site that contains nothing but the frame, filling the screen (no site header or menu around it): the guide has the full page.",
     "They see the number to pay and paste the TrxID there. It carries no branding.",
     "After the result the page sends a postMessage { source: \"deposit-page\", type: \"redirect\", url } to your page (also type \"height\" and type \"state\").",
     "Listen for it, check e.origin is the pay page's origin, and set window.location = url only if it starts with your own address.",
