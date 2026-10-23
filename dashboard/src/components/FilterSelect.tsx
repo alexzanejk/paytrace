@@ -8,7 +8,7 @@ export function FilterSelect({
   value,
   onChange,
   options,
-  className = "w-44",
+  className = "w-[calc(50%-0.25rem)] sm:w-44",
 }: {
   label: string;
   value: string;

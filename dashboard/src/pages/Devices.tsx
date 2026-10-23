@@ -9,7 +9,7 @@ import { infoProblems } from "@/lib/deviceHealth";
 import { useQuery } from "@/hooks/useQuery";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
-import { StatCard } from "@/components/StatCard";
+import { StatCard, STAT_GRID } from "@/components/StatCard";
 import { Confirm } from "@/components/Confirm";
 import { DeviceChip } from "@/components/DeviceChip";
 import { ProviderChip } from "@/components/ProviderChip";
@@ -98,7 +98,7 @@ export function Devices() {
         }
       />
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className={`mb-6 ${STAT_GRID}`}>
         <StatCard label="Phones online" value={`${online} of ${approved.length}`} sub={dayLabel(day)} icon={Smartphone} />
         <StatCard label="Received" value={tk(fleet.received.amount)} sub={`${fleet.received.n} payments, all phones`} />
         <StatCard label="Agent Cash Out" value={tk(fleet.cashOut.amount)} sub={`${fleet.cashOut.n} receipts, all phones`} />
@@ -167,7 +167,7 @@ export function Devices() {
           </p>
         </Card>
       ) : (
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 2xl:grid-cols-2">
           {approved.map((d) => (
             <DeviceCard
               key={d.id}
@@ -294,24 +294,24 @@ function DeviceCard({
         <DeviceHealthBadge device={d} />
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <div>
           <p className="text-xs text-muted-foreground">Received</p>
-          <p className="text-lg font-semibold tabular">{tk(s.received.amount)}</p>
+          <p className="whitespace-nowrap text-base font-semibold tabular sm:text-lg">{tk(s.received.amount)}</p>
           <p className="text-xs text-muted-foreground">{s.received.n} payments</p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Cash Out</p>
-          <p className="text-lg font-semibold tabular">{tk(s.cashOut.amount)}</p>
+          <p className="whitespace-nowrap text-base font-semibold tabular sm:text-lg">{tk(s.cashOut.amount)}</p>
           <p className="text-xs text-muted-foreground">{s.cashOut.n} receipts</p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Commission</p>
-          <p className="text-lg font-semibold tabular">{tk(s.commission)}</p>
+          <p className="whitespace-nowrap text-base font-semibold tabular sm:text-lg">{tk(s.commission)}</p>
         </div>
       </div>
 
-      <Table>
+      <Table className="[&_td]:px-2 [&_th]:px-2 sm:[&_td]:px-3 sm:[&_th]:px-3">
         <TableHeader>
           <TableRow>
             <TableHead>Provider</TableHead>

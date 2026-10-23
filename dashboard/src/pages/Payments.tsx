@@ -11,7 +11,7 @@ import { useQuery } from "@/hooks/useQuery";
 import { useDevices } from "@/hooks/useDevices";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
-import { StatCard } from "@/components/StatCard";
+import { StatCard, STAT_GRID } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ChainBadge } from "@/components/ChainBadge";
 import { DeviceChip } from "@/components/DeviceChip";
@@ -127,7 +127,7 @@ export function Payments() {
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <PeriodPicker value={period} onChange={setPeriod} />
-        <FilterSelect label="All phones" value={device} onChange={setDevice} options={phoneOptions} className="w-48" />
+        <FilterSelect label="All phones" value={device} onChange={setDevice} options={phoneOptions} className="w-[calc(50%-0.25rem)] sm:w-48" />
         <FilterSelect
           label="All providers"
           value={provider}
@@ -152,7 +152,7 @@ export function Payments() {
         </div>
       </div>
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className={`mb-5 ${STAT_GRID}`}>
         <StatCard label="Received" value={tk(sum.received.amount)} sub={`${sum.received.n} payments`} />
         <StatCard label="Agent Cash Out" value={tk(sum.cashOut.amount)} sub={`${sum.cashOut.n} receipts`} />
         <StatCard label="Commission" value={tk(sum.commission)} sub="from these receipts" />
@@ -160,7 +160,7 @@ export function Payments() {
       </div>
 
       {/* Wide screens: a table. Phones: one card per transaction. */}
-      <div className="hidden md:block">
+      <div className="hidden lg:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -168,10 +168,9 @@ export function Payments() {
               <TableHead>Time (BD)</TableHead>
               <TableHead>Phone</TableHead>
               <TableHead>Provider</TableHead>
-              <TableHead>Type</TableHead>
               <TableHead>TrxID</TableHead>
               <TableHead className="text-right">Amount</TableHead>
-              <TableHead className="text-right">Balance after</TableHead>
+              <TableHead className="hidden text-right 2xl:table-cell">Balance after</TableHead>
               <TableHead>Status</TableHead>
             </TableRow>
           </TableHeader>
@@ -187,11 +186,13 @@ export function Payments() {
                       <TableCell>{isOpen ? <ChevronDown className="h-4 w-4" aria-hidden /> : <ChevronRight className="h-4 w-4" aria-hidden />}</TableCell>
                       <TableCell>{when(p.occurred_at ?? p.received_at)}</TableCell>
                       <TableCell className="max-w-44"><DeviceChip id={p.device_id} name={devices.nameOf(p.device_id)} /></TableCell>
-                      <TableCell><ProviderChip provider={p.provider} /></TableCell>
-                      <TableCell>{TYPE_LABEL[p.txn_type] ?? p.txn_type}</TableCell>
+                      <TableCell>
+                        <ProviderChip provider={p.provider} />
+                        <span className="block text-xs text-muted-foreground">{TYPE_LABEL[p.txn_type] ?? p.txn_type}</span>
+                      </TableCell>
                       <TableCell className="font-mono text-xs">{p.trx_id}</TableCell>
                       <TableCell className="text-right font-medium tabular">{tk(p.amount)}</TableCell>
-                      <TableCell className="text-right tabular text-muted-foreground">{tk(p.balance)}</TableCell>
+                      <TableCell className="hidden text-right tabular text-muted-foreground 2xl:table-cell">{tk(p.balance)}</TableCell>
                       <TableCell><StatusBadge status={p.status} /></TableCell>
                     </TableRow>
                     {isOpen ? (
@@ -208,7 +209,7 @@ export function Payments() {
         </Table>
       </div>
 
-      <div className="space-y-3 md:hidden">
+      <div className="space-y-3 lg:hidden">
         {rows.length === 0 ? <p className="py-8 text-center text-muted-foreground">No transactions match these filters.</p> : null}
         {rows.map((p) => (
           <Card key={p.id} className="p-4">

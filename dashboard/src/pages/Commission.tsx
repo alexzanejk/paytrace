@@ -10,7 +10,7 @@ import { useDevices } from "@/hooks/useDevices";
 import { useQuery } from "@/hooks/useQuery";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
-import { StatCard } from "@/components/StatCard";
+import { StatCard, STAT_GRID } from "@/components/StatCard";
 import { DeviceChip } from "@/components/DeviceChip";
 import { ProviderChip } from "@/components/ProviderChip";
 import { PeriodPicker, initialPeriod, type PeriodState } from "@/components/PeriodPicker";
@@ -80,7 +80,7 @@ export function Commission() {
         <FilterSelect label="All partner phones" value={device} onChange={setDevice} options={phoneOptions} className="w-56" />
       </div>
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className={`mb-6 ${STAT_GRID}`}>
         <StatCard label="Total received" value={tk(inRange.total)} sub={`${inRange.n} payments in this period`} icon={Wallet} />
         <StatCard label="Commission earned" value={tk(inRange.commission)} sub="in this period" icon={Percent} />
         <StatCard label="Paid so far" value={tk(paidTotal)} sub="all time" icon={HandCoins} />
@@ -93,10 +93,10 @@ export function Commission() {
           <TableHeader>
             <TableRow>
               <TableHead>Phone</TableHead>
-              <TableHead className="text-right">Earned (all time)</TableHead>
-              <TableHead className="text-right">Paid</TableHead>
+              <TableHead className="text-right">Earned<span className="hidden sm:inline"> (all time)</span></TableHead>
+              <TableHead className="hidden text-right sm:table-cell">Paid</TableHead>
               <TableHead className="text-right">Still owed</TableHead>
-              <TableHead>App</TableHead>
+              <TableHead className="hidden sm:table-cell">App</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -110,13 +110,19 @@ export function Commission() {
                   const { owed, over } = owedOf(b?.earned ?? 0, b?.paid ?? 0);
                   return (
                     <TableRow key={d.id}>
-                      <TableCell><DeviceChip id={d.id} name={devices.nameOf(d.id)} /></TableCell>
-                      <TableCell className="text-right tabular">{tk(b?.earned ?? 0)}</TableCell>
-                      <TableCell className="text-right tabular">{tk(b?.paid ?? 0)}</TableCell>
+                      <TableCell>
+                        <DeviceChip id={d.id} name={devices.nameOf(d.id)} />
+                        <span className="mt-0.5 block text-xs text-muted-foreground sm:hidden">{d.show_earnings ? "Shows earnings in app" : "Earnings hidden in app"}</span>
+                      </TableCell>
+                      <TableCell className="text-right tabular">
+                        {tk(b?.earned ?? 0)}
+                        <span className="block text-xs text-muted-foreground sm:hidden">paid {tk(b?.paid ?? 0)}</span>
+                      </TableCell>
+                      <TableCell className="hidden text-right tabular sm:table-cell">{tk(b?.paid ?? 0)}</TableCell>
                       <TableCell className="text-right tabular">
                         {over > 0 ? <span className="text-status-warn">Overpaid {tk(over)}</span> : tk(owed)}
                       </TableCell>
-                      <TableCell>{d.show_earnings ? <Badge tone="ok">Shows earnings</Badge> : <Badge tone="idle">Hidden</Badge>}</TableCell>
+                      <TableCell className="hidden sm:table-cell">{d.show_earnings ? <Badge tone="ok">Shows earnings</Badge> : <Badge tone="idle">Hidden</Badge>}</TableCell>
                     </TableRow>
                   );
                 })
@@ -131,11 +137,11 @@ export function Commission() {
           <TableHeader>
             <TableRow>
               <TableHead>Day</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Provider</TableHead>
-              <TableHead>Kind</TableHead>
+              <TableHead className="hidden sm:table-cell">Phone</TableHead>
+              <TableHead className="hidden sm:table-cell">Provider</TableHead>
+              <TableHead className="hidden sm:table-cell">Kind</TableHead>
               <TableHead className="text-right">Day total</TableHead>
-              <TableHead className="text-right">Rate</TableHead>
+              <TableHead className="hidden text-right sm:table-cell">Rate</TableHead>
               <TableHead className="text-right">Commission</TableHead>
             </TableRow>
           </TableHeader>
@@ -145,12 +151,24 @@ export function Commission() {
             ) : (
               days.map((r) => (
                 <TableRow key={`${r.day}|${r.device_id}|${r.provider}|${r.kind}`}>
-                  <TableCell className="whitespace-nowrap">{dayLabel(r.day)}</TableCell>
-                  <TableCell><DeviceChip id={r.device_id} name={devices.nameOf(r.device_id)} /></TableCell>
-                  <TableCell><ProviderChip provider={r.provider} /></TableCell>
-                  <TableCell>{KIND_LABEL[r.kind]}</TableCell>
-                  <TableCell className="text-right tabular">{tk(r.total)}<span className="block text-xs text-muted-foreground">{r.n} payment{r.n === 1 ? "" : "s"}</span></TableCell>
-                  <TableCell className="text-right tabular">{r.rate_pct == null ? <span className="text-status-warn">No rate</span> : fmtPct(Number(r.rate_pct))}</TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {dayLabel(r.day)}
+                    <span className="mt-0.5 block space-y-0.5 text-xs sm:hidden">
+                      <DeviceChip id={r.device_id} name={devices.nameOf(r.device_id)} />
+                      <span className="flex items-center gap-1 text-muted-foreground"><ProviderChip provider={r.provider} /> · {KIND_LABEL[r.kind]}</span>
+                    </span>
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell"><DeviceChip id={r.device_id} name={devices.nameOf(r.device_id)} /></TableCell>
+                  <TableCell className="hidden sm:table-cell"><ProviderChip provider={r.provider} /></TableCell>
+                  <TableCell className="hidden sm:table-cell">{KIND_LABEL[r.kind]}</TableCell>
+                  <TableCell className="text-right tabular">
+                    {tk(r.total)}
+                    <span className="block text-xs text-muted-foreground">
+                      {r.n} payment{r.n === 1 ? "" : "s"}
+                      <span className="sm:hidden"> · {r.rate_pct == null ? "no rate" : fmtPct(Number(r.rate_pct))}</span>
+                    </span>
+                  </TableCell>
+                  <TableCell className="hidden text-right tabular sm:table-cell">{r.rate_pct == null ? <span className="text-status-warn">No rate</span> : fmtPct(Number(r.rate_pct))}</TableCell>
                   <TableCell className="text-right tabular">{tk(r.commission)}</TableCell>
                 </TableRow>
               ))
@@ -231,9 +249,9 @@ function PayoutsSection({
           <TableHeader>
             <TableRow>
               <TableHead>Paid on</TableHead>
-              <TableHead>Partner</TableHead>
+              <TableHead className="hidden sm:table-cell">Partner</TableHead>
               <TableHead className="text-right">Amount</TableHead>
-              <TableHead>Note</TableHead>
+              <TableHead className="hidden sm:table-cell">Note</TableHead>
               <TableHead />
             </TableRow>
           </TableHeader>
@@ -243,10 +261,16 @@ function PayoutsSection({
             ) : (
               payouts.map((p) => (
                 <TableRow key={p.id} className={p.voided_at ? "text-muted-foreground line-through" : undefined}>
-                  <TableCell className="whitespace-nowrap">{dayLabel(p.paid_on)}</TableCell>
-                  <TableCell><DeviceChip id={p.device_id} name={nameOf(p.device_id)} /></TableCell>
-                  <TableCell className="text-right tabular">{tk(p.amount)}</TableCell>
-                  <TableCell className="max-w-64 truncate" title={p.note ?? ""}>{p.note ?? ""}</TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {dayLabel(p.paid_on)}
+                    <span className="mt-0.5 block text-xs sm:hidden"><DeviceChip id={p.device_id} name={nameOf(p.device_id)} /></span>
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell"><DeviceChip id={p.device_id} name={nameOf(p.device_id)} /></TableCell>
+                  <TableCell className="text-right tabular">
+                    {tk(p.amount)}
+                    {p.note ? <span className="mt-0.5 block max-w-40 truncate text-xs text-muted-foreground sm:hidden">{p.note}</span> : null}
+                  </TableCell>
+                  <TableCell className="hidden max-w-64 truncate sm:table-cell" title={p.note ?? ""}>{p.note ?? ""}</TableCell>
                   <TableCell className="text-right">
                     {p.voided_at ? (
                       <Badge tone="idle">Voided</Badge>

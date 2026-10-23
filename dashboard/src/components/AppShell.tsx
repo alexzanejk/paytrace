@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { LogOut, Menu, X } from "lucide-react";
+import { LogOut, Menu, ShieldCheck, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { sb } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -101,7 +101,12 @@ export function AppShell({
     <div className="min-h-dvh lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
       {/* Wide screens: a fixed menu down the left. */}
       <aside className="sticky top-0 hidden h-dvh flex-col border-r border-border bg-card p-4 lg:flex">
-        <h1 className="mb-6 px-4 pt-1 text-xl font-semibold tracking-tight">PayTrace</h1>
+        <h1 className="mb-6 flex items-center gap-2.5 px-4 pt-1 text-xl font-semibold tracking-tight">
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-primary-foreground" aria-hidden>
+            <ShieldCheck className="h-4.5 w-4.5" />
+          </span>
+          PayTrace
+        </h1>
         {menu}
       </aside>
 
@@ -109,7 +114,12 @@ export function AppShell({
         {/* Phones and tablets: a top bar with a menu button. */}
         <header className="sticky top-0 z-40 border-b border-border bg-card lg:hidden">
           <div className="flex items-center gap-3 px-4 py-3">
-            <h1 className="text-lg font-semibold">PayTrace</h1>
+            <h1 className="flex items-center gap-2 text-lg font-semibold">
+              <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary text-primary-foreground" aria-hidden>
+                <ShieldCheck className="h-4 w-4" />
+              </span>
+              PayTrace
+            </h1>
             <Button
               variant="ghost"
               size="icon"
@@ -124,7 +134,7 @@ export function AppShell({
           {open ? <nav className="border-t border-border px-3 py-3" aria-label="Sections">{menu}</nav> : null}
         </header>
         <DeviceAlertBar onOpen={() => onTab("devices")} />
-        <main className="mx-auto max-w-6xl px-4 py-6 lg:px-8">{children}</main>
+        <main key={tab} className="page-in mx-auto max-w-6xl px-4 py-5 sm:py-6 lg:px-8">{children}</main>
       </div>
     </div>
   );

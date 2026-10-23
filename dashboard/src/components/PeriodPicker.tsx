@@ -11,9 +11,9 @@ export interface PeriodState {
 export function PeriodPicker({ value, onChange }: { value: PeriodState; onChange: (v: PeriodState) => void }) {
   const today = dhakaDay();
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className={`flex flex-wrap items-center gap-2 sm:w-auto ${value.id === "custom" ? "w-full" : "w-[calc(45%-0.25rem)]"}`}>
       <Select value={value.id} onValueChange={(id) => onChange({ ...value, id: id as PeriodId })}>
-        <SelectTrigger className="w-40" aria-label="Period">
+        <SelectTrigger className={value.id === "custom" ? "w-40" : "w-full sm:w-40"} aria-label="Period">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

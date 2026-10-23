@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Loader2, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 
 /** Every page shows loading and failure the same way. */
 export function Screen({
@@ -23,9 +23,18 @@ export function Screen({
   }
   if (loading && !hasData) {
     return (
-      <div className="flex items-center gap-2 p-8 text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-        <span className="text-sm">Loading…</span>
+      <div role="status" aria-label="Loading" className="animate-pulse space-y-5 motion-reduce:animate-none">
+        <div className="space-y-2">
+          <div className="h-6 w-40 rounded-md bg-muted" />
+          <div className="h-4 w-72 max-w-full rounded-md bg-muted" />
+        </div>
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-3">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="h-24 rounded-card border border-border bg-card" />
+          ))}
+        </div>
+        <div className="h-56 rounded-card border border-border bg-card" />
+        <span className="sr-only">Loading…</span>
       </div>
     );
   }

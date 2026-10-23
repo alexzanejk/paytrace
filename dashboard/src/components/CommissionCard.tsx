@@ -5,6 +5,7 @@ import { dhakaDay } from "@/lib/period";
 import { tk } from "@/lib/format";
 import { PROVIDERS, PROVIDER_LABEL, type Device } from "@/lib/types";
 import { KINDS, KIND_LABEL, changedRates, fmtPct, owedOf, ratesOn, rateKey, type CommissionBalance, type RateRow } from "@/lib/commission";
+import { Disclosure } from "@/components/Disclosure";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -53,11 +54,12 @@ export function CommissionCard({
   }
 
   return (
-    <div className="rounded-lg border border-border p-3">
+    <Disclosure
+      icon={Percent}
+      title="Partner commission"
+      summary={owed > 0 || over > 0 ? `${over > 0 ? "Overpaid" : "Owed"} ${tk(over > 0 ? over : owed)}` : current.size === 0 ? "No rates yet" : "Nothing owed"}
+    >
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h4 className="flex items-center gap-1.5 text-sm font-semibold">
-          <Percent className="h-4 w-4" aria-hidden /> Partner commission
-        </h4>
         <span className="flex items-center gap-2 text-xs text-muted-foreground">
           Show earnings in this phone's app
           <Switch checked={!!device.show_earnings} aria-label={`Show earnings in the app on ${device.name}`} onCheckedChange={(on) => void toggleVisible(on)} />
@@ -118,6 +120,6 @@ export function CommissionCard({
         <span>{over > 0 ? "Overpaid by" : "Still owed"}: <b className="tabular">{tk(over > 0 ? over : owed)}</b></span>
         <a className="text-xs underline" href="#/commission">Open the Commission page</a>
       </p>
-    </div>
+    </Disclosure>
   );
 }
