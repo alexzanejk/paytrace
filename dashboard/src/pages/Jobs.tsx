@@ -5,8 +5,8 @@ import { tk, when } from "@/lib/format";
 import { useQuery } from "@/hooks/useQuery";
 import { useDevices } from "@/hooks/useDevices";
 import {
-  agentStatus, checkAgentForm, checkJobForm, cleanWallets, DEFAULT_THRESHOLD, fillTemplate, JOB_PROVIDERS, MAX_INSTRUCTION, parseThreshold,
-  URGENCIES, URGENCY_LABEL, type AgentForm, type JobProvider, type JobSettings, type Urgency,
+  addressOf, addressProblem, agentStatus, checkAgentForm, checkJobForm, DEFAULT_NETWORK, DEFAULT_THRESHOLD, fillTemplate, JOB_PROVIDERS, MAX_INSTRUCTION,
+  networkProblem, parseThreshold, URGENCIES, URGENCY_LABEL, walletsFromAddress, type AgentForm, type JobProvider, type JobSettings, type Urgency,
 } from "@/lib/jobs";
 import { PROVIDER_LABEL } from "@/lib/types";
 import { Screen } from "@/components/Screen";
@@ -33,6 +33,7 @@ interface OpenJob {
   wallet: string | null;
   urgency: Urgency;
   agent_name: string;
+  network: string;
 }
 interface Done {
   id: string;
@@ -49,6 +50,7 @@ interface AgentRow {
   instruction: string | null;
   urgency: Urgency | null;
   wallet: string | null;
+  network: string | null;
 }
 interface Balance {
   device_id: string;
@@ -64,7 +66,7 @@ export function Jobs() {
   const { data, error, loading, refresh } = useQuery(
     async () => {
       const row = must(await sb.from("job_settings").select("*").maybeSingle()) as {
-        enabled: boolean; threshold: number | string; instruction: string; wallets: Partial<Record<JobProvider, string>> | null; urgency: Urgency | null;
+        enabled: boolean; threshold: number | string; instruction: string; wallets: Partial<Record<JobProvider, string>> | null; urgency: Urgency | null; network: string | null;
       } | null;
       const open = must(await sb.from("device_open_jobs").select("*").order("balance", { ascending: false })) as OpenJob[];
       const done = must(await sb.from("job_completions").select("*").order("done_at", { ascending: false }).limit(20)) as Done[];
@@ -76,7 +78,8 @@ export function Jobs() {
         threshold: Number(row?.threshold ?? DEFAULT_THRESHOLD),
         instruction: row?.instruction ?? "",
         wallets: row?.wallets ?? {},
-        urgency: row?.urgency ?? "normal",
+        urgency: row?.urgency ?? "urgent",
+        network: row?.network ?? DEFAULT_NETWORK,
       };
       return { settings, open, done, agents, balances, wallets };
     },
@@ -99,7 +102,7 @@ export function Jobs() {
     <Screen loading={loading || devices.loading} error={error ?? devices.error} hasData={!!data}>
       <PageHeader
         title="Jobs"
-        description="An agent is one wallet on a phone (its bKash, Nagad, Rocket or Upay). When an agent's own balance reaches the amount, the phone shows that agent's job: “কাজ করুন এখনই”, what to do, how urgent, and the wallet address. Write one default job, then change it for any agent."
+        description="An agent is one wallet on a phone (its bKash, Nagad, Rocket or Upay). When an agent's own balance reaches the amount, the phone shows that agent's job: “কাজ করুন এখনই”, what to do, how urgent, and your wallet address with its network. Write one default job, then change it for any agent."
       />
       {data ? (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -221,7 +224,8 @@ function JobForm({ initial, onSaved }: { initial: JobSettings; onSaved: () => vo
   const [threshold, setThreshold] = useState(String(initial.threshold));
   const [instruction, setInstruction] = useState(initial.instruction);
   const [urgency, setUrgency] = useState<Urgency>(initial.urgency);
-  const [wallets, setWallets] = useState<Partial<Record<JobProvider, string>>>(initial.wallets);
+  const [address, setAddress] = useState(addressOf(initial.wallets));
+  const [network, setNetwork] = useState(initial.network);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const [problem, setProblem] = useState("");
@@ -229,16 +233,18 @@ function JobForm({ initial, onSaved }: { initial: JobSettings; onSaved: () => vo
   async function save(e: FormEvent) {
     e.preventDefault();
     setNote("");
-    const found = checkJobForm({ enabled, threshold, instruction, wallets });
-    if (found.length > 0) return setProblem(found[0].message);
+    const found = checkJobForm({ enabled, threshold, instruction, wallets: walletsFromAddress(address) });
+    const bad = addressProblem(address) ?? networkProblem(network) ?? found[0]?.message ?? null;
+    if (bad) return setProblem(bad);
     setProblem("");
     setBusy(true);
     const { error } = await sb.rpc("set_job_settings", {
       p_enabled: enabled,
       p_threshold: parseThreshold(threshold),
       p_instruction: instruction.trim(),
-      p_wallets: cleanWallets(wallets),
+      p_wallets: walletsFromAddress(address),
       p_urgency: urgency,
+      p_network: network.trim(),
     });
     setBusy(false);
     if (error) return setProblem(error.message);
@@ -279,7 +285,7 @@ function JobForm({ initial, onSaved }: { initial: JobSettings; onSaved: () => vo
               value={instruction}
               maxLength={MAX_INSTRUCTION}
               onChange={(e) => setInstruction(e.target.value)}
-              placeholder="e.g. Send the money above Tk 1,000 to the wallet below now, then tap Done."
+              placeholder="e.g. Send the money above Tk 1,000 to the wallet address below, on the network shown, then tap Done."
             />
             <p className="text-xs text-muted-foreground">
               You can write <code>{"{agent}"}</code>, <code>{"{balance}"}</code> and <code>{"{provider}"}</code>; each agent sees their own name, balance and wallet type there.
@@ -287,22 +293,26 @@ function JobForm({ initial, onSaved }: { initial: JobSettings; onSaved: () => vo
             </p>
           </div>
 
-          <fieldset className="grid gap-2">
-            <legend className="mb-1 text-sm font-medium">Wallet address to send to (the default for each wallet type)</legend>
-            <p className="text-xs text-muted-foreground">Paste it here, or paste a different one inside a single agent's card below. A wallet type left empty gets no job unless the agent has its own address.</p>
-            {JOB_PROVIDERS.map((p) => (
-              <div key={p} className="grid grid-cols-[6rem_minmax(0,1fr)] items-center gap-3">
-                <ProviderChip provider={p} />
-                <Input
-                  inputMode="numeric"
-                  value={wallets[p] ?? ""}
-                  onChange={(e) => setWallets((w) => ({ ...w, [p]: e.target.value }))}
-                  placeholder="e.g. 01712345678"
-                  aria-label={`${PROVIDER_LABEL[p]} wallet address`}
-                />
-              </div>
-            ))}
-          </fieldset>
+          <div className="grid gap-4">
+            <div className="grid gap-1.5">
+              <Label htmlFor="job-address">Wallet address to send to (your Trust Wallet)</Label>
+              <Input
+                id="job-address"
+                value={address}
+                spellCheck={false}
+                autoComplete="off"
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="0x…"
+                className="font-mono"
+              />
+              <p className="text-xs text-muted-foreground">Paste it from Trust Wallet. Every agent sees this address unless you give that agent its own below.</p>
+            </div>
+            <div className="grid gap-1.5 sm:max-w-xs">
+              <Label htmlFor="job-network">Network</Label>
+              <Input id="job-network" value={network} onChange={(e) => setNetwork(e.target.value)} />
+              <p className="text-xs text-muted-foreground">Shown next to the address.</p>
+            </div>
+          </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save default job"}</Button>
@@ -323,13 +333,13 @@ function AgentCard({
   showing: boolean; settings: JobSettings; onSaved: () => void;
 }) {
   const [form, setForm] = useState<AgentForm>({
-    name: row?.agent_name ?? "", instruction: row?.instruction ?? "", urgency: row?.urgency ?? "", wallet: row?.wallet ?? "",
+    name: row?.agent_name ?? "", instruction: row?.instruction ?? "", urgency: row?.urgency ?? "", wallet: row?.wallet ?? "", network: row?.network ?? "",
   });
   const [on, setOn] = useState(row?.enabled ?? true);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const [problem, setProblem] = useState("");
-  const own = !!(row && (row.instruction || row.urgency || row.wallet));
+  const own = !!(row && (row.instruction || row.urgency || row.wallet || row.network));
 
   async function save(next: { form: AgentForm; on: boolean }) {
     setNote("");
@@ -345,6 +355,7 @@ function AgentCard({
       p_instruction: next.form.instruction.trim(),
       p_urgency: next.form.urgency,
       p_wallet: next.form.wallet.trim(),
+      p_network: next.form.network.trim(),
     });
     setBusy(false);
     if (error) return setProblem(error.message);
@@ -405,12 +416,23 @@ function AgentCard({
               <Label htmlFor={`aw-${deviceId}-${provider}`}>Wallet address</Label>
               <Input
                 id={`aw-${deviceId}-${provider}`}
-                inputMode="numeric"
                 value={form.wallet}
+                spellCheck={false}
+                autoComplete="off"
+                className="font-mono"
                 placeholder={settings.wallets[provider] || "Paste the wallet address"}
                 onChange={(e) => setForm((f) => ({ ...f, wallet: e.target.value }))}
               />
             </div>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor={`anw-${deviceId}-${provider}`}>Network</Label>
+            <Input
+              id={`anw-${deviceId}-${provider}`}
+              value={form.network}
+              placeholder={settings.network}
+              onChange={(e) => setForm((f) => ({ ...f, network: e.target.value }))}
+            />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" disabled={busy} onClick={() => void save({ form, on })}>{busy ? "Saving…" : "Save this agent"}</Button>
@@ -419,7 +441,7 @@ function AgentCard({
               variant="outline"
               disabled={busy || !own}
               onClick={() => {
-                const cleared: AgentForm = { name: form.name, instruction: "", urgency: "", wallet: "" };
+                const cleared: AgentForm = { name: form.name, instruction: "", urgency: "", wallet: "", network: "" };
                 setForm(cleared);
                 void save({ form: cleared, on });
               }}
@@ -459,9 +481,11 @@ function Preview({ settings }: { settings: JobSettings }) {
           <div className="mt-3 rounded-xl bg-card p-3 text-sm text-card-foreground">{fillTemplate(text, first, sample, "Karim")}</div>
           <p className="mt-3 text-xs font-medium">Wallet address</p>
           <div className="mt-1 flex items-center justify-between gap-2 rounded-xl bg-card p-3 text-card-foreground">
-            <span className="font-mono text-base tracking-wide">{settings.wallets[first] || "01712345678"}</span>
+            <span className="min-w-0 break-all font-mono text-sm tracking-wide">{settings.wallets[first] || "0x71C7…976F"}</span>
             <span className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs"><Copy className="h-3 w-3" aria-hidden /> Copy</span>
           </div>
+          <p className="mt-2 text-xs"><span className="font-medium">Network:</span> {settings.network}</p>
+          <p className="text-xs opacity-80">Send only on this network, or the money can be lost.</p>
           <div className="mt-3 rounded-full bg-primary py-2 text-center text-sm font-medium text-primary-foreground">Done</div>
         </div>
       </div>

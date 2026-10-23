@@ -4,7 +4,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** A job the owner wrote in the dashboard for one agent: what to do, how urgent it is, and the wallet address to do it with. An agent is
+/** A job the owner wrote in the dashboard for one agent: what to do, how urgent it is, and the wallet address to do it with and the network that address is on (for example "BNB Smart Chain (BEP20)"). An agent is
  *  one wallet on this phone (its bKash, Nagad, Rocket or Upay); the job shows while that wallet's newest balance is at or above the
  *  owner's amount. PayTrace only shows it; the agent does the work outside the app and taps Done. The instruction text already has
  *  {agent}, {provider} and {balance} filled in by the server. [urgency] is "normal", "urgent" or "critical". */
@@ -16,6 +16,7 @@ data class Job(
     val balanceAt: String,
     val threshold: Double,
     val wallet: String,
+    val network: String,
     val instruction: String,
 )
 
@@ -41,6 +42,7 @@ object JobsParser {
                     balanceAt = j.optString("balance_at", ""),
                     threshold = j.optDouble("threshold", 0.0),
                     wallet = wallet,
+                    network = j.optString("network", ""),
                     instruction = j.optString("instruction", ""),
                 )
             }

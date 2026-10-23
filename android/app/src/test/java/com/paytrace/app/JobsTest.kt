@@ -11,7 +11,7 @@ class JobsTest {
     private val sample = """
         {"success":true,"jobs":[
           {"provider":"nagad","agent":"Karim","urgency":"critical","balance":15000.00,"balance_at":"2026-10-23T12:00:00+00:00",
-           "threshold":10000.00,"wallet":"01899999999","instruction":"Karim, urgent: move it today"},
+           "threshold":10000.00,"wallet":"0x71C7656EC7ab88b098defB751B7401B5f6d8976F","network":"BNB Smart Chain (BEP20)","instruction":"Karim, urgent: move it today"},
           {"provider":"bkash","agent":"Counter 1","urgency":"normal","balance":12000,"threshold":10000,"wallet":"01711111111","instruction":"Do it"}
         ]}
     """.trimIndent()
@@ -24,7 +24,9 @@ class JobsTest {
         assertEquals("Karim", jobs[0].agent)
         assertEquals("critical", jobs[0].urgency)
         assertEquals(15000.0, jobs[0].balance, 0.001)
-        assertEquals("01899999999", jobs[0].wallet)
+        assertEquals("0x71C7656EC7ab88b098defB751B7401B5f6d8976F", jobs[0].wallet)
+        assertEquals("BNB Smart Chain (BEP20)", jobs[0].network)
+        assertEquals("", jobs[1].network)
         assertEquals("Karim, urgent: move it today", jobs[0].instruction)
         assertEquals("Counter 1", jobs[1].agent)
         assertEquals("", jobs[1].balanceAt)

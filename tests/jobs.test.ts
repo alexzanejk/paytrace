@@ -1,6 +1,6 @@
 // Agent jobs: the form rules and the text filling. Run: node --experimental-strip-types tests/jobs.test.ts
 import assert from "node:assert/strict";
-import { agentStatus, checkAgentForm, checkJobForm, cleanWallets, fillTemplate, parseThreshold, takaText, validWallet } from "../dashboard/src/lib/jobs.ts";
+import { addressOf, addressProblem, agentStatus, checkAgentForm, checkJobForm, cleanWallets, fillTemplate, networkProblem, parseThreshold, takaText, validWallet, walletsFromAddress } from "../dashboard/src/lib/jobs.ts";
 import { readFileSync } from "node:fs";
 
 let n = 0;
@@ -29,10 +29,10 @@ t("{agent} is filled in too", () => {
   assert.equal(fillTemplate("Hi {agent}: {provider} {balance}", "nagad", 15000, "Karim"), "Hi Karim: Nagad Tk 15,000.00");
 });
 t("an agent's own form: empty is fine (uses the default), bad values are named", () => {
-  assert.equal(checkAgentForm({ name: "", instruction: "", urgency: "", wallet: "" }), null);
-  assert.equal(checkAgentForm({ name: "Karim", instruction: "Do it", urgency: "critical", wallet: "01899999999" }), null);
-  assert.ok(checkAgentForm({ name: "x".repeat(41), instruction: "", urgency: "", wallet: "" }));
-  assert.ok(checkAgentForm({ name: "", instruction: "", urgency: "", wallet: "12" }));
+  assert.equal(checkAgentForm({ name: "", instruction: "", urgency: "", wallet: "", network: "" }), null);
+  assert.equal(checkAgentForm({ name: "Karim", instruction: "Do it", urgency: "critical", wallet: "01899999999", network: "BNB Smart Chain (BEP20)" }), null);
+  assert.ok(checkAgentForm({ name: "x".repeat(41), instruction: "", urgency: "", wallet: "", network: "" }));
+  assert.ok(checkAgentForm({ name: "", instruction: "", urgency: "", wallet: "12", network: "" }));
 });
 t("where an agent stands, in words", () => {
   const base = { jobsOn: true, agentOn: true, balance: 12000, threshold: 10000, hasWallet: true, showing: true };
@@ -43,6 +43,36 @@ t("where an agent stands, in words", () => {
   assert.equal(agentStatus({ ...base, showing: false, balance: null }), "No balance yet");
   assert.equal(agentStatus({ ...base, showing: false, hasWallet: false }), "Needs a wallet address");
   assert.match(agentStatus({ ...base, showing: false }), /Marked done/);
+});
+const BNB = "0x71C7656EC7ab88b098defB751B7401B5f6d8976F";
+t("a BNB Smart Chain (Trust Wallet) address must be 0x plus 40 letters or numbers", () => {
+  assert.ok(validWallet(BNB));
+  assert.ok(validWallet("  " + BNB + " "));
+  for (const bad of ["0x123", BNB.slice(0, 41), BNB + "0", "0x" + "z".repeat(40)]) assert.ok(!validWallet(bad), bad);
+  assert.equal(addressProblem(BNB), null);
+  assert.equal(addressProblem(""), null);
+  assert.match(addressProblem("0x123")!, /42 characters/);
+  assert.match(addressProblem("12")!, /6 to 60/);
+});
+t("the network is required and short enough", () => {
+  assert.equal(networkProblem("BNB Smart Chain (BEP20)"), null);
+  assert.ok(networkProblem(""));
+  assert.ok(networkProblem("x".repeat(61)));
+});
+t("one pasted address fills every wallet type, and reads back", () => {
+  const w = walletsFromAddress(" " + BNB + " ");
+  assert.deepEqual(Object.keys(w).sort(), ["bkash", "nagad", "rocket", "upay"]);
+  assert.equal(w.nagad, BNB);
+  assert.equal(addressOf(w), BNB);
+  assert.deepEqual(walletsFromAddress("  "), {});
+  assert.equal(addressOf({}), "");
+});
+t("the network migration only adds, and only admins can use the new functions", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/20261023_022_job_network.sql", import.meta.url), "utf8");
+  assert.ok(!/\b(drop|delete)\b/i.test(sql.replace(/--.*$/gm, "")));
+  assert.match(sql, /function public\.set_job_settings\([^)]*p_network text\)[\s\S]*?is_admin\(\)/);
+  assert.match(sql, /function public\.set_agent_job\([^)]*p_network text\)[\s\S]*?is_admin\(\)/);
+  assert.match(sql, /0x\[0-9a-fA-F\]\{40\}/);
 });
 t("the form: a good one passes", () => {
   assert.deepEqual(checkJobForm({ enabled: true, threshold: "10000", instruction: "Send it now", wallets: { bkash: "01711111111" } }), []);

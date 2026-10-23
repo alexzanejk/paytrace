@@ -107,12 +107,18 @@ fun JobCard(job: Job, onDone: () -> Unit) {
                 ) {
                     Text(
                         job.wallet,
-                        Modifier.weight(1f),
-                        style = MaterialTheme.typography.titleLarge,
+                        Modifier.weight(1f).padding(end = 8.dp),
+                        style = MaterialTheme.typography.titleMedium,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.SemiBold,
                     )
                     FilledTonalButton(onClick = { clip.setText(AnnotatedString(job.wallet)); copied = true }) { Text(if (copied) "Copied" else "Copy") }
+                }
+            }
+            if (job.network.isNotBlank()) {
+                Column {
+                    Text("Network: " + job.network, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = on)
+                    Text("Send only on this network, or the money can be lost.", style = MaterialTheme.typography.bodySmall, color = on)
                 }
             }
             Button(onClick = { confirm = true }, Modifier.fillMaxWidth()) { Text("Done") }

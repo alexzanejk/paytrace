@@ -20,10 +20,47 @@ export interface JobSettings {
   instruction: string;
   wallets: Partial<Record<JobProvider, string>>;
   urgency: Urgency;
+  network: string;
 }
 
-/** The same rule the database applies: 6 to 60 letters, numbers or . _ - + : @ / characters. */
-export const validWallet = (s: string): boolean => /^[0-9A-Za-z+ ._:@/-]{6,60}$/.test(s.trim());
+export const DEFAULT_NETWORK = "BNB Smart Chain (BEP20)";
+
+/** The same rule the database applies: 6 to 60 letters, numbers or . _ - + : @ / characters, and an address that starts with 0x must be a
+ *  real BNB Smart Chain (EVM) address: 0x followed by exactly 40 letters or numbers (0 to 9, a to f). */
+export const validWallet = (s: string): boolean => {
+  const t = s.trim();
+  if (t.startsWith("0x")) return /^0x[0-9a-fA-F]{40}$/.test(t);
+  return /^[0-9A-Za-z+ ._:@/-]{6,60}$/.test(t);
+};
+
+/** What is wrong with a wallet address, in plain words. Null when it is fine. */
+export function addressProblem(s: string): string | null {
+  const t = s.trim();
+  if (t === "") return null;
+  if (t.startsWith("0x")) return /^0x[0-9a-fA-F]{40}$/.test(t) ? null : "A BNB Smart Chain address starts with 0x and is 42 characters long. Copy it again from Trust Wallet.";
+  return validWallet(t) ? null : "A wallet address is 6 to 60 letters or numbers.";
+}
+
+/** The network name shown next to the address. */
+export function networkProblem(s: string): string | null {
+  const t = s.trim();
+  return t.length >= 2 && t.length <= 60 ? null : "Type the network, for example BNB Smart Chain (BEP20).";
+}
+
+/** One address for every wallet type (it is the owner's own wallet). Empty means none. */
+export function walletsFromAddress(address: string): Partial<Record<JobProvider, string>> {
+  const a = address.trim();
+  const out: Partial<Record<JobProvider, string>> = {};
+  if (a === "") return out;
+  for (const p of JOB_PROVIDERS) out[p] = a;
+  return out;
+}
+
+/** The first address in a saved set, to show in the single address box. */
+export function addressOf(wallets: Partial<Record<JobProvider, string>>): string {
+  for (const p of JOB_PROVIDERS) if ((wallets[p] ?? "").trim() !== "") return (wallets[p] ?? "").trim();
+  return "";
+}
 
 /** Reads the amount box. Null when it is not a number between 100 and 100,000,000. */
 export function parseThreshold(text: string): number | null {
@@ -81,12 +118,15 @@ export interface AgentForm {
   instruction: string;
   urgency: "" | Urgency;
   wallet: string;
+  network: string;
 }
 
 export function checkAgentForm(f: AgentForm): string | null {
   if (f.name.trim().length > 40) return "Keep the agent's name under 40 characters.";
   if (f.instruction.trim().length > MAX_INSTRUCTION) return `Keep the description under ${MAX_INSTRUCTION} characters.`;
-  if (f.wallet.trim() !== "" && !validWallet(f.wallet)) return "A wallet address is 6 to 60 letters or numbers.";
+  const w = addressProblem(f.wallet);
+  if (w) return w;
+  if (f.network.trim() !== "" && networkProblem(f.network)) return networkProblem(f.network);
   return null;
 }
 
