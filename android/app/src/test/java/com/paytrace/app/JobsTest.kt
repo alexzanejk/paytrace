@@ -111,4 +111,14 @@ class JobsTest {
         assertNull(MoneyInput.parse("12.5.1"))
         assertNull(MoneyInput.parse("1e5"))
     }
+
+    @Test fun readsWhenASendWasSettledAndTheOwnersNote() {
+        val t = JobsParser.parseTransfers("""{"success":true,"transfers":[
+          {"id":"a","provider":"nagad","amount":100,"charge":0,"status":"rejected","attempts":1,"submitted_at":"2026-10-23T12:00:00+00:00","resolved_at":"2026-10-23T13:00:00+00:00","note":"wrong wallet"},
+          {"id":"b","provider":"bkash","amount":100,"charge":0,"status":"verified","attempts":1,"note":null}]}""")
+        assertEquals("wrong wallet", t[0].note)
+        assertEquals("2026-10-23T13:00:00+00:00", t[0].resolvedAt)
+        assertEquals("", t[1].note)
+        assertEquals("", t[1].resolvedAt)
+    }
 }

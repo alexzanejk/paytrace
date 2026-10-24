@@ -114,4 +114,13 @@ class EarningsTest {
         assertEquals("1 Oct \u2013 31 Oct", EarningsFormat.rangeLabel("2026-10-01", "2026-10-31"))
         assertEquals("", EarningsFormat.rangeLabel("", ""))
     }
+
+    @Test fun timesReadInBangladeshTime() {
+        // 09:05 UTC is 3:05 PM in Dhaka (UTC+6).
+        assertEquals("Fri 23 Oct, 3:05 PM", EarningsFormat.whenText("2026-10-23T09:05:00+00:00"))
+        // 18:30 UTC is 12:30 AM the next day.
+        assertEquals("Sat 24 Oct, 12:30 AM", EarningsFormat.whenText("2026-10-23T18:30:00+00:00"))
+        assertEquals("", EarningsFormat.whenText(""))
+        assertEquals("", EarningsFormat.whenText("not a time"))
+    }
 }

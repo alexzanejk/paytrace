@@ -30,6 +30,8 @@ data class Transfer(
     val status: String,
     val attempts: Int,
     val submittedAt: String,
+    val resolvedAt: String = "",
+    val note: String = "",
 ) {
     val canFix: Boolean get() = status == "mismatch" && attempts < 2
 }
@@ -75,7 +77,7 @@ object JobsParser {
             val provider = t.optString("provider")
             val status = t.optString("status")
             if (id.isBlank() || provider.isBlank() || status.isBlank()) null
-            else Transfer(id, provider, t.optDouble("amount", 0.0), t.optDouble("charge", 0.0), status, t.optInt("attempts", 1), t.optString("submitted_at", ""))
+            else Transfer(id, provider, t.optDouble("amount", 0.0), t.optDouble("charge", 0.0), status, t.optInt("attempts", 1), t.optString("submitted_at", ""), t.optString("resolved_at", ""), t.optString("note", "").let { if (it == "null") "" else it })
         }
     } catch (e: Exception) {
         emptyList()
