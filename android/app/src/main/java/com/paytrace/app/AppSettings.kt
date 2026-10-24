@@ -226,6 +226,11 @@ class AppSettings(ctx: Context) {
         get() = p.getInt("last_gap_min", 0)
         set(v) { p.edit().putInt("last_gap_min", v).apply() }
 
+    /** Language of the phone-settings guide: "bn" (the default) or "en". */
+    var guideLang: String
+        get() = p.getString("guide_lang", "bn") ?: "bn"
+        set(v) { p.edit().putString("guide_lang", v).apply() }
+
     // ---- the stay-awake test (StayAwake.kt) ----
     /** Uptime-clock reading when the test was started; 0 = no test running. */
     var testStartElapsed: Long

@@ -156,7 +156,8 @@ block the app (autostart off, app force-stopped), the message is blocked too, so
 ## The phone-settings guide in the app
 
 On first opening, and under **Settings → Keep this phone running**, the app walks through the phone settings for your brand,
-one card each: **Where** to find it, what to **Choose**, what **Not** to choose.
+**in Bangla first** (a **বাংলা | English** switch at the top changes it and the phone remembers the choice; every Bangla line is listed in
+`docs/guide-bangla.md` for proofreading), one card each: **Where** to find it, what to **Choose**, what **Not** to choose. Menu and option names stay in English inside quotes (the phone's own screens are usually in English); Bangla explains around them.
 
 - **Open this page** opens the right screen. If it opens the wrong screen, or nothing, tap **Not the right page? Try another**: the app
   moves to the next place (the phone brand's own page, then Android's page, then PayTrace's own app page, then the phone's Settings,
