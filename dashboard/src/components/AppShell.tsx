@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { LogOut, Menu, ShieldCheck, X } from "lucide-react";
+import { LogOut, Menu, Moon, ShieldCheck, Sun, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { sb } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { DeviceAlertBar } from "@/components/DeviceAlertBar";
 import { deviceHealth } from "@/lib/deviceHealth";
 import { useQuery } from "@/hooks/useQuery";
 import { useNow } from "@/hooks/useNow";
+import { useTheme } from "@/hooks/useTheme";
 import type { TabId } from "@/lib/nav";
 import { GROUPS, TABS } from "@/lib/nav";
 
@@ -23,6 +24,7 @@ export function AppShell({
 }) {
   const [open, setOpen] = useState(false);
   const now = useNow(5000);
+  const { dark, toggle } = useTheme();
 
   // Small live numbers for the menu: how many payments wait for a person, and how many phones are up.
   const { data: live } = useQuery(
@@ -52,11 +54,11 @@ export function AppShell({
         }}
         aria-current={tab === id ? "page" : undefined}
         className={cn(
-          "flex w-full items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium transition-colors",
-          tab === id ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:bg-muted",
+          "flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors",
+          tab === id ? "bg-card text-primary shadow-[0_1px_3px_rgba(16,24,40,0.10)]" : "text-muted-foreground hover:bg-card/60 hover:text-foreground",
         )}
       >
-        <Icon className="h-4 w-4 shrink-0" aria-hidden />
+        <Icon className={cn("h-[18px] w-[18px] shrink-0", tab === id ? "text-primary" : "")} aria-hidden />
         <span className="flex-1 text-left">{label}</span>
         {n ? <span className="rounded-full bg-status-warn-bg px-2 py-0.5 text-xs font-semibold text-status-warn">{n}</span> : null}
       </button>
@@ -67,7 +69,7 @@ export function AppShell({
     <div className="flex h-full flex-col gap-5">
       {GROUPS.map((g) => (
         <div key={g}>
-          <p className="mb-1 px-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{g}</p>
+          <p className="mb-1 px-4 text-xs font-medium text-muted-foreground">{g}</p>
           <div className="flex flex-col gap-0.5">
             {TABS.filter((t) => t.group === g).map((t) => navButton(t.id, t.label, t.icon))}
           </div>
@@ -90,6 +92,9 @@ export function AppShell({
             {total === 0 ? "No phones yet" : `${online} of ${total} phone${total === 1 ? "" : "s"} online`}
           </span>
         </button>
+        <Button variant="ghost" size="sm" onClick={toggle} className="justify-start" aria-pressed={dark}>
+          {dark ? <Sun aria-hidden /> : <Moon aria-hidden />} {dark ? "Light mode" : "Dark mode"}
+        </Button>
         <Button variant="ghost" size="sm" onClick={onSignOut} className="justify-start">
           <LogOut aria-hidden /> Sign out
         </Button>
@@ -100,9 +105,9 @@ export function AppShell({
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
       {/* Wide screens: a fixed menu down the left. */}
-      <aside className="sticky top-0 hidden h-dvh flex-col border-r border-border bg-card p-4 lg:flex">
-        <h1 className="mb-6 flex items-center gap-2.5 px-4 pt-1 text-xl font-semibold tracking-tight">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-primary-foreground" aria-hidden>
+      <aside className="sticky top-0 hidden h-dvh flex-col overflow-y-auto p-4 lg:flex">
+        <h1 className="mb-6 flex items-center gap-2.5 px-3 pt-1 text-xl font-bold tracking-tight">
+          <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm" aria-hidden>
             <ShieldCheck className="h-4.5 w-4.5" />
           </span>
           PayTrace
@@ -134,7 +139,7 @@ export function AppShell({
           {open ? <nav className="border-t border-border px-3 py-3" aria-label="Sections">{menu}</nav> : null}
         </header>
         <DeviceAlertBar onOpen={() => onTab("devices")} />
-        <main key={tab} className="page-in mx-auto max-w-6xl px-4 py-5 sm:py-6 lg:px-8">{children}</main>
+        <main key={tab} className="page-in mx-auto max-w-[88rem] px-4 py-5 sm:py-6 lg:px-8 lg:pl-4">{children}</main>
       </div>
     </div>
   );

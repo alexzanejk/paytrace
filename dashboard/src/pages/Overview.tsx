@@ -3,7 +3,8 @@ import { ArrowDownToLine, Banknote, Clock, HandCoins, Scale } from "lucide-react
 import { must, sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { PROVIDERS, PROVIDER_LABEL, TYPE_LABEL, type DeviceBalance, type ProviderBalance } from "@/lib/types";
-import { dayLabel, groupSummary, isCounted, periodRange, rangeLabel, summarize, type DayTotal } from "@/lib/period";
+import { addDays, dayLabel, groupSummary, isCounted, isIncoming, periodRange, rangeLabel, summarize, type DayTotal } from "@/lib/period";
+import { PROVIDER_COLOR } from "@/lib/deviceColors";
 import { openPaymentsWith } from "@/lib/filters";
 import { useQuery } from "@/hooks/useQuery";
 import { useDevices } from "@/hooks/useDevices";
@@ -17,6 +18,7 @@ import { FilterSelect, ALL } from "@/components/FilterSelect";
 import { PeriodPicker, initialPeriod, type PeriodState } from "@/components/PeriodPicker";
 import { EmptyRow } from "@/components/Empty";
 import { Card } from "@/components/ui/card";
+import { DayBars, Donut, short, type DayBar, type Slice } from "@/components/charts";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export function Overview() {
@@ -56,6 +58,25 @@ export function Overview() {
     .map(([, rows]) => ({ ...rows[0], ...sumRows(rows) }))
     .sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : a.provider.localeCompare(b.provider)));
 
+  // Chart figures: one column per day of the period (empty days included, capped at the newest 62), and each wallet's share of the money counted.
+  const dayList: string[] = [];
+  for (let d = range.to, i = 0; d >= range.from && i < 62; d = addDays(d, -1), i++) dayList.unshift(d);
+  const bars: DayBar[] = dayList.map((day) => {
+    const rows = counted.filter((r) => r.day === day);
+    return {
+      key: day,
+      label: dayLabel(day).slice(0, 6),
+      a: rows.filter((r) => isIncoming(r.txn_type)).reduce((a, r) => a + (Number(r.amount) || 0), 0),
+      b: rows.filter((r) => r.txn_type === "cash_out").reduce((a, r) => a + (Number(r.amount) || 0), 0),
+    };
+  });
+  const slices: Slice[] = PROVIDERS.map((p) => ({
+    label: PROVIDER_LABEL[p],
+    value: counted.filter((r) => r.provider === p).reduce((a, r) => a + (Number(r.amount) || 0), 0),
+    color: PROVIDER_COLOR[p],
+  }));
+  const moneyTotal = slices.reduce((a, s) => a + s.value, 0);
+
   return (
     <Screen loading={loading || devices.loading} error={error ?? devices.error} hasData={!!data}>
       <PageHeader
@@ -76,11 +97,26 @@ export function Overview() {
       />
 
       <div className={`mb-6 ${STAT_GRID}`}>
-        <StatCard label="Payments received" value={tk(sum.received.amount)} sub={`${sum.received.n} payments · fees ${tk(sum.received.fee)}`} icon={ArrowDownToLine} />
-        <StatCard label="Agent Cash Out" value={tk(sum.cashOut.amount)} sub={`${sum.cashOut.n} receipts`} icon={HandCoins} />
-        <StatCard label="Commission earned" value={tk(sum.commission)} sub={`fees on cash out ${tk(sum.cashOut.fee)}`} icon={Banknote} />
-        <StatCard label="Needs review" value={String(data?.review ?? 0)} sub="held, not credited" icon={Scale} />
-        <StatCard label="Unmatched" value={String(data?.unmatched ?? 0)} sub="waiting for an order" icon={Clock} />
+        <StatCard tone="blue" label="Payments received" value={tk(sum.received.amount)} sub={`${sum.received.n} payments · fees ${tk(sum.received.fee)}`} icon={ArrowDownToLine} />
+        <StatCard tone="green" label="Agent Cash Out" value={tk(sum.cashOut.amount)} sub={`${sum.cashOut.n} receipts`} icon={HandCoins} />
+        <StatCard tone="purple" label="Commission earned" value={tk(sum.commission)} sub={`fees on cash out ${tk(sum.cashOut.fee)}`} icon={Banknote} />
+        <StatCard tone="amber" label="Needs review" value={String(data?.review ?? 0)} sub="held, not credited" icon={Scale} />
+        <StatCard tone="rose" label="Unmatched" value={String(data?.unmatched ?? 0)} sub="waiting for an order" icon={Clock} />
+      </div>
+
+      <div className="mb-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
+        <Card className="p-4 sm:p-5">
+          <h3 className="mb-3 text-base font-semibold">Money by day</h3>
+          <DayBars days={bars} aLabel="Received" bLabel="Cash Out" />
+        </Card>
+        <Card className="p-4 sm:p-5">
+          <h3 className="mb-3 text-base font-semibold">Share by wallet</h3>
+          {moneyTotal > 0 ? (
+            <Donut slices={slices} centre={short(moneyTotal)} />
+          ) : (
+            <p className="py-8 text-center text-sm text-muted-foreground">No money counted in this period.</p>
+          )}
+        </Card>
       </div>
 
       <section className="mb-6">
@@ -89,7 +125,7 @@ export function Overview() {
           {PROVIDERS.map((p) => {
             const b = (data?.balances ?? []).find((x) => x.provider === p);
             return (
-              <Card key={p} className="p-4">
+              <Card key={p} className="border-l-4 p-4" style={{ borderLeftColor: PROVIDER_COLOR[p] }}>
                 <ProviderChip provider={p} className="font-medium" />
                 <p className="mt-1 whitespace-nowrap text-lg font-semibold tabular sm:text-xl 2xl:text-2xl">{b ? tk(b.balance) : "–"}</p>
                 <p className="mt-1 truncate text-xs text-muted-foreground">

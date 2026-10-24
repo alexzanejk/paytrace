@@ -3,54 +3,63 @@
 /* Colours follow the Material 3 baseline palette the Android app uses, so the
    dashboard and the phone look like one product. */
 @theme {
-  --color-background: #fef7ff;
-  --color-foreground: #1d1b20;
+  /* A light, airy look (owner request 2026-10-24): soft grey-blue page, white cards, one clear blue, colourful figure tiles.
+     The phone app uses green; the dashboard is blue on purpose so the two are never confused at a glance. */
+  --color-background: #eef2f7;
+  --color-foreground: #101828;
   --color-card: #ffffff;
-  --color-card-foreground: #1d1b20;
-  --color-muted: #e7e0ec;
-  --color-muted-foreground: #49454f;
-  --color-primary: #6750a4;
+  --color-card-foreground: #101828;
+  --color-muted: #f1f4f9;
+  --color-muted-foreground: #5b6678;
+  --color-primary: #1565e8;
   --color-primary-foreground: #ffffff;
-  --color-secondary: #e8def8;
-  --color-secondary-foreground: #1d192b;
-  --color-border: #cac4d0;
-  --color-input: #cac4d0;
-  --color-ring: #6750a4;
-  --color-destructive: #b3261e;
+  --color-secondary: #e4eeff;
+  --color-secondary-foreground: #0b4cb8;
+  --color-border: #e1e7ef;
+  --color-input: #d3dbe6;
+  --color-ring: #1565e8;
+  --color-destructive: #d92d20;
   --color-destructive-foreground: #ffffff;
 
   /* Payment status indicators, shared with the Android app's log rows. */
-  --color-status-ok: #146c43;
-  --color-status-ok-bg: #d7f2e3;
+  --color-status-ok: #0f7b4d;
+  --color-status-ok-bg: #dcf5e8;
   --color-status-warn: #8a5300;
-  --color-status-warn-bg: #ffe8c2;
+  --color-status-warn-bg: #ffecc7;
   --color-status-info: #0b5cab;
-  --color-status-info-bg: #d7e7fb;
+  --color-status-info-bg: #dbe9fb;
   --color-status-bad: #b3261e;
-  --color-status-bad-bg: #f9dedc;
-  --color-status-idle: #49454f;
-  --color-status-idle-bg: #e7e0ec;
+  --color-status-bad-bg: #fde3e0;
+  --color-status-idle: #475467;
+  --color-status-idle-bg: #e8edf3;
+
+  /* Figure tiles on Overview and friends: white text on a strong colour. */
+  --color-tile-blue: #3d73e6;
+  --color-tile-green: #2a9d6b;
+  --color-tile-purple: #8a5fcf;
+  --color-tile-amber: #cf8317;
+  --color-tile-rose: #d45469;
 
   --font-sans: "Roboto", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --radius-card: 0.75rem;
+  --radius-card: 1rem;
 }
 
 .dark {
-  --color-background: #141218;
-  --color-foreground: #e6e0e9;
-  --color-card: #1d1b20;
-  --color-card-foreground: #e6e0e9;
-  --color-muted: #2b2930;
-  --color-muted-foreground: #cac4d0;
-  --color-primary: #d0bcff;
-  --color-primary-foreground: #381e72;
-  --color-secondary: #4a4458;
-  --color-secondary-foreground: #e8def8;
-  --color-border: #49454f;
-  --color-input: #49454f;
-  --color-ring: #d0bcff;
-  --color-destructive: #f2b8b5;
-  --color-destructive-foreground: #601410;
+  --color-background: #0d1117;
+  --color-foreground: #e8edf5;
+  --color-card: #161b24;
+  --color-card-foreground: #e8edf5;
+  --color-muted: #1d242f;
+  --color-muted-foreground: #9aa6b8;
+  --color-primary: #5b9bff;
+  --color-primary-foreground: #04204d;
+  --color-secondary: #1c2d4d;
+  --color-secondary-foreground: #bcd6ff;
+  --color-border: #263040;
+  --color-input: #2f3b4e;
+  --color-ring: #5b9bff;
+  --color-destructive: #f2928b;
+  --color-destructive-foreground: #4a0e0a;
 
   --color-status-ok: #6fdfaa;
   --color-status-ok-bg: #11351f;
@@ -60,8 +69,14 @@
   --color-status-info-bg: #12263d;
   --color-status-bad: #f2b8b5;
   --color-status-bad-bg: #40131a;
-  --color-status-idle: #cac4d0;
-  --color-status-idle-bg: #2b2930;
+  --color-status-idle: #b5bfce;
+  --color-status-idle-bg: #232b38;
+
+  --color-tile-blue: #3a62c4;
+  --color-tile-green: #217a54;
+  --color-tile-purple: #6f4cab;
+  --color-tile-amber: #a8680f;
+  --color-tile-rose: #ab4153;
 }
 
 @layer base {

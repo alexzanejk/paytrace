@@ -81,10 +81,10 @@ export function Commission() {
       </div>
 
       <div className={`mb-6 ${STAT_GRID}`}>
-        <StatCard label="Total received" value={tk(inRange.total)} sub={`${inRange.n} payments in this period`} icon={Wallet} />
-        <StatCard label="Commission earned" value={tk(inRange.commission)} sub="in this period" icon={Percent} />
-        <StatCard label="Paid so far" value={tk(paidTotal)} sub="all time" icon={HandCoins} />
-        <StatCard label="Still owed" value={tk(owedTotal)} sub="all time, earned minus paid" icon={Banknote} />
+        <StatCard tone="blue" label="Total received" value={tk(inRange.total)} sub={`${inRange.n} payments in this period`} icon={Wallet} />
+        <StatCard tone="green" label="Commission earned" value={tk(inRange.commission)} sub="in this period" icon={Percent} />
+        <StatCard tone="purple" label="Paid so far" value={tk(paidTotal)} sub="all time" icon={HandCoins} />
+        <StatCard tone="amber" label="Still owed" value={tk(owedTotal)} sub="all time, earned minus paid" icon={Banknote} />
       </div>
 
       <h3 className="mb-2 text-base font-semibold">Each partner</h3>

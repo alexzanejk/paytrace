@@ -1,10 +1,14 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex,nofollow" />
-    <meta name="theme-color" content="#141218" />
+    <meta name="theme-color" content="#eef2f7" />
+    <script>
+      // Light by default; the sidebar switch remembers a dark choice. Runs before first paint so the page never flashes.
+      try { if (localStorage.getItem("pt-theme") === "dark") document.documentElement.classList.add("dark"); } catch (e) {}
+    </script>
     <title>PayTrace Dashboard</title>
   </head>
   <body>
