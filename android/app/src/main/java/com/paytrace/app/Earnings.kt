@@ -112,11 +112,21 @@ object EarningsFormat {
 
     /** "Fri 23 Oct, 3:05 PM" in Bangladesh time for a server timestamp like 2026-10-23T09:05:00+00:00; empty if it is not one. */
     fun whenText(iso: String): String = try {
-        val t = java.time.OffsetDateTime.parse(iso).atZoneSameInstant(java.time.ZoneId.of("Asia/Dhaka"))
-        val hour = if (t.hour % 12 == 0) 12 else t.hour % 12
-        dayLabel(t.toLocalDate().toString()) + ", " + hour + ":" + String.format(Locale.US, "%02d", t.minute) + (if (t.hour < 12) " AM" else " PM")
+        zoned(java.time.OffsetDateTime.parse(iso).atZoneSameInstant(java.time.ZoneId.of("Asia/Dhaka")))
     } catch (e: Exception) {
         ""
+    }
+
+    /** The same, for a time in milliseconds since 1970 (what the phone stores). Empty for 0. */
+    fun whenMillis(ms: Long): String = if (ms <= 0L) "" else try {
+        zoned(java.time.Instant.ofEpochMilli(ms).atZone(java.time.ZoneId.of("Asia/Dhaka")))
+    } catch (e: Exception) {
+        ""
+    }
+
+    private fun zoned(t: java.time.ZonedDateTime): String {
+        val hour = if (t.hour % 12 == 0) 12 else t.hour % 12
+        return dayLabel(t.toLocalDate().toString()) + ", " + hour + ":" + String.format(Locale.US, "%02d", t.minute) + (if (t.hour < 12) " AM" else " PM")
     }
 
     /** "1 Oct – 31 Oct" for the month's first and last day; empty when either is not a date. */

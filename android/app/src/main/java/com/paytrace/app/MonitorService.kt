@@ -86,6 +86,7 @@ class MonitorService : Service() {
                 settings.stoppedCount += 1
                 settings.lastGapMin = gap.toInt()
             }
+            StayAwake.onBeat(this, settings, SystemClock.elapsedRealtime())
             settings.lastBeatElapsed = SystemClock.elapsedRealtime()
         } catch (e: Exception) {
         }
@@ -173,7 +174,9 @@ class MonitorService : Service() {
                 }
                 beat++
                 try {
-                    AppSettings(applicationContext).lastBeatElapsed = SystemClock.elapsedRealtime()
+                    val st = AppSettings(applicationContext)
+                    StayAwake.onBeat(applicationContext, st, SystemClock.elapsedRealtime())
+                    st.lastBeatElapsed = SystemClock.elapsedRealtime()
                     HeartbeatWorker.beat(applicationContext)
                     Keepalive.schedule(applicationContext) // pushes the "start me again" alarm forward while healthy
                 } catch (e: Exception) {

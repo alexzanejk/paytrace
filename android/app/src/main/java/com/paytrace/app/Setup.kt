@@ -258,13 +258,17 @@ object Setup {
         false
     }
 
+    /** Steps the phone itself can confirm, so the owner does not have to tick them: those that are only about Android's battery optimisation. */
+    fun autoVerified(ctx: Context): Set<String> =
+        if (batteryExempt(ctx)) setOf("op_battery", "tr_batt", "gen_batt") else emptySet()
+
     fun state(ctx: Context, settings: AppSettings) = State(
         smsReceive = granted(ctx, Manifest.permission.RECEIVE_SMS),
         smsRead = granted(ctx, Manifest.permission.READ_SMS),
         notifications = notificationsOn(ctx) && (Build.VERSION.SDK_INT < 33 || granted(ctx, Manifest.permission.POST_NOTIFICATIONS)),
         batteryExempt = batteryExempt(ctx),
         autostartNeeded = needsAutostartConfirm(Build.MANUFACTURER),
-        autostartConfirmed = guideComplete(Build.MANUFACTURER, settings.guideDone),
+        autostartConfirmed = guideComplete(Build.MANUFACTURER, settings.guideDone + autoVerified(ctx)),
     )
 
     fun missing(ctx: Context, settings: AppSettings): List<Req> = missing(state(ctx, settings))
