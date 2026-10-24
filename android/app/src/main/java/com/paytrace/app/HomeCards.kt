@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
@@ -202,40 +203,139 @@ fun SendDialog(
     )
 }
 
-/** What happened to a send the partner submitted: waiting (yellow), verified (green), or not adding up (red). */
+/** The big card at the top of Home: what is due to the partner now, with today, this month and what was paid in the last 3 days
+ *  beneath it. Tapping it opens the Earnings tab. Shows why it is empty when earnings are off for this phone. */
 @Composable
-fun TransferCard(t: Transfer, onFix: suspend (Double, Double) -> String?) {
-    var fixing by remember { mutableStateOf(false) }
-    val green = Color(0xFF146C43) to Color(0xFFD7F2E3)
-    val amber = Color(0xFF8A5300) to Color(0xFFFFE8C2)
-    val red = MaterialTheme.colorScheme.onErrorContainer to MaterialTheme.colorScheme.errorContainer
-    val (on, container) = when (t.status) {
-        "verified" -> green
-        "checking" -> amber
-        else -> red
-    }
-    val headline = when (t.status) {
-        "verified" -> "Verified ✓ Job complete"
-        "checking" -> "Waiting for confirmation"
-        "mismatch" -> "Doesn't add up"
-        "review" -> "Doesn't add up. The owner will check"
-        else -> "Not accepted"
-    }
-    val detail = when (t.status) {
-        "verified" -> "The next cash-out message matches what you sent."
-        "checking" -> "PayTrace confirms it with the next cash-out message for this wallet. Nothing more to do."
-        "mismatch" -> "The amount or the charge you typed does not match the wallet's balance. Check them and fix once."
-        "review" -> "The owner has been told. You do not need to do anything."
-        else -> "The owner did not accept this send. Ask them."
-    }
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = container)) {
-        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(headline, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = on)
+fun BalanceCard(e: Earnings?, onOpen: () -> Unit) {
+    val white = Color.White
+    val soft = Color.White.copy(alpha = 0.82f)
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp))
+            .background(Brush.linearGradient(balanceGradient(ThemeState.dark)))
+            .clickable(onClick = onOpen).padding(22.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (e == null) {
+            Text("Earnings", style = MaterialTheme.typography.labelLarge, color = soft)
+            Text("Loading…", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = white)
+        } else if (!e.enabled) {
+            Text("Earnings", style = MaterialTheme.typography.labelLarge, color = soft)
+            Text("Not switched on for this phone", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = white)
+            Text("The owner switches them on in the dashboard: Phones, then Partner commission.", style = MaterialTheme.typography.bodySmall, color = soft)
+        } else {
+            val due = if (e.owed > 0) e.owed else 0.0
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(if (due > 0) "Due to you" else "All paid up", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = soft)
+                Text("Details \u203A", style = MaterialTheme.typography.labelLarge, color = soft)
+            }
+            Text(EarningsFormat.money(due), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, color = white)
             Text(
-                "Sent " + EarningsFormat.money(t.amount) + " · charge " + EarningsFormat.money(t.charge) + " · " + EarningsFormat.provider(t.provider),
-                style = MaterialTheme.typography.bodyMedium, color = on,
+                "Earned " + EarningsFormat.money(e.earned) + " in total \u00B7 paid " + EarningsFormat.money(e.paid),
+                style = MaterialTheme.typography.bodySmall, color = soft,
             )
-            Text(detail, style = MaterialTheme.typography.bodySmall, color = on)
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MiniFigure("Today", EarningsFormat.money(e.today.commission), Modifier.weight(1f))
+                MiniFigure("This month", EarningsFormat.money(e.month.commission), Modifier.weight(1f))
+                MiniFigure("Paid, 3 days", EarningsFormat.money(e.recentPaid.sumOf { it.amount }), Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniFigure(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier.background(Color.White.copy(alpha = 0.16f), RoundedCornerShape(16.dp)).padding(horizontal = 10.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.82f), maxLines = 1)
+        Text(value, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1)
+    }
+}
+
+/** What was paid to the partner in the last 3 days (today and the two days before), right on Home. */
+@Composable
+fun PaidRecentCard(e: Earnings) {
+    val st = statusColors()
+    Card(
+        Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Paid to you, last 3 days", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                if (e.recentPaid.isNotEmpty()) {
+                    Text(EarningsFormat.money(e.recentPaid.sumOf { it.amount }), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = st.ok)
+                }
+            }
+            if (e.recentPaid.isEmpty()) {
+                Text("Nothing was paid to you in the last 3 days.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                e.recentPaid.forEach { p ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(EarningsFormat.dayLabel(p.day), style = MaterialTheme.typography.bodyMedium)
+                            if (p.note.isNotBlank()) Text(p.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text(EarningsFormat.money(p.amount), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** One send the partner submitted, on one compact row: what was sent, when, and how the check went (green, waiting, or red with what to do). */
+@Composable
+fun ActivityRow(t: Transfer, onFix: suspend (Double, Double) -> String?) {
+    val st = statusColors()
+    var fixing by remember { mutableStateOf(false) }
+    val (mark, fg, bg) = when (t.status) {
+        "verified" -> Triple("\u2713", st.ok, st.okBg)
+        "checking" -> Triple("\u2026", st.warn, st.warnBg)
+        else -> Triple("!", st.bad, st.badBg)
+    }
+    val chip = when (t.status) {
+        "verified" -> "Verified"
+        "checking" -> "Waiting"
+        "mismatch" -> "Check"
+        "review" -> "With owner"
+        else -> "Rejected"
+    }
+    val line = when (t.status) {
+        "verified" -> "The next cash-out message matches. Job complete."
+        "checking" -> "Waiting for the next cash-out message for this wallet."
+        "mismatch" -> "Does not add up. Check what you typed and fix it once."
+        "review" -> "Does not add up. The owner will check it."
+        else -> if (t.note.isNotBlank()) "Rejected by the owner: " + t.note else "Rejected by the owner."
+    }
+    val whenText = EarningsFormat.whenText(t.submittedAt)
+    Card(
+        Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(38.dp).background(bg, CircleShape), contentAlignment = Alignment.Center) {
+                    Text(mark, color = fg, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                }
+                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                    Text("Sent " + EarningsFormat.money(t.amount), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        EarningsFormat.provider(t.provider) + " \u00B7 charge " + EarningsFormat.money(t.charge) + (if (whenText.isNotBlank()) " \u00B7 $whenText" else ""),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    chip,
+                    Modifier.background(bg, RoundedCornerShape(50)).padding(horizontal = 10.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = fg,
+                )
+            }
+            Text(line, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (t.canFix) Button(onClick = { fixing = true }, Modifier.fillMaxWidth()) { Text("Fix the numbers") }
         }
     }
@@ -248,30 +348,6 @@ fun TransferCard(t: Transfer, onFix: suspend (Double, Double) -> String?) {
             onSubmit = { a, c -> onFix(a, c) },
             onClose = { fixing = false },
         )
-    }
-}
-
-/** What the partner is owed, in one tap-able card on Home. [onOpen] goes to the Earnings tab. */
-@Composable
-fun EarningsSummaryCard(e: Earnings, onOpen: () -> Unit) {
-    val on = MaterialTheme.colorScheme.onPrimaryContainer
-    val due = if (e.owed > 0) e.owed else 0.0
-    Card(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).clickable(onClick = onOpen),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-    ) {
-        Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (due > 0) "Due to you" else "All paid up", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = on)
-                Text("Details ›", style = MaterialTheme.typography.labelLarge, color = on)
-            }
-            Text(EarningsFormat.money(due), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, color = on)
-            Text(
-                "Earned today " + EarningsFormat.money(e.today.commission) + " · this month " + EarningsFormat.money(e.month.commission),
-                style = MaterialTheme.typography.bodySmall, color = on,
-            )
-        }
     }
 }
 

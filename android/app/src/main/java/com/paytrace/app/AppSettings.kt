@@ -196,6 +196,11 @@ class AppSettings(ctx: Context) {
         get() = p.getBoolean("strong_alarm", true)
         set(v) { p.edit().putBoolean("strong_alarm", v).apply() }
 
+    /** Dark look (the default) or light. */
+    var darkMode: Boolean
+        get() = p.getBoolean("dark_mode", true)
+        set(v) { p.edit().putBoolean("dark_mode", v).apply() }
+
     /** Ring for five seconds when a job appears. On by default; the owner's agents can switch it off on their own phone. */
     var jobSound: Boolean
         get() = p.getBoolean("job_sound", true)

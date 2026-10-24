@@ -237,7 +237,7 @@ address with its network (BNB Smart Chain)** to send to.
    when a job appears**. The sound follows the phone's **alarm volume** (not the ringtone volume) and rings even when the phone is on silent,
    but not in Do Not Disturb.
 
-**Clean Home screen.** Finished work disappears by itself: a verified send is shown for 3 hours, a rejected one for 12 hours, and ones still
+**Clean Home screen.** The phone's Home shows the **last 3 days** of sends as small rows (green Verified, yellow Waiting, red Check / With owner / Rejected); ones still
 waiting or needing your decision stay until settled. The phone's **Earnings** tab (only for phones where you switched earnings on) shows what is
 **due** (earned minus paid), this month's commission from day 1 to the last day, and only the payments of the **last 3 days**.
 

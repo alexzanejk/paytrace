@@ -40,6 +40,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -86,13 +87,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         intent?.getStringExtra(EXTRA_OPEN_THREAD)?.let { LaunchRequest.address = it }
+        ThemeState.dark = AppSettings(this).darkMode
         MonitorService.start(this) // always on: it also tells the dashboard this phone is online
         SendWorker.resumePending(this)
         HeartbeatWorker.schedule(this)
         HeartbeatWorker.now(this)
         Push.refresh(this)
         setContent {
-            PayTraceTheme(isSystemInDarkTheme()) {
+            PayTraceTheme(ThemeState.dark) {
                 Surface(Modifier.fillMaxSize()) { App() }
             }
         }
@@ -210,8 +212,14 @@ fun App() {
                 else -> SettingsScreen(settings, tick)
             }
         }
-        NavigationBar {
+        val navColors = NavigationBarItemDefaults.colors(
+            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            selectedTextColor = MaterialTheme.colorScheme.primary,
+        )
+        NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
             NavigationBarItem(
+                colors = navColors,
                 selected = tab == 0,
                 onClick = { tab = 0 },
                 icon = {
@@ -221,6 +229,7 @@ fun App() {
             )
             if (earnings?.enabled == true) {
                 NavigationBarItem(
+                colors = navColors,
                     selected = tab == 1,
                     onClick = { tab = 1 },
                     icon = { Icon(Icons.Filled.AccountBox, contentDescription = null) },
@@ -228,6 +237,7 @@ fun App() {
                 )
             }
             NavigationBarItem(
+                colors = navColors,
                 selected = tab == 2,
                 onClick = { tab = 2 },
                 icon = {
@@ -236,6 +246,7 @@ fun App() {
                 label = { Text("Messages") },
             )
             NavigationBarItem(
+                colors = navColors,
                 selected = tab == 3,
                 onClick = { tab = 3 },
                 icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
@@ -286,15 +297,16 @@ fun Home(
             }
             StatusPill(healthy, configured)
         }
-        if (earnings != null && earnings.enabled) EarningsSummaryCard(earnings, onOpenEarnings)
+        BalanceCard(earnings, onOpenEarnings)
+        if (earnings != null && earnings.enabled) PaidRecentCard(earnings)
 
         SectionTitle("Jobs", jobs.size)
         if (jobs.isEmpty()) EmptyJobsCard()
         jobs.forEach { job -> JobCard(job, onSent = { amount, charge -> onSent(job.provider, amount, charge) }) }
 
         if (transfers.isNotEmpty()) {
-            SectionTitle("Your sends")
-            transfers.take(4).forEach { t -> TransferCard(t, onFix = { amount, charge -> onFix(t.id, amount, charge) }) }
+            SectionTitle("Your sends, last 3 days")
+            transfers.take(8).forEach { t -> ActivityRow(t, onFix = { amount, charge -> onFix(t.id, amount, charge) }) }
         }
 
         if (!smsOk) Warning("SMS permission is off. Open the phone's app settings for PayTrace and allow SMS, or no payment can be detected.")
@@ -356,6 +368,19 @@ fun SettingsScreen(settings: AppSettings, tick: Int) {
                     strong = it
                     settings.strongAlarm = it
                     Keepalive.schedule(ctx)
+                })
+            }
+        }
+
+        Card(Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text("Dark look", style = MaterialTheme.typography.titleSmall)
+                    Text("Easier on the eyes at night. Switch off for a light look.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = ThemeState.dark, onCheckedChange = {
+                    ThemeState.dark = it
+                    settings.darkMode = it
                 })
             }
         }

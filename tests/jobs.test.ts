@@ -137,5 +137,12 @@ t("earnings-month migration only replaces the two phone functions, keeps them se
   assert.match(sql, /paid_on >= today - 2/);
   assert.match(sql, /status = 'rejected' and coalesce\(t\.checked_at, t\.submitted_at\) > now\(\) - interval '12 hours'/);
 });
+t("sends migration: sends of the last 3 days (and open ones) go to the phone, with settle time and note", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/20261024_026_sends_three_days.sql", import.meta.url), "utf8");
+  assert.ok(!/\b(drop|delete)\b/i.test(sql.replace(/--.*$/gm, "")));
+  assert.match(sql, /t\.submitted_at > now\(\) - interval '3 days'/);
+  assert.match(sql, /'resolved_at', x\.checked_at, 'note', x\.note/);
+  assert.match(sql, /grant execute on function public\.device_jobs\(uuid\) to service_role/);
+});
 
 console.log(`\n${n} checks passed`);
