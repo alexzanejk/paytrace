@@ -265,7 +265,15 @@ async function handle(req: Request): Promise<Response> {
       await log("phone_problem", null, { device_id: device.id, name: device.name, problem });
       defer(notify.send(problemMessage({ name: device.name, code: device.pair_code, problem, dashboardUrl: DASHBOARD_URL })));
     }
-    return json({ success: true, message: "heartbeat ok", device_status: "approved" });
+    // The jobs this phone has right now ride back on the reply (the short form), so the app can ring and notify within 30 seconds
+    // without a second request. Left out when the lookup fails: the app then changes nothing.
+    const { data: jobData, error: jobError } = await db.rpc("device_jobs", { p_device: device.id });
+    const brief = jobError
+      ? null
+      : (((jobData as { jobs?: Array<Record<string, unknown>> } | null)?.jobs) ?? []).map((j) => ({
+          provider: j.provider, agent: j.agent, urgency: j.urgency, balance: j.balance, balance_at: j.balance_at,
+        }));
+    return json({ success: true, message: "heartbeat ok", device_status: "approved", ...(brief ? { jobs: brief } : {}) });
   }
 
   // ---- earnings: what this phone's own app shows. Empty unless the owner switched it on for this phone. ----
@@ -287,7 +295,23 @@ async function handle(req: Request): Promise<Response> {
       console.error("device_jobs failed", error.code);
       return json({ success: false, message: "could not load jobs" }, 500);
     }
-    return json({ success: true, jobs: (data as { jobs?: unknown[] } | null)?.jobs ?? [] });
+    const d = data as { jobs?: unknown[]; transfers?: unknown[] } | null;
+    return json({ success: true, jobs: d?.jobs ?? [], transfers: d?.transfers ?? [] });
+  }
+  // The partner says how much they sent and the P2P charge; the next Cash Out message for that wallet checks it (migration 024).
+  if (body.action === "job_sent" || body.action === "job_fix") {
+    if (!device) return json({ success: false, message: "not paired" }, 403);
+    const amount = Number(body.amount);
+    const charge = body.charge == null || body.charge === "" ? 0 : Number(body.charge);
+    if (!Number.isFinite(amount) || !Number.isFinite(charge)) return json({ success: false, message: "bad_amount" }, 400);
+    const { data, error } = body.action === "job_sent"
+      ? await db.rpc("device_job_sent", { p_device: device.id, p_provider: String(body.provider ?? ""), p_amount: amount, p_charge: charge })
+      : await db.rpc("device_job_fix", { p_device: device.id, p_id: String(body.id ?? ""), p_amount: amount, p_charge: charge });
+    if (error) {
+      console.error(body.action + " failed", error.code);
+      return json({ success: false, message: "could not save" }, 500);
+    }
+    return json({ success: true, ...((data ?? { ok: false }) as Record<string, unknown>) });
   }
   // The agent says the work is done; the job stays hidden until a newer balance message arrives.
   if (body.action === "job_done") {

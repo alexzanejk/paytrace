@@ -1,6 +1,6 @@
 // Agent jobs: the form rules and the text filling. Run: node --experimental-strip-types tests/jobs.test.ts
 import assert from "node:assert/strict";
-import { addressOf, addressProblem, agentStatus, checkAgentForm, checkJobForm, cleanWallets, fillTemplate, networkProblem, parseThreshold, takaText, validWallet, walletsFromAddress } from "../dashboard/src/lib/jobs.ts";
+import { addressOf, addressProblem, agentStatus, checkAgentForm, checkJobForm, cleanWallets, fillTemplate, networkProblem, parseThreshold, takaText, validWallet, walletsFromAddress, leftoverText, transferOpen, TRANSFER_LABEL, TRANSFER_TONE } from "../dashboard/src/lib/jobs.ts";
 import { readFileSync } from "node:fs";
 
 let n = 0;
@@ -107,6 +107,27 @@ t("the database migration only adds and never removes", () => {
   assert.match(sql, /grant execute on function public\.device_jobs\(uuid\) to service_role/);
   assert.match(sql, /revoke all on function public\.device_jobs\(uuid\) from public, anon, authenticated/);
   assert.match(sql, /grant execute on function public\.device_job_done\(uuid, text\) to service_role/);
+});
+t("sent-money check: wording for the leftover", () => {
+  assert.equal(leftoverText(null), "–");
+  assert.equal(leftoverText(0), "fits");
+  assert.equal(leftoverText(120), "+120 Tk");
+  assert.equal(leftoverText(-4.5), "−4.5 Tk");
+});
+t("sent-money check: the owner can settle only open ones, and every status has words and a colour", () => {
+  for (const s of ["checking", "mismatch", "review"] as const) assert.ok(transferOpen(s));
+  for (const s of ["verified", "rejected"] as const) assert.ok(!transferOpen(s));
+  for (const s of ["checking", "mismatch", "review", "verified", "rejected"] as const) assert.ok(TRANSFER_LABEL[s] && TRANSFER_TONE[s]);
+});
+t("sent-money migration: only adds, owner-only settling, phone functions are service-role only, never blocks a payment", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/20261023_024_job_transfers.sql", import.meta.url), "utf8");
+  assert.ok(!/\b(drop|delete)\b/i.test(sql.replace(/--.*$/gm, "")));
+  assert.match(sql, /function public\.resolve_job_transfer[\s\S]*?is_admin\(\)/);
+  assert.match(sql, /revoke all on function public\.device_job_sent\(uuid, text, numeric, numeric\) from public, anon, authenticated/);
+  assert.match(sql, /grant execute on function public\.device_job_fix\(uuid, uuid, numeric, numeric\) to service_role/);
+  assert.match(sql, /alter table public\.job_transfers enable row level security/);
+  assert.match(sql, /exception when others then\s+return new/);
+  assert.match(sql, /coalesce\(p_pay\.commission, 0\) > 0/);
 });
 
 console.log(`\n${n} checks passed`);

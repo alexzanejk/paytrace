@@ -196,6 +196,16 @@ class AppSettings(ctx: Context) {
         get() = p.getBoolean("strong_alarm", true)
         set(v) { p.edit().putBoolean("strong_alarm", v).apply() }
 
+    /** Ring for five seconds when a job appears. On by default; the owner's agents can switch it off on their own phone. */
+    var jobSound: Boolean
+        get() = p.getBoolean("job_sound", true)
+        set(v) { p.edit().putBoolean("job_sound", v).apply() }
+
+    /** When each open job last rang (JSON: "provider|balance time" to milliseconds), so a job rings once, then every 10 minutes while open. */
+    var jobAlertState: String
+        get() = p.getString("job_alert_state", "") ?: ""
+        set(v) { p.edit().putString("job_alert_state", v).apply() }
+
     /** Uptime-clock reading (SystemClock.elapsedRealtime) of the last heartbeat attempt. 0 = none yet. */
     var lastBeatElapsed: Long
         get() = p.getLong("last_beat_elapsed", 0L)

@@ -39,7 +39,9 @@ class HeartbeatWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
             val waiting = s.deviceStatus == "pending" || s.deviceStatus == "approved"
             if (s.serverUrl.isBlank() || !(waiting || s.secret.isNotBlank())) return
             val before = s.deviceStatus
-            Sender.send(s, Sender.heartbeat(ctx, s))
+            val reply = Sender.send(s, Sender.heartbeat(ctx, s))
+            // The reply lists this phone's open jobs: ring and show a notification for a new one, even with the app closed.
+            try { JobAlertPolicy.parseBrief(reply.body)?.let { JobAlarm.onJobs(ctx, it) } } catch (e: Exception) { }
             // The moment the owner approves this phone, send whatever was waiting. Not on every heartbeat:
             // that would queue the same messages again and again.
             if (before != "approved" && s.deviceStatus == "approved") SendWorker.resumePending(ctx)

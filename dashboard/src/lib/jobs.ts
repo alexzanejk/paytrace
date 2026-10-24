@@ -140,3 +140,34 @@ export function agentStatus(a: { jobsOn: boolean; agentOn: boolean; balance: num
   if (!a.hasWallet) return "Needs a wallet address";
   return "Marked done, waiting for a newer balance";
 }
+
+// ---- sent-money check (migration 024): what the partner typed after sending money out, judged against the next Cash Out message ----
+
+export type TransferStatus = "checking" | "mismatch" | "review" | "verified" | "rejected";
+
+export const TRANSFER_LABEL: Record<TransferStatus, string> = {
+  checking: "Waiting for the cash-out message",
+  mismatch: "Doesn't add up (partner may fix once)",
+  review: "Doesn't add up: needs you",
+  verified: "Verified",
+  rejected: "Rejected",
+};
+
+export const TRANSFER_TONE: Record<TransferStatus, "warn" | "bad" | "ok" | "idle"> = {
+  checking: "warn",
+  mismatch: "bad",
+  review: "bad",
+  verified: "ok",
+  rejected: "idle",
+};
+
+/** The owner can settle a send by hand until it is verified or rejected. */
+export const transferOpen = (s: TransferStatus): boolean => s === "checking" || s === "mismatch" || s === "review";
+
+/** "Leftover" in plain words: how far the cash-out message is from what the partner's numbers predicted. 0 means it fits. */
+export function leftoverText(diff: number | null): string {
+  if (diff === null || diff === undefined) return "–";
+  const n = Math.round(Number(diff) * 100) / 100;
+  if (n === 0) return "fits";
+  return (n > 0 ? "+" : "−") + Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 2 }) + " Tk";
+}

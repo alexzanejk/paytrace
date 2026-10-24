@@ -164,14 +164,15 @@ fun App() {
     // the last numbers stay on screen.
     val scope = rememberCoroutineScope()
     var jobs by remember { mutableStateOf<List<Job>>(emptyList()) }
+    var transfers by remember { mutableStateOf<List<Transfer>>(emptyList()) }
     var earnings by remember { mutableStateOf<Earnings?>(null) }
     val approved = settings.deviceStatus == "approved"
     LaunchedEffect(approved) {
         if (!approved) return@LaunchedEffect
         var round = 0
         while (true) {
-            val j = withContext(Dispatchers.IO) { JobsApi.fetch(settings) }
-            if (j != null) jobs = j
+            val snap = withContext(Dispatchers.IO) { JobsApi.fetch(settings) }
+            if (snap != null) { jobs = snap.jobs; transfers = snap.transfers }
             if (round % 2 == 0) {
                 val e = withContext(Dispatchers.IO) { EarningsApi.fetch(settings) }
                 if (e != null) earnings = e
@@ -194,13 +195,18 @@ fun App() {
         Box(Modifier.weight(1f)) {
             when (tab) {
                 0 -> Home(
-                    settings, tick, earnings, jobs,
-                    onJobDone = { provider ->
-                        scope.launch {
-                            withContext(Dispatchers.IO) { JobsApi.done(settings, provider) }
-                            val j = withContext(Dispatchers.IO) { JobsApi.fetch(settings) }
-                            if (j != null) jobs = j
-                        }
+                    settings, tick, earnings, jobs, transfers,
+                    onSent = { provider, amount, charge ->
+                        val r = withContext(Dispatchers.IO) { JobsApi.sent(settings, provider, amount, charge) }
+                        val snap = withContext(Dispatchers.IO) { JobsApi.fetch(settings) }
+                        if (snap != null) { jobs = snap.jobs; transfers = snap.transfers }
+                        if (r.ok) null else r.message
+                    },
+                    onFix = { id, amount, charge ->
+                        val r = withContext(Dispatchers.IO) { JobsApi.fix(settings, id, amount, charge) }
+                        val snap = withContext(Dispatchers.IO) { JobsApi.fetch(settings) }
+                        if (snap != null) { jobs = snap.jobs; transfers = snap.transfers }
+                        if (r.ok) null else r.message
                     },
                 )
                 1 -> MessagesScreen(tick, onOpenDashboard = { tab = 0 })
@@ -212,7 +218,7 @@ fun App() {
                 selected = tab == 0,
                 onClick = { tab = 0 },
                 icon = {
-                    BadgedBox(badge = { if (jobs.isNotEmpty()) Badge { Text("${jobs.size}") } }) { Icon(Icons.Filled.Home, contentDescription = null) }
+                    BadgedBox(badge = { val n = jobs.size + transfers.count { it.canFix }; if (n > 0) Badge { Text("$n") } }) { Icon(Icons.Filled.Home, contentDescription = null) }
                 },
                 label = { Text("Home") },
             )
@@ -244,7 +250,11 @@ private fun Warning(text: String) {
 
 /** The first screen: whether this phone is running, the job to do now, and (when the owner switched it on) what the partner has earned. */
 @Composable
-fun Home(settings: AppSettings, tick: Int, earnings: Earnings?, jobs: List<Job>, onJobDone: (String) -> Unit) {
+fun Home(
+    settings: AppSettings, tick: Int, earnings: Earnings?, jobs: List<Job>, transfers: List<Transfer>,
+    onSent: suspend (String, Double, Double) -> String?,
+    onFix: suspend (String, Double, Double) -> String?,
+) {
     val ctx = LocalContext.current
     val configured = remember(tick) { settings.ready }
     val smsOk = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
@@ -265,7 +275,8 @@ fun Home(settings: AppSettings, tick: Int, earnings: Earnings?, jobs: List<Job>,
         if (healthy) {
             Text("Payment messages are being sent to your dashboard.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        jobs.forEach { job -> JobCard(job, onDone = { onJobDone(job.provider) }) }
+        jobs.forEach { job -> JobCard(job, onSent = { amount, charge -> onSent(job.provider, amount, charge) }) }
+        transfers.take(4).forEach { t -> TransferCard(t, onFix = { amount, charge -> onFix(t.id, amount, charge) }) }
         if (earnings != null && earnings.enabled) EarningsSection(earnings)
         if (!smsOk) Warning("SMS permission is off. Open the phone's app settings for PayTrace and allow SMS, or no payment can be detected.")
         if (smsOk && !readOk) Warning("Reading old SMS is off. Allow it in the phone's app settings for PayTrace, or a payment message that arrives while the phone is off cannot be recovered.")
@@ -325,6 +336,27 @@ fun SettingsScreen(settings: AppSettings, tick: Int) {
                     settings.strongAlarm = it
                     Keepalive.schedule(ctx)
                 })
+            }
+        }
+
+        var jobSound by remember { mutableStateOf(settings.jobSound) }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                        Text("Ring when a job appears", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "Plays an alarm sound and vibrates for 5 seconds when a job appears, and again every 10 minutes while it is not done. Follows the phone's alarm volume.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = jobSound, onCheckedChange = {
+                        jobSound = it
+                        settings.jobSound = it
+                    })
+                }
+                OutlinedButton(onClick = { JobAlarm.ring(ctx) }) { Text("Test the sound") }
             }
         }
 
