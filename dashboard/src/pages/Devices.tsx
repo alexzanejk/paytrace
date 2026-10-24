@@ -99,10 +99,10 @@ export function Devices() {
       />
 
       <div className={`mb-6 ${STAT_GRID}`}>
-        <StatCard label="Phones online" value={`${online} of ${approved.length}`} sub={dayLabel(day)} icon={Smartphone} />
-        <StatCard label="Received" value={tk(fleet.received.amount)} sub={`${fleet.received.n} payments, all phones`} />
-        <StatCard label="Agent Cash Out" value={tk(fleet.cashOut.amount)} sub={`${fleet.cashOut.n} receipts, all phones`} />
-        <StatCard label="Commission" value={tk(fleet.commission)} sub="all phones" />
+        <StatCard tone="blue" label="Phones online" value={`${online} of ${approved.length}`} sub={dayLabel(day)} icon={Smartphone} />
+        <StatCard tone="green" label="Received" value={tk(fleet.received.amount)} sub={`${fleet.received.n} payments, all phones`} />
+        <StatCard tone="purple" label="Agent Cash Out" value={tk(fleet.cashOut.amount)} sub={`${fleet.cashOut.n} receipts, all phones`} />
+        <StatCard tone="amber" label="Commission" value={tk(fleet.commission)} sub="all phones" />
       </div>
 
       {pending.length > 0 ? (
