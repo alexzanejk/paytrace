@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBox
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
@@ -91,7 +92,7 @@ class MainActivity : ComponentActivity() {
         HeartbeatWorker.now(this)
         Push.refresh(this)
         setContent {
-            MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
+            PayTraceTheme(isSystemInDarkTheme()) {
                 Surface(Modifier.fillMaxSize()) { App() }
             }
         }
@@ -157,7 +158,7 @@ fun App() {
 
     // A tap on a message notification jumps to that conversation.
     val launchAddress = LaunchRequest.address
-    LaunchedEffect(launchAddress) { if (launchAddress != null) tab = 1 }
+    LaunchedEffect(launchAddress) { if (launchAddress != null) tab = 2 }
 
     // What the home screen shows comes from the server: the job to do now (checked every 30 s, so a job appears within a minute of
     // the balance reaching the owner's amount) and, when the owner switched it on, the earnings (every minute). If the internet drops,
@@ -186,16 +187,11 @@ fun App() {
     LaunchedEffect(tick) { unread = withContext(Dispatchers.IO) { if (SmsStore.canRead(ctx)) SmsStore.unreadTotal(ctx) else 0 } }
 
     Column(Modifier.fillMaxSize().systemBarsPadding()) {
-        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(28.dp).background(MaterialTheme.colorScheme.primary, CircleShape), contentAlignment = Alignment.Center) {
-                Text("P", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-            }
-            Text("PayTrace", Modifier.padding(start = 10.dp), style = MaterialTheme.typography.titleLarge)
-        }
         Box(Modifier.weight(1f)) {
             when (tab) {
                 0 -> Home(
                     settings, tick, earnings, jobs, transfers,
+                    onOpenEarnings = { tab = 1 },
                     onSent = { provider, amount, charge ->
                         val r = withContext(Dispatchers.IO) { JobsApi.sent(settings, provider, amount, charge) }
                         val snap = withContext(Dispatchers.IO) { JobsApi.fetch(settings) }
@@ -209,7 +205,8 @@ fun App() {
                         if (r.ok) null else r.message
                     },
                 )
-                1 -> MessagesScreen(tick, onOpenDashboard = { tab = 0 })
+                1 -> EarningsScreen(earnings)
+                2 -> MessagesScreen(tick, onOpenDashboard = { tab = 0 })
                 else -> SettingsScreen(settings, tick)
             }
         }
@@ -222,17 +219,25 @@ fun App() {
                 },
                 label = { Text("Home") },
             )
+            if (earnings?.enabled == true) {
+                NavigationBarItem(
+                    selected = tab == 1,
+                    onClick = { tab = 1 },
+                    icon = { Icon(Icons.Filled.AccountBox, contentDescription = null) },
+                    label = { Text("Earnings") },
+                )
+            }
             NavigationBarItem(
-                selected = tab == 1,
-                onClick = { tab = 1 },
+                selected = tab == 2,
+                onClick = { tab = 2 },
                 icon = {
                     BadgedBox(badge = { if (unread > 0) Badge { Text("$unread") } }) { Icon(Icons.Filled.Email, contentDescription = null) }
                 },
                 label = { Text("Messages") },
             )
             NavigationBarItem(
-                selected = tab == 2,
-                onClick = { tab = 2 },
+                selected = tab == 3,
+                onClick = { tab = 3 },
                 icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
                 label = { Text("Settings") },
             )
@@ -248,10 +253,12 @@ private fun Warning(text: String) {
     ) { Text(text, Modifier.padding(14.dp), color = MaterialTheme.colorScheme.onErrorContainer) }
 }
 
-/** The first screen: whether this phone is running, the job to do now, and (when the owner switched it on) what the partner has earned. */
+/** The first screen, kept clean: who this phone is and whether it is running, what is due to the partner (when the owner switched
+ *  earnings on), the jobs to do now, the sends still being checked, and anything that needs fixing. */
 @Composable
 fun Home(
     settings: AppSettings, tick: Int, earnings: Earnings?, jobs: List<Job>, transfers: List<Transfer>,
+    onOpenEarnings: () -> Unit,
     onSent: suspend (String, Double, Double) -> String?,
     onFix: suspend (String, Double, Double) -> String?,
 ) {
@@ -260,33 +267,47 @@ fun Home(
     val smsOk = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
     val readOk = ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
     val healthy = configured && smsOk && readOk
+    val name = settings.deviceName.ifBlank { "This phone" }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(44.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape), contentAlignment = Alignment.Center) {
+                Text(
+                    name.trim().take(1).uppercase(),
+                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
                 Text("Hello", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(settings.deviceName.ifBlank { "This phone" }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text(name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             }
             StatusPill(healthy, configured)
         }
-        if (healthy) {
-            Text("Payment messages are being sent to your dashboard.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        if (earnings != null && earnings.enabled) EarningsSummaryCard(earnings, onOpenEarnings)
+
+        SectionTitle("Jobs", jobs.size)
+        if (jobs.isEmpty()) EmptyJobsCard()
         jobs.forEach { job -> JobCard(job, onSent = { amount, charge -> onSent(job.provider, amount, charge) }) }
-        transfers.take(4).forEach { t -> TransferCard(t, onFix = { amount, charge -> onFix(t.id, amount, charge) }) }
-        if (earnings != null && earnings.enabled) EarningsSection(earnings)
+
+        if (transfers.isNotEmpty()) {
+            SectionTitle("Your sends")
+            transfers.take(4).forEach { t -> TransferCard(t, onFix = { amount, charge -> onFix(t.id, amount, charge) }) }
+        }
+
         if (!smsOk) Warning("SMS permission is off. Open the phone's app settings for PayTrace and allow SMS, or no payment can be detected.")
         if (smsOk && !readOk) Warning("Reading old SMS is off. Allow it in the phone's app settings for PayTrace, or a payment message that arrives while the phone is off cannot be recovered.")
         if (!configured) PairCard(settings)
         SmsAppBanner(tick)
-        Text(
-            "Leave this phone on, charged and connected to the internet. Totals, logs and settings are in the web dashboard.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        if (healthy) {
+            Text(
+                "Payment messages are being sent to your dashboard. Leave this phone on, charged and connected to the internet.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -346,7 +367,7 @@ fun SettingsScreen(settings: AppSettings, tick: Int) {
                     Column(Modifier.weight(1f).padding(end = 12.dp)) {
                         Text("Ring when a job appears", style = MaterialTheme.typography.titleSmall)
                         Text(
-                            "Plays an alarm sound and vibrates for 5 seconds when a job appears, and again every 10 minutes while it is not done. Follows the phone's alarm volume.",
+                            "Plays an alarm sound and vibrates for 20 seconds when a job appears, and again every 10 minutes while it is not done. Follows the phone's alarm volume.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

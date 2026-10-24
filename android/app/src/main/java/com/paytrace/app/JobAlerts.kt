@@ -108,7 +108,7 @@ object JobAlertPolicy {
 object JobAlarm {
     private const val CHANNEL = "jobs"
     private const val NOTIF_ID = 2
-    private const val SOUND_MS = 5_000L
+    private const val SOUND_MS = 20_000L // how long the alarm sounds and vibrates (owner asked for longer than the first 5 s, 2026-10-24)
 
     @Volatile private var current: Ringtone? = null
 
@@ -131,7 +131,7 @@ object JobAlarm {
         try {
             nm.createNotificationChannel(
                 NotificationChannel(CHANNEL, "Jobs", NotificationManager.IMPORTANCE_HIGH).apply {
-                    setSound(null, null) // the sound is played by ring(), for exactly five seconds
+                    setSound(null, null) // the sound is played by ring(), for SOUND_MS
                     enableVibration(false)
                     lockscreenVisibility = Notification.VISIBILITY_PUBLIC
                 }
@@ -159,7 +159,7 @@ object JobAlarm {
         }
     }
 
-    /** Alarm sound for five seconds, with vibration. Follows the phone's alarm volume. */
+    /** Alarm sound for 20 seconds, with vibration. Follows the phone's alarm volume. */
     fun ring(ctx: Context) {
         try {
             val app = ctx.applicationContext
@@ -184,8 +184,10 @@ object JobAlarm {
         }
         try {
             val v = ctx.getSystemService(Vibrator::class.java)
-            // 0.6 s on, 0.4 s off, five times = five seconds.
-            v?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 600, 400, 600, 400, 600, 400, 600, 400, 600), -1))
+            // 0.6 s on, 0.4 s off, repeated to fill the same time as the sound.
+            val beats = (SOUND_MS / 1000).toInt()
+            val pattern = LongArray(1 + beats * 2).also { a -> for (i in 0 until beats) { a[1 + i * 2] = 600; a[2 + i * 2] = 400 } }
+            v?.vibrate(VibrationEffect.createWaveform(pattern, -1))
         } catch (e: Exception) {
         }
     }

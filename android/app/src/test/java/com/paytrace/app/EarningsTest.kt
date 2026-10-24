@@ -86,4 +86,32 @@ class EarningsTest {
         assertEquals("Tk 4,000.00 at 5% = Tk 200.00", EarningsFormat.line(EarnLine("bkash", "cash_out", 4000.0, 5.0, 200.0)))
         assertEquals("bKash Send Money 3.5%", EarningsFormat.rateLine(EarnRate("bkash", "send_money", 3.5)))
     }
+
+    @Test fun readsTheMonthAndTheLastThreeDaysOfPayments() {
+        val text = """{"success":true,"enabled":true,"day":"2026-10-24","owed":80.00,"earned":300.00,"paid":220.00,
+          "month_start":"2026-10-01","month_end":"2026-10-31","paid_month":220.00,
+          "month_days":[{"day":"2026-10-31","total":0,"commission":0},{"day":"2026-10-24","total":4000,"commission":200},{"day":"2026-10-01","total":0,"commission":0}],
+          "recent_paid":[{"day":"2026-10-24","amount":100.00,"note":"today pay"},{"day":"2026-10-22","amount":50.00,"note":null}]}"""
+        val e = EarningsParser.parse(text)!!
+        assertEquals("2026-10-01", e.monthStart)
+        assertEquals("2026-10-31", e.monthEnd)
+        assertEquals(3, e.monthDays.size)
+        assertEquals(200.0, e.monthDays[1].commission, 0.001)
+        assertEquals(2, e.recentPaid.size)
+        assertEquals(100.0, e.recentPaid[0].amount, 0.001)
+        assertEquals("today pay", e.recentPaid[0].note)
+        assertEquals(220.0, e.paidMonth, 0.001)
+    }
+
+    @Test fun anOlderServerWithoutTheNewPartsStillWorks() {
+        val e = EarningsParser.parse(sample)!!
+        assertEquals(emptyList<EarnPaid>(), e.recentPaid)
+        assertEquals(emptyList<EarnDay>(), e.monthDays)
+        assertEquals("", e.monthStart)
+    }
+
+    @Test fun theMonthReadsAsARange() {
+        assertEquals("1 Oct \u2013 31 Oct", EarningsFormat.rangeLabel("2026-10-01", "2026-10-31"))
+        assertEquals("", EarningsFormat.rangeLabel("", ""))
+    }
 }

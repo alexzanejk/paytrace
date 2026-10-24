@@ -15,6 +15,8 @@ import java.util.Locale
 data class EarnTotals(val total: Double, val commission: Double)
 data class EarnDay(val day: String, val total: Double, val commission: Double)
 data class EarnLine(val provider: String, val kind: String, val total: Double, val rate: Double, val commission: Double)
+/** Money the owner paid this partner (recorded in the dashboard). */
+data class EarnPaid(val day: String, val amount: Double, val note: String)
 data class EarnRate(val provider: String, val kind: String, val rate: Double)
 
 data class Earnings(
@@ -29,6 +31,13 @@ data class Earnings(
     val earned: Double = 0.0,
     val paid: Double = 0.0,
     val owed: Double = 0.0,
+    /** The whole current month, 1st to last day (a row for every day, newest first; days still to come read 0). */
+    val monthStart: String = "",
+    val monthEnd: String = "",
+    val monthDays: List<EarnDay> = emptyList(),
+    /** Payments from the last three days only (today and the two days before). */
+    val recentPaid: List<EarnPaid> = emptyList(),
+    val paidMonth: Double = 0.0,
 )
 
 object EarningsParser {
@@ -56,6 +65,11 @@ object EarningsParser {
             earned = o.optDouble("earned", 0.0),
             paid = o.optDouble("paid", 0.0),
             owed = o.optDouble("owed", 0.0),
+            monthStart = o.optString("month_start", ""),
+            monthEnd = o.optString("month_end", ""),
+            monthDays = list(o.optJSONArray("month_days")) { EarnDay(it.optString("day"), it.optDouble("total", 0.0), it.optDouble("commission", 0.0)) },
+            recentPaid = list(o.optJSONArray("recent_paid")) { EarnPaid(it.optString("day"), it.optDouble("amount", 0.0), it.optString("note", "")) },
+            paidMonth = o.optDouble("paid_month", 0.0),
         )
     } catch (e: Exception) {
         null
@@ -94,6 +108,14 @@ object EarningsFormat {
         "$dow ${d.dayOfMonth} $mon"
     } catch (e: Exception) {
         day
+    }
+
+    /** "1 Oct – 31 Oct" for the month's first and last day; empty when either is not a date. */
+    fun rangeLabel(from: String, to: String): String = try {
+        fun part(d: LocalDate) = "${d.dayOfMonth} " + d.month.name.take(3).lowercase().replaceFirstChar { it.uppercase() }
+        part(LocalDate.parse(from)) + " \u2013 " + part(LocalDate.parse(to))
+    } catch (e: Exception) {
+        ""
     }
 
     /** "bKash Cash Out 5%" */
