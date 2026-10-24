@@ -60,6 +60,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.CoroutineScope
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -101,13 +105,23 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/** Runs [block] only while the app is on screen: it starts when the screen is shown, stops when the app goes to the background, and starts
+ *  again (from the top) when it comes back. Keeps this screen from using battery, the network or the SMS database in the background. */
+@Composable
+fun WhileVisible(key: Any?, block: suspend CoroutineScope.() -> Unit) {
+    val owner = LocalLifecycleOwner.current
+    LaunchedEffect(key, owner) { owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED, block) }
+}
+
 @Composable
 fun App() {
     val ctx = LocalContext.current
     val settings = remember { AppSettings(ctx) }
     var tab by remember { mutableIntStateOf(0) }
     var tick by remember { mutableIntStateOf(0) }
-    LaunchedEffect(Unit) {
+    // The screen's clock. It ticks only while the app is on screen: when PayTrace is in the background the always-on service does the
+    // work, and this screen must cost nothing (no timers, no inbox queries, no network).
+    WhileVisible(Unit) {
         while (true) {
             delay(2000)
             tick++
@@ -170,8 +184,8 @@ fun App() {
     var transfers by remember { mutableStateOf<List<Transfer>>(emptyList()) }
     var earnings by remember { mutableStateOf<Earnings?>(null) }
     val approved = settings.deviceStatus == "approved"
-    LaunchedEffect(approved) {
-        if (!approved) return@LaunchedEffect
+    WhileVisible(approved) {
+        if (!approved) return@WhileVisible
         var round = 0
         while (true) {
             val snap = withContext(Dispatchers.IO) { JobsApi.fetch(settings) }
