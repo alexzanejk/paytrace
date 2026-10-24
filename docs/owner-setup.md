@@ -231,11 +231,15 @@ address with its network (BNB Smart Chain)** to send to.
      own wallet history) or **Reject**.
    The job comes back with the next balance message if the balance is still at or above your amount. Only a Cash Out message **after** the send
    can confirm it, and only one send per wallet can wait at a time.
-6. **The phone rings.** When a job appears, the phone plays an alarm sound and vibrates for **5 seconds**, and shows a notification
+6. **The phone rings.** When a job appears, the phone plays an alarm sound and vibrates for **20 seconds**, and shows a notification
    (**কাজ করুন এখনই**, the agent, the balance, and URGENT or CRITICAL) even when the PayTrace app is closed. Tapping the notification opens the job.
    If the job is still not done, it rings again every **10 minutes**. The agent can switch the sound off, or test it, under **Settings → Ring
    when a job appears**. The sound follows the phone's **alarm volume** (not the ringtone volume) and rings even when the phone is on silent,
    but not in Do Not Disturb.
+
+**Clean Home screen.** Finished work disappears by itself: a verified send is shown for 3 hours, a rejected one for 12 hours, and ones still
+waiting or needing your decision stay until settled. The phone's **Earnings** tab (only for phones where you switched earnings on) shows what is
+**due** (earned minus paid), this month's commission from day 1 to the last day, and only the payments of the **last 3 days**.
 
 The balance is the one printed in that wallet's newest payment message. If an agent sends money without any new message arriving, the
 balance does not change by itself, which is why Done exists. The phone needs the newest app build. Two agents using the same wallet type on

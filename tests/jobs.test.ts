@@ -129,5 +129,13 @@ t("sent-money migration: only adds, owner-only settling, phone functions are ser
   assert.match(sql, /exception when others then\s+return new/);
   assert.match(sql, /coalesce\(p_pay\.commission, 0\) > 0/);
 });
+t("earnings-month migration only replaces the two phone functions, keeps them service-role only", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/20261024_025_earnings_month_paid.sql", import.meta.url), "utf8");
+  assert.ok(!/\b(drop|delete)\b/i.test(sql.replace(/--.*$/gm, "")));
+  assert.match(sql, /revoke all on function public\.device_earnings\(uuid\) from public, anon, authenticated/);
+  assert.match(sql, /grant execute on function public\.device_jobs\(uuid\) to service_role/);
+  assert.match(sql, /paid_on >= today - 2/);
+  assert.match(sql, /status = 'rejected' and coalesce\(t\.checked_at, t\.submitted_at\) > now\(\) - interval '12 hours'/);
+});
 
 console.log(`\n${n} checks passed`);

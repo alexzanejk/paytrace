@@ -1,6 +1,7 @@
 package com.paytrace.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
@@ -249,31 +251,59 @@ fun TransferCard(t: Transfer, onFix: suspend (Double, Double) -> String?) {
     }
 }
 
-/** The big number: what the partner has earned and not been paid yet. */
+/** What the partner is owed, in one tap-able card on Home. [onOpen] goes to the Earnings tab. */
 @Composable
-fun BalanceHero(e: Earnings) {
-    val on = MaterialTheme.colorScheme.onPrimary
-    val balance = if (e.owed > 0) e.owed else 0.0
+fun EarningsSummaryCard(e: Earnings, onOpen: () -> Unit) {
+    val on = MaterialTheme.colorScheme.onPrimaryContainer
+    val due = if (e.owed > 0) e.owed else 0.0
+    Card(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).clickable(onClick = onOpen),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(if (due > 0) "Due to you" else "All paid up", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = on)
+                Text("Details ›", style = MaterialTheme.typography.labelLarge, color = on)
+            }
+            Text(EarningsFormat.money(due), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, color = on)
+            Text(
+                "Earned today " + EarningsFormat.money(e.today.commission) + " · this month " + EarningsFormat.money(e.month.commission),
+                style = MaterialTheme.typography.bodySmall, color = on,
+            )
+        }
+    }
+}
+
+/** A small heading for a group of cards, with an optional count on the right. */
+@Composable
+fun SectionTitle(text: String, count: Int? = null) {
+    Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(text, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        if (count != null && count > 0) {
+            Text(
+                "$count",
+                Modifier.background(MaterialTheme.colorScheme.primary, RoundedCornerShape(50)).padding(horizontal = 10.dp, vertical = 2.dp),
+                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimary,
+            )
+        }
+    }
+}
+
+/** Shown on Home when there is no job: calm, and says what will happen. */
+@Composable
+fun EmptyJobsCard() {
     Card(
         Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
-        Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Your earning balance", style = MaterialTheme.typography.labelLarge, color = on)
-            Text(EarningsFormat.money(balance), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, color = on)
-            Text("Earned and not paid to you yet", style = MaterialTheme.typography.bodySmall, color = on)
-            Spacer(Modifier.height(10.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column {
-                    Text("Earned in total", style = MaterialTheme.typography.bodySmall, color = on)
-                    Text(EarningsFormat.money(e.earned), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = on)
-                }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text("Paid to you so far", style = MaterialTheme.typography.bodySmall, color = on)
-                    Text(EarningsFormat.money(e.paid), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = on)
-                }
-            }
+        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("No job right now", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                "When a wallet's balance reaches the amount, the phone rings and the job shows here.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -283,63 +313,12 @@ fun StatTile(label: String, value: String, sub: String, modifier: Modifier = Mod
     Card(
         modifier,
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-/** Earnings in plain words: the balance first, then today and this month, then the last week. Shown only when the owner switched it on. */
-@Composable
-fun EarningsSection(e: Earnings) {
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        BalanceHero(e)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatTile("Earned today", EarningsFormat.money(e.today.commission), "on " + EarningsFormat.money(e.today.total), Modifier.weight(1f))
-            StatTile("This month", EarningsFormat.money(e.month.commission), "on " + EarningsFormat.money(e.month.total), Modifier.weight(1f))
-        }
-        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
-            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (e.todayDetail.isNotEmpty()) {
-                    Text("Today by account", style = MaterialTheme.typography.titleSmall)
-                    e.todayDetail.forEach {
-                        Text(
-                            EarningsFormat.provider(it.provider) + " " + EarningsFormat.kind(it.kind) + ": " + EarningsFormat.line(it),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    Spacer(Modifier.height(6.dp))
-                }
-                if (e.days.isNotEmpty()) {
-                    Text("Last 7 days", style = MaterialTheme.typography.titleSmall)
-                    e.days.forEach {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Column(Modifier.weight(1f)) {
-                                Text(EarningsFormat.dayLabel(it.day), style = MaterialTheme.typography.bodyMedium)
-                                Text("on " + EarningsFormat.money(it.total), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Text(EarningsFormat.money(it.commission), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
-                if (e.rates.isNotEmpty()) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "Your rates: " + e.rates.joinToString(" · ") { EarningsFormat.rateLine(it) },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Text(
-                    "Commission is a share of what comes through this phone each day (12:00 AM to 11:59 PM Bangladesh time). Payments held for checking count once they are approved.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
         }
     }
 }
