@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Globe, KeyRound } from "lucide-react";
+import { Eye, EyeOff, Globe, KeyRound } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import { when } from "@/lib/format";
 import { depositInstructions } from "@/lib/apiDocs";
@@ -26,6 +26,68 @@ export interface SiteKey {
 }
 
 const AUTO = "auto";
+
+/** The site's key and signing secret: hidden as dots until the eye is pressed; Copy works either way. Asked for from the database each time, never kept in the browser. */
+function KeyReveal({ siteId, hasSecret }: { siteId: string; hasSecret: boolean }) {
+  const [shown, setShown] = useState(false);
+  const [vals, setVals] = useState<{ key: string | null; webhook_secret: string | null } | null>(null);
+  const [problem, setProblem] = useState("");
+
+  async function load(): Promise<{ key: string | null; webhook_secret: string | null } | null> {
+    if (vals) return vals;
+    const { data, error } = await sb.rpc("reveal_api_key", { p_id: siteId });
+    if (error) {
+      setProblem(error.message);
+      return null;
+    }
+    setProblem("");
+    const v = data as { key: string | null; webhook_secret: string | null };
+    setVals(v);
+    return v;
+  }
+
+  async function toggle() {
+    if (!shown) await load();
+    setShown((v) => !v);
+  }
+
+  const row = (label: string, value: string | null | undefined, field: "key" | "webhook_secret") => (
+    <div key={field} className="flex flex-wrap items-center gap-2">
+      <span className="w-28 shrink-0 text-xs text-muted-foreground">{label}</span>
+      <code className="min-w-0 flex-1 break-all rounded-lg border border-border bg-muted px-3 py-1.5 text-xs" data-testid={`reveal-${field}`}>
+        {shown && value ? value : "•".repeat(24)}
+      </code>
+      <CopyButton
+        text={async () => (await load())?.[field] ?? ""}
+        label="Copy"
+      />
+    </div>
+  );
+
+  return (
+    <section className="grid gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="text-sm font-semibold">Key for this website</h4>
+        <Button size="sm" variant="outline" onClick={() => void toggle()} aria-pressed={shown}>
+          {shown ? <EyeOff className="mr-1 h-4 w-4" aria-hidden /> : <Eye className="mr-1 h-4 w-4" aria-hidden />}
+          {shown ? "Hide" : "Show"}
+        </Button>
+      </div>
+      {vals && vals.key === null ? (
+        <p className="text-xs text-status-warn">
+          This key was made before keys could be shown again, so it cannot be displayed. Make a new key for this website (Add a website), give its developer the new one, then revoke this one.
+        </p>
+      ) : (
+        <>
+          {row("API key", vals?.key, "key")}
+          {hasSecret ? row("Signing secret", vals?.webhook_secret, "webhook_secret") : null}
+        </>
+      )}
+      {problem ? <p className="text-xs text-destructive">{problem}</p> : null}
+      <p className="text-xs text-muted-foreground">Anyone with the key can create deposits as this website. Share it only with its developer.</p>
+    </section>
+  );
+}
 
 /** One website that uses PayTrace: its key, where its payment results go, how its result page looks, and what to send its developer. */
 export function SiteCard({ site, onChanged, onRevoke }: { site: SiteKey; onChanged: () => void; onRevoke: () => void }) {
@@ -89,6 +151,8 @@ export function SiteCard({ site, onChanged, onRevoke }: { site: SiteKey; onChang
         </div>
         <Badge tone="ok">Active</Badge>
       </div>
+
+      <KeyReveal siteId={site.id} hasSecret={!!site.webhook_url} />
 
       <section className="grid gap-2">
         <h4 className="text-sm font-semibold">1. Where should PayTrace tell this site that a deposit was paid?</h4>

@@ -32,14 +32,15 @@ export function CopyButton({
   variant = "outline",
   size = "sm",
 }: {
-  text: string | (() => string);
+  text: string | (() => string | Promise<string>);
   label: string;
   variant?: "default" | "outline" | "ghost";
   size?: "sm" | "default";
 }) {
   const [state, setState] = useState<"idle" | "done" | "failed">("idle");
   async function onClick() {
-    const ok = await copyText(typeof text === "function" ? text() : text);
+    const value = typeof text === "function" ? await text() : text;
+    const ok = value !== "" && (await copyText(value));
     setState(ok ? "done" : "failed");
     setTimeout(() => setState("idle"), 2000);
   }
