@@ -50,6 +50,9 @@ check("notifications off is flagged", infoProblems({ notifications: false }).som
 check("...neither is a red-banner problem", blockingProblems({ battery_exempt: false, notifications: false }).length === 0);
 check("stopped by the phone is flagged with the count", infoProblems({ stopped_count: 2, last_gap_min: 14 }).some((p) => /stopped PayTrace 2 times/.test(p) && /14 min/.test(p)));
 check("stopped once is singular", infoProblems({ stopped_count: 1, last_gap_min: 6 }).some((p) => /1 time \(/.test(p)));
+check("a failed screen-off test is flagged with the silence length", infoProblems({ keepalive_test: "fail", keepalive_gap_s: 240 }).some((p) => /screen-off test failed/.test(p) && /240 seconds/.test(p)));
+check("a passed screen-off test is not a problem", infoProblems({ keepalive_test: "pass", keepalive_gap_s: 31 }).length === 0);
+check("a failed test is not a red-banner problem", blockingProblems({ keepalive_test: "fail" }).length === 0);
 check("never stopped is fine", infoProblems({ stopped_count: 0 }).length === 0);
 check("being stopped is not a red-banner problem", blockingProblems({ stopped_count: 4 }).length === 0);
 check("no report has no problems", infoProblems(null).length === 0 && infoProblems(undefined).length === 0);

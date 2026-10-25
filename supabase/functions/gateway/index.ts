@@ -4,6 +4,9 @@
 //   POST /functions/v1/gateway/create-deposit  {"amount":500,"order_id":"SHOP-1001","provider":"bkash","method":"cash_out"?,"return_url":"https://..."?,
 //                                                "expires_in_minutes":15?,"customer_name"?,"customer_phone"?}
 //        -> {"tracking_number","pay_url","status","expires_at"}     (the same order_id returns the same order)
+//        optional "group": a wallet group such as "P-AB12" (max 24 characters); unknown, switched-off or offline groups fall back to "main".
+//   GET  /functions/v1/gateway/groups           -> [{group,enabled,phone_name,provider,method,number,online}]   (no balances, no SMS text)
+//   POST /functions/v1/gateway/groups/enabled   {"group":"P-AB12","enabled":false}   switches a group off or on ("main" cannot be off)
 //   POST /functions/v1/gateway/order-status    {"tracking_number":"..."} or {"order_id":"SHOP-1001"}
 // The customer's pay page (public; the tracking number is an unguessable secret; browser calls come only from the dashboard's address):
 //   POST /gateway/pay-order   {"tracking_number"}                      what the page shows
@@ -13,7 +16,7 @@
 //   POST /gateway/deliver     sends the waiting result messages to the websites and closes unpaid orders.
 // Crediting is never done here: it goes through the database's claim_order / reconcile_payment, same as every other payment.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
-import { extractKey, isUuid, normalizeTrx, parseDeposit, signWebhook, submitState } from "./logic.ts";
+import { extractKey, isUuid, normalizeGroup, normalizeTrx, parseDeposit, signWebhook, submitState } from "./logic.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
@@ -52,7 +55,7 @@ async function createDeposit(req: Request, body: Record<string, unknown>): Promi
   const { data, error } = await db.rpc("gw_create_deposit", {
     p_key_hash: await sha256hex(key), p_amount: d.amount, p_merchant_order_id: d.orderId, p_provider: d.provider, p_method: d.method,
     p_expires_minutes: d.expiresMinutes, p_customer_name: d.customerName, p_customer_phone: d.customerPhone,
-    p_return_url: d.returnUrl, p_limit: MERCHANT_LIMIT_PER_MINUTE,
+    p_return_url: d.returnUrl, p_limit: MERCHANT_LIMIT_PER_MINUTE, p_group: d.group,
   });
   if (error) { console.error("gw_create_deposit failed", error.code); return json({ error: "could not create the order, try again" }, 500); }
   if (data?.unauthorized) return json({ error: "unauthorized" }, 401);
@@ -62,8 +65,34 @@ async function createDeposit(req: Request, body: Record<string, unknown>): Promi
   return json({
     tracking_number: data.tracking_number,
     pay_url: `${DASHBOARD_URL}/pay/?trackingNumber=${data.tracking_number}`,
-    status: data.status, expires_at: data.expires_at,
+    status: data.status, expires_at: data.expires_at, group: data.group,
   });
+}
+
+async function groupsList(req: Request): Promise<Response> {
+  const key = extractKey(req.headers.get("authorization"));
+  if (!key) return json({ error: "unauthorized" }, 401);
+  const { data, error } = await db.rpc("gw_groups_list", { p_key_hash: await sha256hex(key), p_limit: MERCHANT_LIMIT_PER_MINUTE });
+  if (error) { console.error("gw_groups_list failed", error.code); return json({ error: "lookup failed, try again" }, 500); }
+  if (data?.unauthorized) return json({ error: "unauthorized" }, 401);
+  if (data?.limited) return json({ error: "too many requests, try again in a minute" }, 429, { "retry-after": "60" });
+  return json(data?.rows ?? []);
+}
+
+async function groupEnabled(req: Request, body: Record<string, unknown>): Promise<Response> {
+  const key = extractKey(req.headers.get("authorization"));
+  if (!key) return json({ error: "unauthorized" }, 401);
+  if (typeof body.group !== "string" || !body.group.trim() || body.group.trim().length > 24) return json({ error: "group is required (max 24 characters)" }, 400);
+  if (typeof body.enabled !== "boolean") return json({ error: "enabled must be true or false" }, 400);
+  const { data, error } = await db.rpc("gw_group_set_enabled", {
+    p_key_hash: await sha256hex(key), p_group: normalizeGroup(body.group), p_enabled: body.enabled, p_limit: MERCHANT_LIMIT_PER_MINUTE,
+  });
+  if (error) { console.error("gw_group_set_enabled failed", error.code); return json({ error: "could not change the group, try again" }, 500); }
+  if (data?.unauthorized) return json({ error: "unauthorized" }, 401);
+  if (data?.limited) return json({ error: "too many requests, try again in a minute" }, 429, { "retry-after": "60" });
+  if (data?.error === "not_found") return json({ error: "group not found" }, 404);
+  if (data?.error) return json({ error: data.error }, 400);
+  return json(data);
 }
 
 async function orderStatus(req: Request, body: Record<string, unknown>): Promise<Response> {
@@ -157,12 +186,15 @@ async function deliver(): Promise<void> {
 // ---------- routing ----------
 
 async function handle(req: Request): Promise<Response> {
-  if (req.method !== "POST") return json({ error: "use POST" }, 405, { allow: "POST" });
-  const route = new URL(req.url).pathname.replace(/\/+$/, "").split("/").pop() ?? "";
+  const parts = new URL(req.url).pathname.replace(/\/+$/, "").split("/");
+  const route = parts.pop() ?? "";
+  if (req.method === "GET" && route === "groups") return await groupsList(req);
+  if (req.method !== "POST") return json({ error: "use POST (GET only for /groups)" }, 405, { allow: "POST, GET" });
   const body = await readBody(req);
   if (body === null) return json({ error: "send a JSON body" }, 400);
   switch (route) {
     case "create-deposit": return await createDeposit(req, body);
+    case "enabled": return parts.pop() === "groups" ? await groupEnabled(req, body) : json({ error: "unknown route" }, 404);
     case "order-status": return await orderStatus(req, body);
     case "pay-order": return await payOrder(body);
     case "pay-pick": return await payPick(body);

@@ -104,6 +104,12 @@ object Sender {
         o.put("stopped_count", s.stoppedCount)
         o.put("default_sms", DefaultSms.isDefault(ctx))
         o.put("last_gap_min", s.lastGapMin)
+        // The result of the owner's screen-off test, so the dashboard can show which phones were proven to stay awake.
+        if (s.testResult.isNotEmpty()) {
+            o.put("keepalive_test", s.testResult)
+            o.put("keepalive_test_at", s.testResultAt)
+            o.put("keepalive_gap_s", s.testResultGapS)
+        }
         o.put("notifications", Setup.notificationsOn(ctx))
         o.put("battery_exempt", Setup.batteryExempt(ctx))
         o.put("setup_complete", Setup.missing(ctx, s).isEmpty())

@@ -226,6 +226,51 @@ class AppSettings(ctx: Context) {
         get() = p.getInt("last_gap_min", 0)
         set(v) { p.edit().putInt("last_gap_min", v).apply() }
 
+    /** Language of the phone-settings guide: "bn" (the default) or "en". */
+    var guideLang: String
+        get() = p.getString("guide_lang", "bn") ?: "bn"
+        set(v) { p.edit().putString("guide_lang", v).apply() }
+
+    // ---- the stay-awake test (StayAwake.kt) ----
+    /** Uptime-clock reading when the test was started; 0 = no test running. */
+    var testStartElapsed: Long
+        get() = p.getLong("test_start_elapsed", 0L)
+        set(v) { p.edit().putLong("test_start_elapsed", v).apply() }
+
+    /** Wall-clock time the test was started (shown to the owner). */
+    var testStartedAt: Long
+        get() = p.getLong("test_started_at", 0L)
+        set(v) { p.edit().putLong("test_started_at", v).apply() }
+
+    /** The longest silence between two heartbeats while the test ran. */
+    var testMaxGapMs: Long
+        get() = p.getLong("test_max_gap_ms", 0L)
+        set(v) { p.edit().putLong("test_max_gap_ms", v).apply() }
+
+    /** Heartbeats (30 s apart) that were sent with the screen off during the test. */
+    var testScreenOffBeats: Int
+        get() = p.getInt("test_screen_off_beats", 0)
+        set(v) { p.edit().putInt("test_screen_off_beats", v).apply() }
+
+    /** The last finished test: "pass", "fail" or "short" (not enough time with the screen off). Empty = never tested. */
+    var testResult: String
+        get() = p.getString("test_result", "") ?: ""
+        set(v) { p.edit().putString("test_result", v).apply() }
+
+    var testResultAt: Long
+        get() = p.getLong("test_result_at", 0L)
+        set(v) { p.edit().putLong("test_result_at", v).apply() }
+
+    /** Longest silence of the last finished test, in seconds. */
+    var testResultGapS: Int
+        get() = p.getInt("test_result_gap_s", 0)
+        set(v) { p.edit().putInt("test_result_gap_s", v).apply() }
+
+    /** Minutes with the screen off during the last finished test. */
+    var testScreenOffMin: Int
+        get() = p.getInt("test_screen_off_min", 0)
+        set(v) { p.edit().putInt("test_screen_off_min", v).apply() }
+
     fun providerEnabled(provider: String): Boolean = p.getBoolean("prov_$provider", true)
     fun setProviderEnabled(provider: String, on: Boolean) {
         p.edit().putBoolean("prov_$provider", on).apply()

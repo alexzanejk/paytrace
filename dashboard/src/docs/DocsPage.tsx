@@ -191,6 +191,7 @@ export function DocsPage() {
                 ["order_id", "yes", "YOUR own order number (up to 100 characters). Sending the same order_id again returns the same deposit, so retrying is safe."],
                 ["provider", "yes", <><M>bkash</M>, <M>nagad</M>, <M>rocket</M> or <M>upay</M>: the method the customer chose on your page.</>],
                 ["method", "no", <><M>send_money</M> or <M>cash_out</M>. Use it when you offer both for one provider (for example Nagad Send Money and Nagad Cash Out). Leave it out to accept either.</>],
+                ["group", "no", <>A wallet group the owner gave you, such as <M>P-AB12</M> (up to 24 characters). Only numbers in that group are offered. If the group does not exist, is switched off, or has no online number for that provider and method, the customer gets a <M>main</M> number instead, so the call still works. The answer says which group was used.</>],
                 ["return_url", "no", "https address. After a confirmed payment the customer is sent back here. Do not credit based on this visit; use the webhook."],
                 ["expires_in_minutes", "no", "3 to 60. Default 15. How long the customer has to pay."],
                 ["customer_name, customer_phone", "no", "For your own records."],
@@ -199,6 +200,9 @@ export function DocsPage() {
             <Tabs samples={CREATE} langs={["curl", "node", "php", "python"]} />
             <p className="text-sm font-semibold">Successful answer (HTTP 200)</p>
             <Code text={CREATE_RESPONSE} />
+            <Note title="Wallet groups (optional)">
+              <M>group</M> in the answer is the group the number really came from: it is <M>main</M> when you sent no group or when the group you asked for could not be used. Your server can list the groups with <M>GET …/gateway/groups</M> and switch one off or on with <M>POST …/gateway/groups/enabled</M> and <M>{'{ "group": "P-AB12", "enabled": false }'}</M>, using the same Authorization header. The list shows the group, phone name, provider, method, number and whether the phone is online, never balances or message text. A switched-off group sends its customers to <M>main</M>; <M>main</M> itself cannot be switched off.
+            </Note>
             <Note title="Save the order">
               Store <M>order_id</M> (yours) and <M>tracking_number</M> (the gateway&apos;s) with your pending deposit so you can match the webhook later.
             </Note>

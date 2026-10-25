@@ -18,6 +18,9 @@ export interface DeviceInfo {
   wake_count?: number; // wake-up pushes this phone has received
   last_wake_at?: string; // when the latest one arrived
   push_ready?: boolean; // the phone has a Firebase push address, so the server can wake it
+  keepalive_test?: "pass" | "fail" | "short"; // the owner's screen-off test: did the phone stop the app while the screen was off?
+  keepalive_test_at?: string; // when that test finished
+  keepalive_gap_s?: number; // the longest silence during it, in seconds
   app_version?: string;
   reported_at?: string;
 }
@@ -66,6 +69,16 @@ export function cleanInfo(body: Record<string, unknown>, now: Date = new Date())
   const wakeAt = typeof body.last_wake_at === "number" ? body.last_wake_at : Number(body.last_wake_at);
   if (Number.isFinite(wakeAt) && wakeAt > Date.parse("2020-01-01") && wakeAt < now.getTime() + 864e5) {
     info.last_wake_at = new Date(wakeAt).toISOString();
+  }
+  const test = body.keepalive_test;
+  if (test === "pass" || test === "fail" || test === "short") {
+    info.keepalive_test = test;
+    const testAt = typeof body.keepalive_test_at === "number" ? body.keepalive_test_at : Number(body.keepalive_test_at);
+    if (Number.isFinite(testAt) && testAt > Date.parse("2020-01-01") && testAt < now.getTime() + 864e5) {
+      info.keepalive_test_at = new Date(testAt).toISOString();
+    }
+    const testGap = asCount(body.keepalive_gap_s, 1_000_000);
+    if (testGap !== undefined) info.keepalive_gap_s = testGap;
   }
   const pushReady = asBool(body.push_ready);
   if (pushReady !== undefined) info.push_ready = pushReady;

@@ -24,6 +24,9 @@ export interface DeviceInfo {
   battery_exempt?: boolean;
   setup_complete?: boolean;
   push_ready?: boolean;
+  keepalive_test?: "pass" | "fail" | "short";
+  keepalive_test_at?: string;
+  keepalive_gap_s?: number;
   wake_count?: number;
   last_wake_at?: string;
   app_version?: string;
@@ -82,6 +85,11 @@ export function infoProblems(info: DeviceInfo | null | undefined): string[] {
     const n = info.stopped_count as number;
     out.push(
       `The phone stopped PayTrace ${n} time${n === 1 ? "" : "s"} (last time for ${info.last_gap_min ?? "?"} min). Its battery manager is closing the app: check the phone's battery settings`,
+    );
+  }
+  if (info.keepalive_test === "fail") {
+    out.push(
+      `The screen-off test failed: PayTrace went silent for ${info.keepalive_gap_s ?? "?"} seconds with the screen off. Go through the phone-settings steps in the app again, then run the test again`,
     );
   }
   if (info.notifications === false) {

@@ -155,11 +155,22 @@ block the app (autostart off, app force-stopped), the message is blocked too, so
 
 ## The phone-settings guide in the app
 
-On first opening, and under **Settings → Keep this phone running**, the app lists the exact phone settings for your brand,
-one card each: **Where** to find it, what to **Choose**, what **Not** to choose, and an **Open this page** button. Tick
-**I have done this** only when it is really set. The app cannot check these settings itself. Example (Vivo): Settings → Battery →
-Background power consumption management → PayTrace → choose **Allow high background power consumption**, not
-"Optimized". The app stays on the setup page until every card is ticked.
+On first opening, and under **Settings → Keep this phone running**, the app walks through the phone settings for your brand,
+**in Bangla first** (a **বাংলা | English** switch at the top changes it and the phone remembers the choice; every Bangla line is listed in
+`docs/guide-bangla.md` for proofreading), one card each: **Where** to find it, what to **Choose**, what **Not** to choose. Menu and option names stay in English inside quotes (the phone's own screens are usually in English); Bangla explains around them.
+
+- **Open this page** opens the right screen. If it opens the wrong screen, or nothing, tap **Not the right page? Try another**: the app
+  moves to the next place (the phone brand's own page, then Android's page, then PayTrace's own app page, then the phone's Settings,
+  which every phone has). It always tells you which page it opened.
+- **Phone check** (top of the guide) shows what Android itself reports: battery optimisation, background limit and app standby. Cards
+  about battery optimisation tick themselves ("The phone confirms this one") once it is really off. Other cards you tick yourself with
+  **I did this**, because phone brands hide those settings from apps.
+- **Screen-off test** (bottom) proves it works: press **Start the 10-minute test**, lock the phone and leave it. When you open PayTrace
+  again it says **Passed** (PayTrace never went quiet with the screen off) or **Failed** (the phone stopped it: do the cards again).
+  The result also appears on the dashboard's Phones page ("Screen-off test passed" or a warning), so you can see which phones are proven.
+
+Example (Vivo): Settings → Battery → Background power consumption management → PayTrace → choose **Allow high background power
+consumption**, not "Optimized". The app stays on the setup page until every card is done.
 
 
 ## Step 7: Accept deposits on your websites

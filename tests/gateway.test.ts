@@ -1,4 +1,4 @@
-import { extractKey, isUuid, normalizeTrx, parseDeposit, signWebhook, submitState } from "../supabase/functions/gateway/logic.ts";
+import { extractKey, isUuid, normalizeGroup, normalizeTrx, parseDeposit, signWebhook, submitState } from "../supabase/functions/gateway/logic.ts";
 import { createHmac } from "node:crypto";
 
 let pass = 0, fail = 0;
@@ -30,6 +30,17 @@ check("an unknown method is refused", "error" in parseDeposit({ amount: 100, ord
 check("an unknown provider is refused", "error" in parseDeposit({ amount: 100, order_id: "x", provider: "paypal" }));
 check("a return address must be https", "error" in parseDeposit({ amount: 100, order_id: "x", provider: "bkash", return_url: "http://shop.example" }) && "error" in parseDeposit({ amount: 100, order_id: "x", provider: "bkash", return_url: "javascript:alert(1)" }));
 check("expiry must be 3 to 60 whole minutes", "error" in parseDeposit({ amount: 100, order_id: "x", provider: "bkash", expires_in_minutes: 2 }) && "error" in parseDeposit({ amount: 100, order_id: "x", provider: "bkash", expires_in_minutes: 61 }) && "error" in parseDeposit({ amount: 100, order_id: "x", provider: "bkash", expires_in_minutes: 5.5 }));
+
+// wallet groups
+const base = { amount: 500, order_id: "x", provider: "bkash" };
+const gDefault = parseDeposit(base);
+check("no group means main", !("error" in gDefault) && gDefault.group === "main");
+const gP = parseDeposit({ ...base, group: " p-ab12 " });
+check("a group is tidied to upper case", !("error" in gP) && gP.group === "P-AB12");
+const gM = parseDeposit({ ...base, group: "MAIN" });
+check("main is always lower case", !("error" in gM) && gM.group === "main" && normalizeGroup("Main") === "main");
+check("a group longer than 24 characters or not text is refused", "error" in parseDeposit({ ...base, group: "P-" + "A".repeat(23) }) && "error" in parseDeposit({ ...base, group: 5 }));
+check("a group of exactly 24 characters is read (the database then falls back to main if it does not exist)", !("error" in parseDeposit({ ...base, group: "P-" + "A".repeat(22) })));
 
 // what the page does with each answer
 check("matched means paid", submitState("matched") === "paid" && submitState("already_paid") === "paid");

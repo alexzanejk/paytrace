@@ -27,6 +27,15 @@ export function DeviceDetails({ info }: { info: DeviceInfo | null | undefined })
           <span>none received yet</span>
         ) : null}
         {info.default_sms ? <span title="PayTrace is this phone's messaging app, which phone brands rarely stop">SMS app mode</span> : null}
+        {info.keepalive_test === "pass" ? (
+          <span className="text-status-ok" title="The owner locked the phone for 10 minutes and PayTrace never went quiet">
+            Screen-off test passed{info.keepalive_test_at ? `, ${agoText(minutesSince(info.keepalive_test_at))}` : ""}
+          </span>
+        ) : info.keepalive_test === "short" ? (
+          <span title="The test could not tell: the screen was not off for long enough">Screen-off test: not conclusive</span>
+        ) : info.keepalive_test === "fail" ? null : (
+          <span title="Ask the partner to run the screen-off test in the app (Settings, then Keep this phone running)">Screen-off test: not done</span>
+        )}
       </div>
       {info.recovered ? (
         <span className="inline-flex items-start gap-1 text-status-ok">
