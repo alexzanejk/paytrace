@@ -16,6 +16,7 @@ import { ProviderChip } from "@/components/ProviderChip";
 import { DeviceHealthBadge } from "@/components/DeviceHealthBadge";
 import { DeviceDetails } from "@/components/DeviceDetails";
 import { WalletsCard } from "@/components/WalletsCard";
+import { GROUP_CODE, GroupChoice } from "@/components/GroupChoice";
 import { CommissionCard } from "@/components/CommissionCard";
 import type { CommissionBalance, RateRow } from "@/lib/commission";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,8 @@ import { deviceHealth } from "@/lib/deviceHealth";
 
 export function Devices() {
   const [failed, setFailed] = useState<Record<string, string>>({});
+  // The group chosen for each waiting phone before it is approved ("main" unless the owner picks a partner code).
+  const [pickGroup, setPickGroup] = useState<Record<string, string>>({});
   const [day, setDay] = useState(dhakaDay());
   const today = dhakaDay();
   const now = useNow(5000);
@@ -43,7 +46,8 @@ export function Devices() {
       // Partner commission (added later; reading these never changes anything above).
       const rates = must(await sb.from("commission_rates").select("device_id,provider,kind,rate_pct,effective_from")) as RateRow[];
       const commission = must(await sb.from("device_commission_balance").select("*")) as CommissionBalance[];
-      return { devices, totals, balances, wallets, rates, commission };
+      const groups = (must(await sb.from("wallet_groups").select("name").order("name")) as { name: string }[]).map((g) => g.name);
+      return { devices, totals, balances, wallets, rates, commission, groups };
     },
     [day],
     { refreshMs: 10000 },
@@ -51,11 +55,15 @@ export function Devices() {
 
   async function setStatus(device: Device, status: "approved" | "revoked") {
     const { error } = await sb.rpc("set_device_status", { p_device_id: device.id, p_status: status });
-    if (error) setFailed((f) => ({ ...f, [device.id]: error.message }));
-    else {
-      setFailed((f) => ({ ...f, [device.id]: "" }));
-      refresh();
+    if (error) return setFailed((f) => ({ ...f, [device.id]: error.message }));
+    const group = pickGroup[device.id] ?? "main";
+    if (status === "approved" && group !== "main" && GROUP_CODE.test(group)) {
+      // The phone is approved already; if the group step fails the owner can still set it on the phone's card.
+      const { error: groupError } = await sb.rpc("set_device_group", { p_device_id: device.id, p_group: group, p_move_numbers: true });
+      if (groupError) return setFailed((f) => ({ ...f, [device.id]: `Approved, but the group was not set: ${groupError.message}` }));
     }
+    setFailed((f) => ({ ...f, [device.id]: "" }));
+    refresh();
   }
 
   const devices = data?.devices ?? [];
@@ -117,6 +125,7 @@ export function Devices() {
                 <TableHead>Code</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead>Asked (BD)</TableHead>
+                <TableHead>Group</TableHead>
                 <TableHead>Action</TableHead>
               </TableRow>
             </TableHeader>
@@ -126,6 +135,14 @@ export function Devices() {
                   <TableCell className="font-mono text-base font-semibold">{d.pair_code}</TableCell>
                   <TableCell>{d.name || "–"}</TableCell>
                   <TableCell>{when(d.created_at)}</TableCell>
+                  <TableCell>
+                    <GroupChoice
+                      groups={data?.groups ?? []}
+                      value={pickGroup[d.id] ?? "main"}
+                      onChange={(g) => setPickGroup((m) => ({ ...m, [d.id]: g }))}
+                      label={`Group for the phone showing ${d.pair_code}`}
+                    />
+                  </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap items-center gap-2">
                       {sharedCode(d.pair_code) ? (
@@ -343,7 +360,7 @@ function DeviceCard({
         </TableBody>
       </Table>
 
-      <WalletsCard deviceId={d.id} wallets={wallets} onChanged={onChanged} />
+      <WalletsCard deviceId={d.id} wallets={wallets} defaultGroup={d.default_group ?? "main"} onChanged={onChanged} />
 
       <CommissionCard device={d} rates={rates} balance={commission} onChanged={onChanged} />
 

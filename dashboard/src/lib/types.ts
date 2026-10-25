@@ -83,6 +83,8 @@ export interface Device {
   info: DeviceInfo | null;
   /** The Earnings card in this phone's own app (partner commission). */
   show_earnings?: boolean;
+  /** The wallet group new numbers on this phone start in (a partner's code, or main). */
+  default_group?: string;
 }
 
 export interface EventRow {
