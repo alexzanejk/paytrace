@@ -29,6 +29,12 @@ generated from `dashboard/src/lib/apiDocs.ts` (`depositInstructions`), which is 
 
 ## Wallet groups
 
+A partner's group is created automatically the first time `create-deposit` sees a valid code, or by `POST /functions/v1/gateway/groups` with
+`{"group":"dvw9166"}` (any case, lower-cased, must be 3 letters + 4 digits; does nothing if it already exists; answers `{"group","created"}`),
+so the master console can call it when a partner is added or gets a new code. A group can hold numbers on many phones: the next number goes to the
+online phone in the group that was handed out least recently. When the owner approves a new phone on the Phones page they choose its group
+(Main, an existing code, or a new code) and every number later added to that phone starts in it; a phone's card can also move all its numbers.
+
 The owner puts each deposit number in a group on the dashboard (Phones, Deposit numbers: a Group dropdown per number and an Add group box;
 a group is the partner's link code: 3 lowercase letters and 4 digits, like `dvw9166`). Every number starts in `main`, which also receives any fallback. Server-only
 routes, same `Authorization: Bearer ptk_...` as `create-deposit` and counted in the same 120 per minute per key:

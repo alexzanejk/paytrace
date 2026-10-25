@@ -3,6 +3,7 @@ import { Wallet } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import { PROVIDERS, PROVIDER_LABEL, type DeviceWallet, type WalletGroup } from "@/lib/types";
 import { Disclosure } from "@/components/Disclosure";
+import { GROUP_CODE, GroupChoice } from "@/components/GroupChoice";
 import { ProviderChip } from "@/components/ProviderChip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,12 +12,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 
 /** Same rule as the database: the partner's link code, 3 lowercase letters and 4 digits (like dvw9166). */
-export const GROUP_PATTERN = /^[a-z]{3}[0-9]{4}$/;
+export const GROUP_PATTERN = GROUP_CODE;
 
 const METHOD_LABEL = { send_money: "Send Money", cash_out: "Cash Out (agent)" } as const;
 
 /** The wallet numbers this phone receives deposits on. The pay page shows one of these to a customer. */
-export function WalletsCard({ deviceId, wallets, onChanged }: { deviceId: string; wallets: DeviceWallet[]; onChanged: () => void }) {
+export function WalletsCard({ deviceId, wallets, defaultGroup, onChanged }: { deviceId: string; wallets: DeviceWallet[]; defaultGroup: string; onChanged: () => void }) {
   const [adding, setAdding] = useState(false);
   const [provider, setProvider] = useState<string>("bkash");
   const [number, setNumber] = useState("");
@@ -25,6 +26,7 @@ export function WalletsCard({ deviceId, wallets, onChanged }: { deviceId: string
   const [busy, setBusy] = useState(false);
   const [groups, setGroups] = useState<WalletGroup[]>([{ name: "main", enabled: true }]);
   const [newGroup, setNewGroup] = useState("");
+  const [phoneGroup, setPhoneGroup] = useState(defaultGroup);
 
   const loadGroups = useCallback(async () => {
     const { data } = await sb.from("wallet_groups").select("name,enabled").order("name");
@@ -39,6 +41,14 @@ export function WalletsCard({ deviceId, wallets, onChanged }: { deviceId: string
     setProblem("");
     setNewGroup("");
     await loadGroups();
+  }
+
+  async function applyPhoneGroup() {
+    const { error } = await sb.rpc("set_device_group", { p_device_id: deviceId, p_group: phoneGroup, p_move_numbers: true });
+    if (error) return setProblem(error.message);
+    setProblem("");
+    await loadGroups();
+    onChanged();
   }
 
   async function setGroup(walletId: string, group: string) {
@@ -75,6 +85,13 @@ export function WalletsCard({ deviceId, wallets, onChanged }: { deviceId: string
       title="Deposit numbers"
       summary={wallets.length === 0 ? "None yet" : `${wallets.length} number${wallets.length === 1 ? "" : "s"}`}
     >
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <span>This phone's group</span>
+        <GroupChoice groups={groups.map((g) => g.name)} value={phoneGroup} onChange={setPhoneGroup} label="This phone's group" />
+        <Button size="sm" variant="outline" onClick={() => void applyPhoneGroup()} disabled={phoneGroup === defaultGroup || (phoneGroup !== "main" && !GROUP_CODE.test(phoneGroup))}>
+          Apply to all its numbers
+        </Button>
+      </div>
       <div className="mb-2 flex justify-end">
         <Button size="sm" variant="outline" onClick={() => setAdding((v) => !v)} aria-expanded={adding}>
           {adding ? "Close" : "Add a number"}

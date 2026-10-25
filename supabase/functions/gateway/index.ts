@@ -5,6 +5,8 @@
 //                                                "expires_in_minutes":15?,"customer_name"?,"customer_phone"?}
 //        -> {"tracking_number","pay_url","status","expires_at"}     (the same order_id returns the same order)
 //        optional "group": a wallet group such as "dvw9166" (max 24 characters); unknown, switched-off or offline groups fall back to "main".
+//   POST /functions/v1/gateway/groups           {"group":"dvw9166"}   creates a partner group (any case; 3 letters + 4 digits; nothing happens if it already exists)
+//        (create-deposit also creates the group the first time it sees a valid code)
 //   GET  /functions/v1/gateway/groups           -> [{group,enabled,phone_name,provider,method,number,online}]   (no balances, no SMS text)
 //   POST /functions/v1/gateway/groups/enabled   {"group":"dvw9166","enabled":false}   switches a group off or on ("main" cannot be off)
 //   POST /functions/v1/gateway/order-status    {"tracking_number":"..."} or {"order_id":"SHOP-1001"}
@@ -16,7 +18,7 @@
 //   POST /gateway/deliver     sends the waiting result messages to the websites and closes unpaid orders.
 // Crediting is never done here: it goes through the database's claim_order / reconcile_payment, same as every other payment.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
-import { extractKey, isUuid, normalizeGroup, normalizeTrx, parseDeposit, signWebhook, submitState } from "./logic.ts";
+import { extractKey, isUuid, normalizeGroup, normalizeTrx, parseDeposit, parseGroupCode, signWebhook, submitState } from "./logic.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
@@ -77,6 +79,19 @@ async function groupsList(req: Request): Promise<Response> {
   if (data?.unauthorized) return json({ error: "unauthorized" }, 401);
   if (data?.limited) return json({ error: "too many requests, try again in a minute" }, 429, { "retry-after": "60" });
   return json(data?.rows ?? []);
+}
+
+async function groupCreate(req: Request, body: Record<string, unknown>): Promise<Response> {
+  const key = extractKey(req.headers.get("authorization"));
+  if (!key) return json({ error: "unauthorized" }, 401);
+  const group = parseGroupCode(body.group);
+  if (!group) return json({ error: "group must be 3 letters and 4 digits, for example dvw9166" }, 400);
+  const { data, error } = await db.rpc("gw_group_create", { p_key_hash: await sha256hex(key), p_group: group, p_limit: MERCHANT_LIMIT_PER_MINUTE });
+  if (error) { console.error("gw_group_create failed", error.code); return json({ error: "could not create the group, try again" }, 500); }
+  if (data?.unauthorized) return json({ error: "unauthorized" }, 401);
+  if (data?.limited) return json({ error: "too many requests, try again in a minute" }, 429, { "retry-after": "60" });
+  if (data?.error) return json({ error: data.error }, 400);
+  return json(data);
 }
 
 async function groupEnabled(req: Request, body: Record<string, unknown>): Promise<Response> {
@@ -194,6 +209,7 @@ async function handle(req: Request): Promise<Response> {
   if (body === null) return json({ error: "send a JSON body" }, 400);
   switch (route) {
     case "create-deposit": return await createDeposit(req, body);
+    case "groups": return await groupCreate(req, body);
     case "enabled": return parts.pop() === "groups" ? await groupEnabled(req, body) : json({ error: "unknown route" }, 404);
     case "order-status": return await orderStatus(req, body);
     case "pay-order": return await payOrder(body);

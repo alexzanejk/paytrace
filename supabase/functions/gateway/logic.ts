@@ -46,6 +46,13 @@ export function normalizeGroup(v: string): string {
   return t === "" ? "main" : t.toLowerCase();
 }
 
+/** The partner's link code: exactly 3 letters and 4 digits (any case in, lower case out). null = not a valid code. */
+export function parseGroupCode(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim().toLowerCase();
+  return /^[a-z]{3}[0-9]{4}$/.test(t) ? t : null;
+}
+
 /** Reads the body of "create a deposit". Returns a message the developer can act on when something is wrong. */
 export function parseDeposit(body: Record<string, unknown>): DepositRequest | { error: string } {
   const a = body.amount;

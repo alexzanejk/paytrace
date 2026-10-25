@@ -1,4 +1,4 @@
-import { extractKey, isUuid, normalizeGroup, normalizeTrx, parseDeposit, signWebhook, submitState } from "../supabase/functions/gateway/logic.ts";
+import { extractKey, isUuid, normalizeGroup, normalizeTrx, parseGroupCode, parseDeposit, signWebhook, submitState } from "../supabase/functions/gateway/logic.ts";
 import { createHmac } from "node:crypto";
 
 let pass = 0, fail = 0;
@@ -41,6 +41,11 @@ const gM = parseDeposit({ ...base, group: "MAIN" });
 check("main is always lower case", !("error" in gM) && gM.group === "main" && normalizeGroup("Main") === "main");
 check("a group longer than 24 characters or not text is refused", "error" in parseDeposit({ ...base, group: "a".repeat(25) }) && "error" in parseDeposit({ ...base, group: 5 }));
 check("a group of exactly 24 characters is read (the database then falls back to main if it does not exist)", !("error" in parseDeposit({ ...base, group: "a".repeat(24) })));
+
+// creating a partner group by its link code
+check("a link code is 3 letters and 4 digits, any case", parseGroupCode("dvw9166") === "dvw9166" && parseGroupCode(" DVW9166 ") === "dvw9166" && parseGroupCode("DvW0000") === "dvw0000");
+check("anything else is not a link code", parseGroupCode("main") === null && parseGroupCode("dv9166") === null && parseGroupCode("dvw91666") === null && parseGroupCode("dvw916") === null
+  && parseGroupCode("1vw9166") === null && parseGroupCode("dvw-166") === null && parseGroupCode("dvw 166") === null && parseGroupCode(1234567) === null && parseGroupCode(undefined) === null);
 
 // what the page does with each answer
 check("matched means paid", submitState("matched") === "paid" && submitState("already_paid") === "paid");

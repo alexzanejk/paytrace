@@ -93,7 +93,7 @@ export function depositInstructions(key?: string): string {
     "- expires_in_minutes: optional, 3 to 60, default 15.",
     '- customer_name, customer_phone: optional, for your own records.',
     'Answer 200: { "tracking_number": "...", "pay_url": "https://.../pay/?trackingNumber=...", "status": "pending", "expires_at": "...", "group": "main" }',
-    "Groups: GET " + `${GATEWAY_URL}/groups` + " lists [{group, enabled, phone_name, provider, method, number, online}]; POST " + `${GATEWAY_URL}/groups/enabled` + ' with { "group": "dvw9166", "enabled": false } switches one off or on (same Authorization header, server side only).',
+    "Groups: a group is created the first time a valid code arrives; or POST " + `${GATEWAY_URL}/groups` + ' with { "group": "dvw9166" } (3 letters + 4 digits, any case, nothing happens if it exists). GET ' + `${GATEWAY_URL}/groups` + " lists [{group, enabled, phone_name, provider, method, number, online}]; POST " + `${GATEWAY_URL}/groups/enabled` + ' with { "group": "dvw9166", "enabled": false } switches one off or on (same Authorization header, server side only).',
     "Redirect the customer to pay_url, OR show it inside your own page in an iframe so they never leave your site (allow=\"clipboard-write\").",
     "For phones, make ONE page on your site that contains nothing but the frame, filling the screen (no site header or menu around it): the guide has the full page.",
     "When the customer presses Next, show a spinner and a message (\"Submitting your deposit request...\") AT ONCE, before any request is sent, and keep it until the next page",
