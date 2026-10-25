@@ -35,12 +35,12 @@ check("expiry must be 3 to 60 whole minutes", "error" in parseDeposit({ amount: 
 const base = { amount: 500, order_id: "x", provider: "bkash" };
 const gDefault = parseDeposit(base);
 check("no group means main", !("error" in gDefault) && gDefault.group === "main");
-const gP = parseDeposit({ ...base, group: " p-ab12 " });
-check("a group is tidied to upper case", !("error" in gP) && gP.group === "P-AB12");
+const gP = parseDeposit({ ...base, group: " DVW9166 " });
+check("a group is tidied to lower case", !("error" in gP) && gP.group === "dvw9166");
 const gM = parseDeposit({ ...base, group: "MAIN" });
 check("main is always lower case", !("error" in gM) && gM.group === "main" && normalizeGroup("Main") === "main");
-check("a group longer than 24 characters or not text is refused", "error" in parseDeposit({ ...base, group: "P-" + "A".repeat(23) }) && "error" in parseDeposit({ ...base, group: 5 }));
-check("a group of exactly 24 characters is read (the database then falls back to main if it does not exist)", !("error" in parseDeposit({ ...base, group: "P-" + "A".repeat(22) })));
+check("a group longer than 24 characters or not text is refused", "error" in parseDeposit({ ...base, group: "a".repeat(25) }) && "error" in parseDeposit({ ...base, group: 5 }));
+check("a group of exactly 24 characters is read (the database then falls back to main if it does not exist)", !("error" in parseDeposit({ ...base, group: "a".repeat(24) })));
 
 // what the page does with each answer
 check("matched means paid", submitState("matched") === "paid" && submitState("already_paid") === "paid");

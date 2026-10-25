@@ -10,8 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 
-/** Same rule as the database: P- and then letters or digits. */
-export const GROUP_PATTERN = /^P-[A-Z0-9]{1,20}$/;
+/** Same rule as the database: the partner's link code, 3 lowercase letters and 4 digits (like dvw9166). */
+export const GROUP_PATTERN = /^[a-z]{3}[0-9]{4}$/;
 
 const METHOD_LABEL = { send_money: "Send Money", cash_out: "Cash Out (agent)" } as const;
 
@@ -143,10 +143,10 @@ export function WalletsCard({ deviceId, wallets, onChanged }: { deviceId: string
       <form onSubmit={addGroup} className="mt-3 flex flex-wrap items-center gap-2">
         <Input
           value={newGroup}
-          onChange={(e) => setNewGroup(e.target.value.toUpperCase())}
-          placeholder="New group, e.g. P-AB12"
+          onChange={(e) => setNewGroup(e.target.value.toLowerCase())}
+          placeholder="Partner code, e.g. dvw9166"
           aria-label="New group name"
-          maxLength={22}
+          maxLength={7}
           className="h-8 w-48 text-xs"
         />
         <Button type="submit" size="sm" variant="outline" disabled={!GROUP_PATTERN.test(newGroup.trim())}>Add group</Button>

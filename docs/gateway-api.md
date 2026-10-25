@@ -15,7 +15,7 @@ generated from `dashboard/src/lib/apiDocs.ts` (`depositInstructions`), which is 
    `method` and `return_url` optional). The website's own page lets the customer choose the method ("Bkash Send Money", "Nagad Cash Out"...);
    PayTrace's page starts after that choice. The wallet number is assigned at creation; with no number set up for that provider/method the
    call fails with 409 `no_wallet`. Returns `pay_url`. The same `order_id` returns the same order, so a retry is safe.
-   Optional `group` (text, max 24, for example `P-AB12`): only numbers in that **wallet group** are offered. A group that does not exist,
+   Optional `group` (text, max 24, for example `dvw9166`): only numbers in that **wallet group** are offered. A group that does not exist,
    is switched off, or has no approved **online** number for that provider and method falls back to `main`, so the call still works. The
    group actually used is stored on the order (`orders.wallet_group`) and returned as `group`. Omitting `group` means `main`.
 2. Customer opens `pay_url` (`/pay/?trackingNumber=...` on the dashboard's address). The page is Bangla by default with an
@@ -30,12 +30,12 @@ generated from `dashboard/src/lib/apiDocs.ts` (`depositInstructions`), which is 
 ## Wallet groups
 
 The owner puts each deposit number in a group on the dashboard (Phones, Deposit numbers: a Group dropdown per number and an Add group box;
-names look like `P-AB12`, letters and digits after `P-`). Every number starts in `main`, which also receives any fallback. Server-only
+a group is the partner's link code: 3 lowercase letters and 4 digits, like `dvw9166`). Every number starts in `main`, which also receives any fallback. Server-only
 routes, same `Authorization: Bearer ptk_...` as `create-deposit` and counted in the same 120 per minute per key:
 
 - `GET  /functions/v1/gateway/groups` returns `[{group, enabled, phone_name, provider, method, number, online}]` for numbers on approved
   phones (a group without numbers appears once with the number fields null). Never balances or message text.
-- `POST /functions/v1/gateway/groups/enabled` with `{"group":"P-AB12","enabled":false}` switches a group off or on. Unknown group is 404;
+- `POST /functions/v1/gateway/groups/enabled` with `{"group":"dvw9166","enabled":false}` switches a group off or on. Unknown group is 404;
   `main` cannot be switched off (400). A switched-off group sends its customers to `main`.
 
 ## Showing the page inside the website (iframe) and sending the customer back
