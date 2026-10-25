@@ -64,6 +64,12 @@ export interface DeviceWallet {
   wallet_number: string;
   method: "send_money" | "cash_out";
   enabled: boolean;
+  wallet_group: string;
+}
+
+export interface WalletGroup {
+  name: string;
+  enabled: boolean;
 }
 
 export interface Device {

@@ -1,7 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Wallet } from "lucide-react";
 import { sb } from "@/lib/supabase";
-import { PROVIDERS, PROVIDER_LABEL, type DeviceWallet } from "@/lib/types";
+import { PROVIDERS, PROVIDER_LABEL, type DeviceWallet, type WalletGroup } from "@/lib/types";
 import { Disclosure } from "@/components/Disclosure";
 import { ProviderChip } from "@/components/ProviderChip";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+
+/** Same rule as the database: P- and then letters or digits. */
+export const GROUP_PATTERN = /^P-[A-Z0-9]{1,20}$/;
 
 const METHOD_LABEL = { send_money: "Send Money", cash_out: "Cash Out (agent)" } as const;
 
@@ -20,6 +23,30 @@ export function WalletsCard({ deviceId, wallets, onChanged }: { deviceId: string
   const [method, setMethod] = useState<"send_money" | "cash_out">("send_money");
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);
+  const [groups, setGroups] = useState<WalletGroup[]>([{ name: "main", enabled: true }]);
+  const [newGroup, setNewGroup] = useState("");
+
+  const loadGroups = useCallback(async () => {
+    const { data } = await sb.from("wallet_groups").select("name,enabled").order("name");
+    if (data) setGroups((data as WalletGroup[]).sort((a, b) => (a.name === "main" ? -1 : b.name === "main" ? 1 : a.name.localeCompare(b.name))));
+  }, []);
+  useEffect(() => { void loadGroups(); }, [loadGroups]);
+
+  async function addGroup(e: FormEvent) {
+    e.preventDefault();
+    const { error } = await sb.rpc("add_wallet_group", { p_name: newGroup });
+    if (error) return setProblem(error.message);
+    setProblem("");
+    setNewGroup("");
+    await loadGroups();
+  }
+
+  async function setGroup(walletId: string, group: string) {
+    const { error } = await sb.rpc("set_wallet_group", { p_wallet_id: walletId, p_group: group });
+    if (error) return setProblem(error.message);
+    setProblem("");
+    onChanged();
+  }
 
   async function save(p: string, n: string, m: string, enabled: boolean): Promise<boolean> {
     const { error } = await sb.rpc("set_device_wallet", { p_device_id: deviceId, p_provider: p, p_number: n, p_method: m, p_enabled: enabled });
@@ -67,6 +94,14 @@ export function WalletsCard({ deviceId, wallets, onChanged }: { deviceId: string
               <Badge tone="idle">{METHOD_LABEL[w.method]}</Badge>
             </span>
             <span className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Select value={w.wallet_group ?? "main"} onValueChange={(g) => void setGroup(w.id, g)}>
+                <SelectTrigger aria-label={`Group for ${w.wallet_number}`} className="h-8 w-[7.5rem] text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {groups.map((g) => (
+                    <SelectItem key={g.name} value={g.name}>{g.name === "main" ? "Main" : g.name}{g.enabled ? "" : " (off)"}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {w.enabled ? "On" : "Off"}
               <Switch
                 checked={w.enabled}
@@ -105,6 +140,18 @@ export function WalletsCard({ deviceId, wallets, onChanged }: { deviceId: string
           </p>
         </form>
       ) : null}
+      <form onSubmit={addGroup} className="mt-3 flex flex-wrap items-center gap-2">
+        <Input
+          value={newGroup}
+          onChange={(e) => setNewGroup(e.target.value.toUpperCase())}
+          placeholder="New group, e.g. P-AB12"
+          aria-label="New group name"
+          maxLength={22}
+          className="h-8 w-48 text-xs"
+        />
+        <Button type="submit" size="sm" variant="outline" disabled={!GROUP_PATTERN.test(newGroup.trim())}>Add group</Button>
+        <span className="text-xs text-muted-foreground">Groups let a website use numbers from certain phones only. Customers fall back to Main when a group has no online number.</span>
+      </form>
       {problem ? <p className="mt-2 text-xs text-destructive">{problem}</p> : null}
     </Disclosure>
   );

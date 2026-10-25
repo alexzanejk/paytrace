@@ -190,7 +190,8 @@ export const CREATE_RESPONSE = `{
   "tracking_number": "c3b20370-3538-4e29-922f-c60a2d17595c",
   "pay_url": "https://YOUR-GATEWAY-ADDRESS/pay/?trackingNumber=c3b20370-...",
   "status": "pending",
-  "expires_at": "2026-10-23T09:30:00.000Z"
+  "expires_at": "2026-10-23T09:30:00.000Z",
+  "group": "main"
 }`;
 
 /** Showing the payment page inside the website's own page, and following the page's "go here now" message. */

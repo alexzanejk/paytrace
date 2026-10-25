@@ -29,6 +29,21 @@ export interface DepositRequest {
   expiresMinutes: number | null;
   customerName: string | null;
   customerPhone: string | null;
+  /** Wallet group asked for ("main" when left out). The database decides whether it can be used. */
+  group: string;
+}
+
+/** A wallet group name as the website sends it: up to 24 characters, "main" or like P-AB12. Case does not matter. */
+export function parseGroup(v: unknown): string | { error: string } {
+  if (v === undefined || v === null || v === "") return "main";
+  if (typeof v !== "string" || v.trim().length > 24) return { error: "group must be text of at most 24 characters (or leave it out)" };
+  return normalizeGroup(v);
+}
+
+/** "main" in lower case, anything else in upper case (the owner's names look like P-AB12). */
+export function normalizeGroup(v: string): string {
+  const t = v.trim();
+  return t === "" || t.toLowerCase() === "main" ? "main" : t.toUpperCase();
 }
 
 /** Reads the body of "create a deposit". Returns a message the developer can act on when something is wrong. */
@@ -59,8 +74,10 @@ export function parseDeposit(body: Record<string, unknown>): DepositRequest | { 
     if (!Number.isInteger(m) || m < 3 || m > 60) return { error: "expires_in_minutes must be a whole number from 3 to 60" };
     expiresMinutes = m;
   }
+  const group = parseGroup(body.group);
+  if (typeof group === "object") return group;
   const text = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
-  return { amount, orderId, provider, method, returnUrl, expiresMinutes, customerName: text(body.customer_name, 80), customerPhone: text(body.customer_phone, 20) };
+  return { amount, orderId, provider, method, returnUrl, expiresMinutes, customerName: text(body.customer_name, 80), customerPhone: text(body.customer_phone, 20), group };
 }
 
 /** What the customer's page should do after sending a TrxID. The page words these itself (English and Bangla). */
