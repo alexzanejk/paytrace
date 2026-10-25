@@ -33,17 +33,17 @@ export interface DepositRequest {
   group: string;
 }
 
-/** A wallet group name as the website sends it: up to 24 characters, "main" or like P-AB12. Case does not matter. */
+/** A wallet group as the website sends it: up to 24 characters, "main" or the partner's link code (3 lowercase letters + 4 digits, like dvw9166). Case does not matter. */
 export function parseGroup(v: unknown): string | { error: string } {
   if (v === undefined || v === null || v === "") return "main";
   if (typeof v !== "string" || v.trim().length > 24) return { error: "group must be text of at most 24 characters (or leave it out)" };
   return normalizeGroup(v);
 }
 
-/** "main" in lower case, anything else in upper case (the owner's names look like P-AB12). */
+/** Group names are always lower case ("main", or a code like dvw9166). */
 export function normalizeGroup(v: string): string {
   const t = v.trim();
-  return t === "" || t.toLowerCase() === "main" ? "main" : t.toUpperCase();
+  return t === "" ? "main" : t.toLowerCase();
 }
 
 /** Reads the body of "create a deposit". Returns a message the developer can act on when something is wrong. */

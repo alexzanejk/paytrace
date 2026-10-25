@@ -4,9 +4,9 @@
 //   POST /functions/v1/gateway/create-deposit  {"amount":500,"order_id":"SHOP-1001","provider":"bkash","method":"cash_out"?,"return_url":"https://..."?,
 //                                                "expires_in_minutes":15?,"customer_name"?,"customer_phone"?}
 //        -> {"tracking_number","pay_url","status","expires_at"}     (the same order_id returns the same order)
-//        optional "group": a wallet group such as "P-AB12" (max 24 characters); unknown, switched-off or offline groups fall back to "main".
+//        optional "group": a wallet group such as "dvw9166" (max 24 characters); unknown, switched-off or offline groups fall back to "main".
 //   GET  /functions/v1/gateway/groups           -> [{group,enabled,phone_name,provider,method,number,online}]   (no balances, no SMS text)
-//   POST /functions/v1/gateway/groups/enabled   {"group":"P-AB12","enabled":false}   switches a group off or on ("main" cannot be off)
+//   POST /functions/v1/gateway/groups/enabled   {"group":"dvw9166","enabled":false}   switches a group off or on ("main" cannot be off)
 //   POST /functions/v1/gateway/order-status    {"tracking_number":"..."} or {"order_id":"SHOP-1001"}
 // The customer's pay page (public; the tracking number is an unguessable secret; browser calls come only from the dashboard's address):
 //   POST /gateway/pay-order   {"tracking_number"}                      what the page shows
