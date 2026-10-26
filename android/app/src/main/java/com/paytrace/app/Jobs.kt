@@ -18,7 +18,11 @@ data class Job(
     val wallet: String,
     val network: String,
     val instruction: String,
-)
+    /** "send" = the owner's balance job (send money to the owner's wallet address); "cashin" = cash in to a personal number ([wallet] is that number). */
+    val kind: String = "send",
+) {
+    val isCashIn: Boolean get() = kind == "cashin"
+}
 
 /** One "I sent it" the partner submitted: the amount and P2P charge they typed, and how the check against the next Cash Out message went.
  *  [status] is "checking", "mismatch" (they may fix the numbers once, [attempts] is 1), "review" (the owner will look), "verified" or "rejected". */
@@ -32,8 +36,11 @@ data class Transfer(
     val submittedAt: String,
     val resolvedAt: String = "",
     val note: String = "",
+    /** "send" or "cashin". For a cash-in, [charge] is the cash-in commission the wallet gave (it is added to the balance). */
+    val kind: String = "send",
 ) {
     val canFix: Boolean get() = status == "mismatch" && attempts < 2
+    val isCashIn: Boolean get() = kind == "cashin"
 }
 
 /** Everything the phone shows about work: the jobs open now and its recent sends. */
@@ -44,6 +51,7 @@ data class SendResult(val ok: Boolean, val status: String, val error: String?) {
     val message: String
         get() = when (error) {
             null -> ""
+            "no_job" -> "This job is not open any more. Pull down or wait a moment, then look again."
             "already_waiting" -> "The last send for this wallet is still being checked. Wait for it to turn green first."
             "too_much" -> "That is more than the wallet's balance. Check the amount and the charge."
             "no_balance" -> "PayTrace has not seen a balance message for this wallet yet."
@@ -77,7 +85,7 @@ object JobsParser {
             val provider = t.optString("provider")
             val status = t.optString("status")
             if (id.isBlank() || provider.isBlank() || status.isBlank()) null
-            else Transfer(id, provider, t.optDouble("amount", 0.0), t.optDouble("charge", 0.0), status, t.optInt("attempts", 1), t.optString("submitted_at", ""), t.optString("resolved_at", ""), t.optString("note", "").let { if (it == "null") "" else it })
+            else Transfer(id, provider, t.optDouble("amount", 0.0), t.optDouble("charge", 0.0), status, t.optInt("attempts", 1), t.optString("submitted_at", ""), t.optString("resolved_at", ""), t.optString("note", "").let { if (it == "null") "" else it }, t.optString("kind", "send").let { if (it == "cashin") it else "send" })
         }
     } catch (e: Exception) {
         emptyList()
@@ -119,6 +127,7 @@ object JobsParser {
                     wallet = wallet,
                     network = j.optString("network", ""),
                     instruction = j.optString("instruction", ""),
+                    kind = j.optString("kind", "send").let { if (it == "cashin") it else "send" },
                 )
             }
         }
@@ -160,6 +169,17 @@ object JobsApi {
     /** The partner says they sent [amount] with P2P [charge]; the next Cash Out message for this wallet will check it. */
     fun sent(s: AppSettings, provider: String, amount: Double, charge: Double): SendResult {
         val body = JSONObject().put("action", "job_sent").put("provider", provider).put("amount", amount).put("charge", charge).toString()
+        return JobsParser.parseSend(post(s, body))
+    }
+
+    /** A cash-in job: the partner cashed in [amount] and the wallet gave [commission] for it (added to the balance, no SMS). */
+    fun cashInSent(s: AppSettings, provider: String, amount: Double, commission: Double): SendResult {
+        val body = JSONObject().put("action", "cashin_sent").put("provider", provider).put("amount", amount).put("commission", commission).toString()
+        return JobsParser.parseSend(post(s, body))
+    }
+
+    fun cashInFix(s: AppSettings, id: String, amount: Double, commission: Double): SendResult {
+        val body = JSONObject().put("action", "cashin_fix").put("id", id).put("amount", amount).put("commission", commission).toString()
         return JobsParser.parseSend(post(s, body))
     }
 

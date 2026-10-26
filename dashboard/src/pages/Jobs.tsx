@@ -9,6 +9,7 @@ import {
   networkProblem, parseThreshold, URGENCIES, URGENCY_LABEL, walletsFromAddress, type AgentForm, type JobProvider, type JobSettings, type Urgency,
 } from "@/lib/jobs";
 import { PROVIDER_LABEL } from "@/lib/types";
+import { CashInJobs } from "@/pages/CashInJobs";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { DeviceChip } from "@/components/DeviceChip";
@@ -245,6 +246,8 @@ export function Jobs() {
         “Off by” is what the cash-out message implies minus what the partner's numbers predicted. For bKash, which does not print its commission, a normal commission
         (0.30% to 0.60% of the cash-out) counts as a match, so a very small typo can slip through; compare with your own wallet history if it matters.
       </p>
+
+      <CashInJobs />
 
       <h3 className="mb-2 mt-8 text-base font-semibold">Marked done recently</h3>
       <Table>

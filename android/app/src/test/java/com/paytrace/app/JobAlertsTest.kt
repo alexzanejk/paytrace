@@ -78,4 +78,12 @@ class JobAlertsTest {
         assertEquals("normal", JobAlertPolicy.topUrgency(emptyList()))
         assertEquals(listOf("bKash · Tk 1.00"), JobAlertPolicy.lines(listOf(JobBrief("bkash", "", "normal", 1.0, ""))))
     }
+
+    @Test fun aCashInJobRingsSeparatelyFromASendJobOfTheSameWallet() {
+        val send = JobBrief("bkash", "A", "normal", 9000.0, "2026-10-26T10:00:00+00:00")
+        val cash = JobBrief("bkash", "A", "urgent", 9000.0, "2026-10-26T10:00:00+00:00", kind = "cashin")
+        assertTrue(JobAlertPolicy.key(send) != JobAlertPolicy.key(cash))
+        val d = JobAlertPolicy.decide(listOf(send, cash), emptyMap(), 1000L)
+        assertEquals(2, d.ring.size)
+    }
 }

@@ -121,4 +121,25 @@ class JobsTest {
         assertEquals("", t[1].note)
         assertEquals("", t[1].resolvedAt)
     }
+
+    @Test fun aCashInJobAndItsSubmissionAreReadWithTheirKind() {
+        val text = """{"success":true,"jobs":[
+          {"kind":"cashin","provider":"bkash","agent":"Counter 1","urgency":"urgent","balance":9000,"balance_at":"2026-10-26T10:00:00+00:00","wallet":"01733333333","network":"","instruction":"Cash in"},
+          {"provider":"nagad","agent":"K","urgency":"normal","balance":12000,"wallet":"0x71C7656EC7ab88b098defB751B7401B5f6d8976F","instruction":"Send"}],
+          "transfers":[{"kind":"cashin","id":"a1","provider":"bkash","amount":100,"charge":0.38,"status":"checking","attempts":1,"submitted_at":"2026-10-26T10:05:00+00:00"},
+                       {"id":"b2","provider":"nagad","amount":5000,"charge":25,"status":"verified","attempts":1,"submitted_at":"2026-10-26T09:00:00+00:00"}]}"""
+        val jobs = JobsParser.parse(text)!!
+        assertTrue(jobs[0].isCashIn)
+        assertEquals("01733333333", jobs[0].wallet)
+        assertEquals("send", jobs[1].kind)
+        val t = JobsParser.parseTransfers(text)
+        assertTrue(t[0].isCashIn)
+        assertEquals(0.38, t[0].charge, 0.0001)
+        assertEquals("send", t[1].kind)
+    }
+
+    @Test fun anUnknownKindIsTheOrdinaryJob() {
+        val jobs = JobsParser.parse("""{"success":true,"jobs":[{"kind":"weird","provider":"bkash","wallet":"0171","instruction":"x"}]}""")
+        assertEquals("send", jobs!![0].kind)
+    }
 }
