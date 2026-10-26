@@ -1,6 +1,9 @@
 // Pure helpers for the gateway function (no I/O, so they can be unit tested).
 
 export const PROVIDERS = ["bkash", "nagad", "rocket", "upay"] as const;
+/** Crypto deposits: the amount is in taka, the customer pays USDT on that network. */
+export const CRYPTO_PROVIDERS = ["usdt_bep20", "usdt_trc20"] as const;
+export const isCrypto = (provider: string): boolean => (CRYPTO_PROVIDERS as readonly string[]).includes(provider);
 
 /** Same key shape the dashboard makes (API access page). Junk is turned away before any database work. */
 export const KEY_PATTERN = /^ptk_[0-9a-f]{64}$/;
@@ -62,7 +65,7 @@ export function parseDeposit(body: Record<string, unknown>): DepositRequest | { 
   if (orderId.length < 1 || orderId.length > 100) return { error: "order_id is required (your own order number, 1 to 100 characters)" };
   // The website's own page lets the customer choose the method, so the provider is required here.
   const p = typeof body.provider === "string" ? body.provider.trim().toLowerCase() : "";
-  if (!(PROVIDERS as readonly string[]).includes(p)) return { error: "provider is required: bkash, nagad, rocket or upay" };
+  if (!(PROVIDERS as readonly string[]).includes(p) && !isCrypto(p)) return { error: "provider is required: bkash, nagad, rocket, upay, usdt_bep20 or usdt_trc20" };
   const provider = p;
   let method: string | null = null;
   if (body.method !== undefined && body.method !== null && body.method !== "") {

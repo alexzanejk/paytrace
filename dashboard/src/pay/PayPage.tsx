@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, XCircle, X } from "lucide-react";
-import { DEMO, Gone, demoStyle, demoSwitch, getOrder, pickProvider, submitTrx, type OrderView, type SubmitState } from "./api";
+import { DEMO, Gone, demoCryptoStyle, demoStyle, demoSwitch, getOrder, pickProvider, submitTrx, type OrderView, type SubmitState } from "./api";
 import { leaveTo, reportHeight, tellParent } from "./embed";
 import { BkashMenuRow, HowToBody, howCaption, howClose, howKind, howTitle } from "./HowTo";
 import { ResultScreen, RESULT_STYLE_NAMES, type Phase } from "./ResultScreens";
+import { CryptoPanel, CRYPTO_STYLE_NAMES } from "./CryptoPanel";
 import { bannerColor, bdt, bnDigits, clock, headerColor, mmss, PROVIDER_NAME, t, variantFor, type Lang, type Variant } from "./i18n";
 import bkashLogo from "./logos/bkash.png";
 import nagadLogo from "./logos/nagad.png";
@@ -172,7 +173,7 @@ export function PayPage() {
   const provider = view?.provider ?? "";
   const pname = PROVIDER_NAME[provider] ?? "";
   const color = bannerColor(provider, variant);
-  const head = view?.provider ? headerColor(provider, variant) : "#216a4a";
+  const head = view?.crypto ? "#0f7b5f" : view?.provider ? headerColor(provider, variant) : "#216a4a";
   const amountText = view ? bdt(view.amount, view.currency, variant === "send") : "";
   const redAmount = view ? (variant === "send" ? bnDigits(bdt(view.amount, view.currency, false)) : bdt(view.amount, view.currency, false)) : "";
   const shownAmount = lang === "bn" && variant === "send" ? redAmount : bdt(view?.amount ?? 0, view?.currency ?? "BDT", false);
@@ -307,6 +308,8 @@ export function PayPage() {
                 ["nagad", "send_money", "Nagad Send Money"],
                 ["rocket", "cash_out", "Rocket Cash Out"],
                 ["bkash", "send_money", "bKash Send Money"],
+                ["usdt_bep20", "", "USDT BEP20"],
+                ["usdt_trc20", "", "USDT TRC20"],
               ] as const
             ).map(([p, m, label]) => (
               <button
@@ -332,6 +335,16 @@ export function PayPage() {
               </button>
             ))}
           </div>
+          {view?.crypto && (
+            <div className="flex flex-wrap items-center justify-center gap-1.5">
+              <span className="font-semibold">USDT page look:</span>
+              {CRYPTO_STYLE_NAMES.map((n, i) => (
+                <button key={n} type="button" onClick={() => demoCryptoStyle(i)} className={`rounded-md border px-2 py-0.5 font-semibold ${(view.crypto_style ?? 0) === i ? "border-amber-900 bg-amber-900 text-white" : "border-amber-700"}`}>
+                  {n}
+                </button>
+              ))}
+            </div>
+          )}
           <p>Try any TrxID of 6+ letters or numbers. REVIEW001 ends in "held for review", EXPIRED01 in "expired". USEDTRX1 shows the "already used" message; FORMATBAD1 shows the red error message.</p>
         </div>
   ) : null;
@@ -394,7 +407,7 @@ export function PayPage() {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-lg font-bold leading-tight min-[360px]:text-xl">{view ? amountText : tr("loading")}</p>
-              <p className={`mt-0.5 font-bold leading-tight min-[360px]:mt-1 ${variant === "bsend" ? "text-[13px] min-[360px]:text-sm" : "text-sm min-[360px]:text-base"}`}>{view ? tr("sub") : ""}</p>
+              <p className={`mt-0.5 font-bold leading-tight min-[360px]:mt-1 ${variant === "bsend" ? "text-[13px] min-[360px]:text-sm" : "text-sm min-[360px]:text-base"}`}>{view ? (view.crypto ? (lang === "bn" ? "ঠিক পরিমাণ USDT পাঠান" : "Send the exact USDT amount") : tr("sub")) : ""}</p>
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1 min-[360px]:gap-1.5">
               <div className="flex items-center gap-1.5 min-[360px]:gap-2" aria-label={shop}>
@@ -462,7 +475,11 @@ export function PayPage() {
           {screen === "ready" && view && view.status === "cancelled" && <Notice icon="bad" title={tr("closedTitle")} body="" />}
           {screen === "ready" && view && view.status === "pending" && !view.provider && <Notice icon="bad" title={tr("notFoundTitle")} body={tr("badLink")} />}
 
-          {screen === "ready" && view && view.status === "pending" && view.provider && (
+          {screen === "ready" && view && view.status === "pending" && view.provider && view.crypto && (
+            <CryptoPanel view={view} lang={lang} left={left} style={view.crypto_style ?? 0} onCopy={(text) => void copy(text)} />
+          )}
+
+          {screen === "ready" && view && view.status === "pending" && view.provider && !view.crypto && (
             <>
               <p className="text-[15px] font-bold leading-snug text-[#e0392b] min-[360px]:text-base min-[360px]:leading-6">{tr("amountNote", { amount: lang === "bn" && variant === "send" ? redAmount : redAmount })}</p>
 

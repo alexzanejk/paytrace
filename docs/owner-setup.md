@@ -257,3 +257,22 @@ balance does not change by itself, which is why Done exists. The phone needs the
 the same phone share one balance, because the messages do not say which account they belong to. The ring is sent along with the phone's normal 30-second check-in, so it
 arrives within about 30 seconds of a new balance message, and only while the phone is on, online and PayTrace is running. Always send a small
 test amount to a new wallet address first.
+
+## Step 8: USDT deposits (BEP20 and TRC20), no phone needed
+
+1. Open the dashboard's **Crypto (USDT)** page.
+2. Type **Taka for 1 USDT** (your rate, for example 125). Websites send amounts in taka; PayTrace turns them into USDT at this rate. Open orders keep the rate they were made with.
+3. Switch on **BNB Smart Chain (BEP20)** and/or **TRON (TRC20)** and paste your **receiving address** for each (BEP20 starts with `0x`, TRC20 with `T`). Use an address
+   of a wallet you control (for example Trust Wallet). **Only the public address goes here. Never type a seed phrase or a private key into PayTrace or send one to anyone.**
+4. Press **Save settings**. A website then asks for `provider: "usdt_bep20"` or `"usdt_trc20"` (see the Websites guide).
+5. The customer's page shows the exact USDT amount (for example 10.0137) and your address. PayTrace looks at the blockchain **once a minute** and marks the order
+   paid when exactly that amount arrives (BEP20 after about 45 seconds of confirmations, TRC20 once TRON confirms it). The website is told through the usual webhook.
+6. **If a customer sends the wrong amount, or too late:** the transfer is not matched automatically. It waits on the Crypto page, where you can **Pay order** (pick the order) after checking, or **Ignore** it.
+7. Optional free keys, only if the free public servers become slow: `TRONGRID_API_KEY` (free account at trongrid.io) and `BSC_RPC_URL` (your own node address). Set them in Supabase,
+   Edge Functions, Secrets, in the private prompt. Without them PayTrace uses the free public servers.
+8. Test with a small real transfer first (the smallest deposit is 500 taka). Check that the order turns paid, the transaction hash shows on the Crypto page, and your website received the webhook.
+
+PayTrace only reads the blockchain. It never holds keys or moves your USDT. Customers pay the network fee themselves.
+
+
+On the Websites page each site can also choose how its USDT payment page looks (six looks, section 2b). Classic is the original; Automatic gives each site its own fixed look.

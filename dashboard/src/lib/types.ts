@@ -8,6 +8,8 @@ export const PROVIDER_LABEL: Record<string, string> = {
   nagad: "Nagad",
   rocket: "Rocket",
   upay: "Upay",
+  usdt_bep20: "USDT (BEP20)",
+  usdt_trc20: "USDT (TRC20)",
 };
 
 export const TYPE_LABEL: Record<string, string> = {

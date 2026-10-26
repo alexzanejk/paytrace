@@ -5,7 +5,7 @@
 export type Lang = "bn" | "en";
 export type Variant = "cash" | "send" | "bsend";
 
-export const PROVIDER_NAME: Record<string, string> = { bkash: "bKash", nagad: "Nagad", rocket: "Rocket", upay: "Upay" };
+export const PROVIDER_NAME: Record<string, string> = { bkash: "bKash", nagad: "Nagad", rocket: "Rocket", upay: "Upay", usdt_bep20: "USDT (BEP20)", usdt_trc20: "USDT (TRC20)" };
 
 /** Banner colour per provider and way of paying (from the owner's recordings). */
 export function bannerColor(provider: string, variant: Variant): string {

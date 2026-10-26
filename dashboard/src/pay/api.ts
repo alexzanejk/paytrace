@@ -17,6 +17,10 @@ export interface OrderView {
   failed_url?: string | null;
   merchant_order_id?: string | null;
   result_style?: number;
+  /** Which of the six USDT page looks this site uses (0 = the original). */
+  crypto_style?: number;
+  /** USDT deposit: the exact amount to send, the network and the receiving address. */
+  crypto?: { chain: "bep20" | "trc20"; asset: "USDT"; amount: number; address: string } | null;
 }
 
 export type SubmitState = "paid" | "checking" | "review" | "used" | "expired" | "too_many" | "wrong_method" | "invalid" | "closed";
@@ -35,6 +39,7 @@ const demoAddress = (name: string): string | null => {
 
 const demo = {
   style: Number(new URLSearchParams(window.location.search).get("style") || 0) || 0,
+  cstyle: Number(new URLSearchParams(window.location.search).get("cstyle") || 0) || 0,
   outcome: "paid" as "paid" | "review" | "expired",
   provider: (new URLSearchParams(window.location.search).get("provider") || "bkash") as string | null,
   method: (new URLSearchParams(window.location.search).get("method") || "") as string,
@@ -56,9 +61,18 @@ export function demoSwitch(provider: string, method: string) {
   demo.trx = null;
   demo.paidAt = 0;
   demo.endsAt = Date.now() + 15 * 60_000;
+  demo.outcome = "paid";
+  // USDT preview: there is no TrxID to type, so the pretend payment "arrives" 12 seconds after the page opens.
+  if (provider.startsWith("usdt_")) {
+    demo.trx = "0x" + "ab12".repeat(16);
+    demo.paidAt = Date.now() + 12_000;
+  }
 }
 export function demoStyle(n: number) {
   demo.style = n;
+}
+export function demoCryptoStyle(n: number) {
+  demo.cstyle = n;
 }
 function demoView(): OrderView {
   const w0 = demo.provider ? DEMO_WALLET[demo.provider] : null;
@@ -67,17 +81,28 @@ function demoView(): OrderView {
   const done = demo.paidAt > 0 && Date.now() >= demo.paidAt;
   const paid = done && demo.outcome === "paid";
   const status: OrderView["status"] = paid ? "paid" : done && demo.outcome !== "paid" ? demo.outcome : Date.now() > demo.endsAt ? "expired" : "pending";
+  const usdt = demo.provider?.startsWith("usdt_") ?? false;
+  const cryptoView: OrderView["crypto"] = usdt
+    ? {
+        chain: demo.provider === "usdt_trc20" ? "trc20" : "bep20",
+        asset: "USDT",
+        amount: 4.0137,
+        address: demo.provider === "usdt_trc20" ? "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t" : "0x1111111111111111111111111111111111111111",
+      }
+    : null;
   return {
     status,
+    crypto: cryptoView,
+    crypto_style: demo.cstyle,
     result_style: demo.style,
     amount: Number(new URLSearchParams(window.location.search).get("amount")) || 500,
     currency: "BDT",
     shop: "Your shop (preview)",
     provider: demo.provider,
-    wallet_number: w?.n ?? null,
+    wallet_number: cryptoView?.address ?? w?.n ?? null,
     method: w?.m ?? null,
     seconds_left: Math.max(0, Math.floor((demo.endsAt - Date.now()) / 1000)),
-    trx_id: demo.trx,
+    trx_id: usdt && !paid ? null : demo.trx,
     providers: [],
     // Preview only: ?return=https://... and ?failed=https://... pretend the site has chosen those pages.
     return_url: paid ? demoAddress("return") : null,
