@@ -89,6 +89,7 @@ export function depositInstructions(key?: string): string {
     '- method: optional, "send_money" or "cash_out". Use it when you offer both for one provider (for example Nagad Send Money and Nagad Cash Out). Leave it out to accept either.',
     '- If no deposit number is set up for that provider/method you get 409 {"error":"no_wallet"}: hide that method on your page or show a message.',
     '- group: optional wallet group from the owner, for example "dvw9166" (up to 24 characters). Only numbers in that group are offered; an unknown, switched-off or offline group falls back to "main", and the answer\'s "group" says which was used.',
+    '- USDT: provider "usdt_bep20" or "usdt_trc20". The amount stays in TAKA; the answer has crypto { chain, asset: "USDT", amount, address }: the customer must send exactly that USDT amount to that address (the payment page shows it and detects the payment by itself). Webhook trx_id = the transaction hash. 409 no_wallet when that network is off; 503 busy = retry in a minute.',
     "- return_url: optional, https only. The customer is sent back here after a confirmed payment. If you leave it out, the success page the owner set for your website is used.",
     "- expires_in_minutes: optional, 3 to 60, default 15.",
     '- customer_name, customer_phone: optional, for your own records.',

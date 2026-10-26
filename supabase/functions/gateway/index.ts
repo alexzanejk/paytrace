@@ -5,6 +5,7 @@
 //                                                "expires_in_minutes":15?,"customer_name"?,"customer_phone"?}
 //        -> {"tracking_number","pay_url","status","expires_at"}     (the same order_id returns the same order)
 //        optional "group": a wallet group such as "dvw9166" (max 24 characters); unknown, switched-off or offline groups fall back to "main".
+//        provider "usdt_bep20" or "usdt_trc20": amount is still in taka; the answer has crypto {chain, asset, amount (USDT to send), address}.
 //   POST /functions/v1/gateway/groups           {"group":"dvw9166"}   creates a partner group (any case; 3 letters + 4 digits; nothing happens if it already exists)
 //        (create-deposit also creates the group the first time it sees a valid code)
 //   GET  /functions/v1/gateway/groups           -> [{group,enabled,phone_name,provider,method,number,online}]   (no balances, no SMS text)
@@ -18,7 +19,7 @@
 //   POST /gateway/deliver     sends the waiting result messages to the websites and closes unpaid orders.
 // Crediting is never done here: it goes through the database's claim_order / reconcile_payment, same as every other payment.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
-import { extractKey, isUuid, normalizeGroup, normalizeTrx, parseDeposit, parseGroupCode, signWebhook, submitState } from "./logic.ts";
+import { extractKey, isCrypto, isUuid, normalizeGroup, normalizeTrx, parseDeposit, parseGroupCode, signWebhook, submitState, type DepositRequest } from "./logic.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
@@ -54,6 +55,7 @@ async function createDeposit(req: Request, body: Record<string, unknown>): Promi
   if (!key) return json({ error: "unauthorized" }, 401);
   const d = parseDeposit(body);
   if ("error" in d) return json({ error: d.error }, 400);
+  if (isCrypto(d.provider)) return await createCryptoDeposit(key, d);
   const { data, error } = await db.rpc("gw_create_deposit", {
     p_key_hash: await sha256hex(key), p_amount: d.amount, p_merchant_order_id: d.orderId, p_provider: d.provider, p_method: d.method,
     p_expires_minutes: d.expiresMinutes, p_customer_name: d.customerName, p_customer_phone: d.customerPhone,
@@ -68,6 +70,26 @@ async function createDeposit(req: Request, body: Record<string, unknown>): Promi
     tracking_number: data.tracking_number,
     pay_url: `${DASHBOARD_URL}/pay/?trackingNumber=${data.tracking_number}`,
     status: data.status, expires_at: data.expires_at, group: data.group,
+  });
+}
+
+// USDT: the amount stays in taka; PayTrace converts it at the owner's rate and gives the customer an exact amount to send.
+async function createCryptoDeposit(key: string, d: DepositRequest): Promise<Response> {
+  const { data, error } = await db.rpc("gw_create_crypto_deposit", {
+    p_key_hash: await sha256hex(key), p_amount: d.amount, p_merchant_order_id: d.orderId, p_provider: d.provider,
+    p_expires_minutes: d.expiresMinutes, p_customer_name: d.customerName, p_customer_phone: d.customerPhone,
+    p_return_url: d.returnUrl, p_limit: MERCHANT_LIMIT_PER_MINUTE,
+  });
+  if (error) { console.error("gw_create_crypto_deposit failed", error.code); return json({ error: "could not create the order, try again" }, 500); }
+  if (data?.unauthorized) return json({ error: "unauthorized" }, 401);
+  if (data?.limited) return json({ error: "too many requests, try again in a minute" }, 429, { "retry-after": "60" });
+  if (data?.error === "no_wallet") return json({ error: "no_wallet", message: data.message }, 409);
+  if (data?.error === "busy") return json({ error: "busy", message: data.message }, 503, { "retry-after": "60" });
+  if (data?.error) return json({ error: data.error }, 400);
+  return json({
+    tracking_number: data.tracking_number,
+    pay_url: `${DASHBOARD_URL}/pay/?trackingNumber=${data.tracking_number}`,
+    status: data.status, expires_at: data.expires_at, crypto: data.crypto,
   });
 }
 

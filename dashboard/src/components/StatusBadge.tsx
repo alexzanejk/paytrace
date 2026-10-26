@@ -15,6 +15,7 @@ const TONE: Record<string, "ok" | "warn" | "info" | "bad" | "idle"> = {
   expired: "bad",
   revoked: "bad",
   failed: "bad",
+  new: "info",
 };
 
 const LABEL: Record<string, string> = {

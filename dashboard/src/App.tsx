@@ -11,6 +11,7 @@ import { Review } from "@/pages/Review";
 import { Payments } from "@/pages/Payments";
 import { Orders } from "@/pages/Orders";
 import { Commission } from "@/pages/Commission";
+import { Crypto } from "@/pages/Crypto";
 import { Devices } from "@/pages/Devices";
 import { Jobs } from "@/pages/Jobs";
 import { Logs } from "@/pages/Logs";
@@ -75,6 +76,7 @@ export default function App() {
       {tab === "payments" && <Payments />}
       {tab === "orders" && <Orders settings={settings} />}
       {tab === "commission" && <Commission />}
+      {tab === "crypto" && <Crypto />}
       {tab === "devices" && <Devices />}
       {tab === "jobs" && <Jobs />}
       {tab === "logs" && <Logs />}

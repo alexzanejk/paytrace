@@ -27,6 +27,18 @@ generated from `dashboard/src/lib/apiDocs.ts` (`depositInstructions`), which is 
    customer is redirected to `return_url` after a confirmed payment. The website must only credit on `status: "paid"` from the
    webhook or from `order-status`, never because the browser was redirected.
 
+## USDT deposits (BEP20 and TRC20)
+
+`create-deposit` also takes `provider` `usdt_bep20` or `usdt_trc20`. The `amount` stays in **taka** (500 to 50000). PayTrace converts it with the
+owner's rate (dashboard, Crypto page, "Taka for 1 USDT"), rounds the USDT up to 2 decimals and adds a unique tail of 0.0001 to 0.0099 USDT, so each
+open order on a network has its own exact amount. The answer carries `crypto: {chain, asset: "USDT", amount, address}`. The customer pays that exact
+amount to the owner's receiving address; the pay page (no TrxID box) shows it with a countdown and switches to the result by itself.
+The `crypto-watch` function (every minute) reads incoming USDT transfers of the owner's addresses (BEP20: public BNB Smart Chain node,
+`eth_getLogs` of the USDT contract, 15 confirmations; TRC20: TronGrid, confirmed only) and `crypto_settle` pays the order whose exact amount arrived
+(the transfer must have been made before the order expired). The webhook and `order-status` then show `status: "paid"`, `trx_id` = the transaction hash and
+`crypto` = the details. A transfer with no matching order (wrong amount, late) waits on the dashboard's Crypto page for the owner to pay an order by hand
+or ignore it. `method` and `group` do not apply. Errors: 409 `no_wallet` (network not switched on), 503 `busy` (all 99 tails of that amount are in use).
+
 ## Wallet groups
 
 A partner's group is created automatically the first time `create-deposit` sees a valid code, or by `POST /functions/v1/gateway/groups` with

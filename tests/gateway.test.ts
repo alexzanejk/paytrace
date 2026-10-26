@@ -1,4 +1,4 @@
-import { extractKey, isUuid, normalizeGroup, normalizeTrx, parseGroupCode, parseDeposit, signWebhook, submitState } from "../supabase/functions/gateway/logic.ts";
+import { extractKey, isCrypto, isUuid, normalizeGroup, normalizeTrx, parseGroupCode, parseDeposit, signWebhook, submitState } from "../supabase/functions/gateway/logic.ts";
 import { createHmac } from "node:crypto";
 
 let pass = 0, fail = 0;
@@ -41,6 +41,12 @@ const gM = parseDeposit({ ...base, group: "MAIN" });
 check("main is always lower case", !("error" in gM) && gM.group === "main" && normalizeGroup("Main") === "main");
 check("a group longer than 24 characters or not text is refused", "error" in parseDeposit({ ...base, group: "a".repeat(25) }) && "error" in parseDeposit({ ...base, group: 5 }));
 check("a group of exactly 24 characters is read (the database then falls back to main if it does not exist)", !("error" in parseDeposit({ ...base, group: "a".repeat(24) })));
+
+// crypto deposits: the amount is taka, the provider says which USDT network
+const cr = parseDeposit({ amount: 1250, order_id: "C-1", provider: "USDT_BEP20" });
+check("a USDT provider is accepted (any case)", !("error" in cr) && cr.provider === "usdt_bep20" && cr.amount === 1250);
+check("only the two USDT networks are crypto", isCrypto("usdt_trc20") && isCrypto("usdt_bep20") && !isCrypto("bkash") && !isCrypto("usdt") && !isCrypto("usdt_erc20"));
+check("another coin is refused", "error" in parseDeposit({ amount: 100, order_id: "x", provider: "usdt_erc20" }) && "error" in parseDeposit({ amount: 100, order_id: "x", provider: "btc" }));
 
 // creating a partner group by its link code
 check("a link code is 3 letters and 4 digits, any case", parseGroupCode("dvw9166") === "dvw9166" && parseGroupCode(" DVW9166 ") === "dvw9166" && parseGroupCode("DvW0000") === "dvw0000");
