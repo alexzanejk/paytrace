@@ -47,7 +47,7 @@ const TEXT = {
 type T = (typeof TEXT)["en"] | (typeof TEXT)["bn"];
 
 const NETWORK = { bep20: "BNB Smart Chain (BEP20)", trc20: "TRON (TRC20)" } as const;
-const SHORT = { bep20: "BEP20", trc20: "TRC20" } as const;
+const COIN = "Tether USDT";
 const COLOR = "#0f7b5f";
 
 /** Names for the owner's choice on the Websites page. Number 0 is the original look and stays as it was. */
@@ -192,7 +192,7 @@ function CardLook({ t, c, amount, left, frac, late, onCopy }: LookProps) {
   return (
     <div className="space-y-5 text-center">
       <span className="inline-block rounded-full px-3 py-1 text-xs font-bold" style={{ background: "#e7f4ef", color: COLOR }}>
-        USDT · {SHORT[c.chain]}
+        {COIN} · {NETWORK[c.chain]}
       </span>
       <div>
         <p className="text-sm text-neutral-500">{t.short}</p>
@@ -310,7 +310,7 @@ function ReceiptLook({ t, c, amount, left, late, onCopy }: LookProps) {
           <p className="mt-1 text-3xl font-bold tabular-nums">{amount} <span className="text-lg">USDT</span></p>
         </div>
         <div className="divide-y divide-dashed divide-neutral-200">
-          {line(t.coin, <span className="font-semibold">USDT</span>)}
+          {line(t.coin, <span className="font-semibold">{COIN} (USDT)</span>)}
           {line(t.network, <span className="font-semibold">{NETWORK[c.chain]}</span>)}
           {line(t.amount, <span className="font-mono font-semibold tabular-nums">{amount}</span>, amount)}
           {line(t.address, <Address c={c.address} />, c.address)}
@@ -350,7 +350,7 @@ function RingLook({ t, c, amount, left, frac, late, onCopy }: LookProps) {
           />
         </svg>
         <div className="absolute inset-0 grid place-content-center">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">USDT · {SHORT[c.chain]}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">{NETWORK[c.chain]}</p>
           <p className="text-[28px] font-bold leading-9 tabular-nums">{amount}</p>
           <p className="text-sm font-bold tabular-nums" style={{ color: late ? "#b3261e" : COLOR }}>{clock(left)}</p>
         </div>
@@ -384,7 +384,7 @@ function NightLook({ t, c, amount, left, late, onCopy }: LookProps) {
       <div className="space-y-5 rounded-2xl bg-[#0f1720] p-5 text-slate-100">
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold text-slate-300">{t.title}</span>
-          <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-bold text-teal-300">{SHORT[c.chain]}</span>
+          <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-bold text-teal-300">{NETWORK[c.chain]}</span>
         </div>
         <div>
           <p className="text-xs text-slate-400">{t.amount}</p>
