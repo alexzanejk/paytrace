@@ -126,8 +126,8 @@ function Aurora(p: ResultProps) {
       <p className="mx-auto mt-2 max-w-sm text-sm text-white/75">{body}</p>
       <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-xs">
         <span className="rounded-full bg-white/10 px-3 py-1">{p.amount}</span>
-        <span className="rounded-full bg-white/10 px-3 py-1">{p.provider}</span>
-        <span className="rounded-full bg-white/10 px-3 py-1 font-mono">{p.trx}</span>
+        <span className="max-w-full rounded-2xl bg-white/10 px-3 py-1">{p.provider}</span>
+        <span className="max-w-full break-all rounded-2xl bg-white/10 px-3 py-1 font-mono">{p.trx}</span>
       </div>
       <p className="mt-3 text-[11px] uppercase tracking-widest text-white/50">{L.status}: {L[`st_${p.phase}`]}</p>
       <Footer p={p} dark />
@@ -171,7 +171,7 @@ function Steps(p: ResultProps) {
       <p className="mx-auto mt-1 max-w-sm text-center text-sm text-neutral-600">{body}</p>
       <dl className="mx-auto mt-5 grid max-w-sm grid-cols-2 gap-y-1 text-sm">
         <dt className="text-neutral-500">{L.amount}</dt><dd className="text-right font-semibold">{p.amount}</dd>
-        <dt className="text-neutral-500">{L.trx}</dt><dd className="text-right font-mono">{p.trx}</dd>
+        <dt className="text-neutral-500">{L.trx}</dt><dd className="min-w-0 break-all text-right font-mono">{p.trx}</dd>
       </dl>
       <Footer p={p} />
     </section>
@@ -189,11 +189,11 @@ function Receipt(p: ResultProps) {
       <div className="my-3 border-t border-dashed border-neutral-400" />
       <dl className="space-y-2 text-sm">
         {[[L.shop, p.shop], [L.via, p.provider], [L.amount, p.amount]].map(([k, v]) => (
-          <div key={k} className="flex justify-between gap-4"><dt className="text-neutral-500">{k}</dt><dd className="font-semibold">{v}</dd></div>
+          <div key={k} className="flex justify-between gap-4"><dt className="text-neutral-500">{k}</dt><dd className="min-w-0 break-words text-right font-semibold">{v}</dd></div>
         ))}
         <div className="relative flex justify-between gap-4 overflow-hidden py-1">
           <dt className="text-neutral-500">{L.trx}</dt>
-          <dd className="font-semibold">{p.trx}</dd>
+          <dd className="min-w-0 break-all text-right font-semibold">{p.trx}</dd>
           {p.phase === "checking" && <span className="r-scan bg-blue-600/70" />}
         </div>
       </dl>
@@ -234,7 +234,7 @@ function Checklist(p: ResultProps) {
         ))}
       </ul>
       <p className="mt-5 text-xs text-neutral-500">
-        {p.amount} · {p.provider} · <span className="font-semibold">{p.trx}</span>
+        {p.amount} · {p.provider} · <span className="break-all font-semibold">{p.trx}</span>
       </p>
       <Footer p={p} />
     </section>
@@ -262,7 +262,7 @@ function Ring(p: ResultProps) {
       </div>
       <h2 className="mt-6 text-2xl font-semibold">{title}</h2>
       <p className="mx-auto mt-1 max-w-xs text-sm text-neutral-600">{body}</p>
-      <p className="mt-4 font-mono text-xs text-neutral-500">{p.trx}</p>
+      <p className="mx-auto mt-4 max-w-full break-all font-mono text-xs text-neutral-500">{p.trx}</p>
       <Footer p={p} />
     </section>
   );
@@ -292,7 +292,7 @@ function Playful(p: ResultProps) {
       <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-xs font-semibold">
         <span className="rounded-full bg-white px-3 py-1">{p.amount}</span>
         <span className="rounded-full bg-white px-3 py-1">{L[`st_${p.phase}`]}</span>
-        <span className="rounded-full bg-white px-3 py-1 font-mono">{p.trx}</span>
+        <span className="max-w-full break-all rounded-2xl bg-white px-3 py-1 font-mono">{p.trx}</span>
       </div>
       <Footer p={p} />
     </section>
