@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { BatteryMedium, BellRing, ChevronLeft, ChevronRight, Check, HeartPulse, ListOrdered, Pencil, Smartphone, X } from "lucide-react";
-import { INGEST_URL, must, sb } from "@/lib/supabase";
+import { must, sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { PROVIDERS, type Device, type DeviceBalance, type DeviceWallet } from "@/lib/types";
 import { addDays, dayLabel, dhakaDay, groupSummary, summarize, type DayTotal } from "@/lib/period";
 import { openPaymentsWith } from "@/lib/filters";
 import { infoProblems } from "@/lib/deviceHealth";
 import { useQuery } from "@/hooks/useQuery";
+import { wakePhone, WAKE_TEXT } from "@/lib/wake";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard, STAT_GRID } from "@/components/StatCard";
@@ -30,6 +31,8 @@ import { deviceHealth } from "@/lib/deviceHealth";
 export function Devices() {
   const [failed, setFailed] = useState<Record<string, string>>({});
   // The group chosen for each waiting phone before it is approved ("main" unless the owner picks a partner code).
+  const [wakingAll, setWakingAll] = useState(false);
+  const [wakeAllNote, setWakeAllNote] = useState("");
   const [pickGroup, setPickGroup] = useState<Record<string, string>>({});
   const [day, setDay] = useState(dhakaDay());
   const today = dhakaDay();
@@ -75,6 +78,24 @@ export function Devices() {
   const online = approved.filter((d) => deviceHealth(d, now).level === "online").length;
   // Two phones showing the same code would make "approve the right one" impossible.
   const sharedCode = (code: string) => pending.filter((d) => d.pair_code === code).length > 1;
+  const offline = approved.filter((d) => deviceHealth(d, now).level !== "online");
+
+  /** One tap: a wake-up push to every phone that is not online right now. */
+  async function wakeAll() {
+    setWakingAll(true);
+    setWakeAllNote("");
+    const results = await Promise.all(offline.map((d) => wakePhone(d.id)));
+    const sent = results.filter((r) => r === "sent").length;
+    const first = results.find((r) => r !== "sent");
+    setWakeAllNote(
+      offline.length === 0
+        ? "Every phone is online."
+        : sent === offline.length
+          ? `Wake-up sent to ${sent} phone${sent === 1 ? "" : "s"}. They should be back within a minute or two.`
+          : `Sent to ${sent} of ${offline.length}. ${first ? WAKE_TEXT[first] : ""}`,
+    );
+    setWakingAll(false);
+  }
 
   return (
     <Screen loading={loading} error={error} hasData={!!data}>
@@ -102,9 +123,14 @@ export function Devices() {
                 Today
               </Button>
             ) : null}
+            <Button size="sm" className="ml-2" onClick={() => void wakeAll()} disabled={wakingAll || offline.length === 0}>
+              <BellRing aria-hidden /> {wakingAll ? "Sending…" : offline.length ? `Wake ${offline.length} offline` : "All online"}
+            </Button>
           </div>
         }
       />
+
+      {wakeAllNote ? <p role="status" className="mb-4 text-sm text-muted-foreground">{wakeAllNote}</p> : null}
 
       <div className={`mb-6 ${STAT_GRID}`}>
         <StatCard tone="blue" label="Phones online" value={`${online} of ${approved.length}`} sub={dayLabel(day)} icon={Smartphone} />
@@ -244,30 +270,12 @@ function DeviceCard({
   const byProvider = groupSummary(totals, (r) => r.provider);
   const problems = infoProblems(d.info).length;
 
-  /** Sends one wake-up push to this phone. If it arrives, the phone's health shows "N received" within a minute. */
+  /** Sends one wake-up push to this phone right now. If it arrives, the phone is back within a minute or two. */
   async function testWake() {
     setWaking(true);
     setWakeNote("");
-    try {
-      const { data } = await sb.auth.getSession();
-      const token = data.session?.access_token;
-      if (!token) return setWakeNote("You are signed out. Sign in again and retry.");
-      const res = await fetch(INGEST_URL, {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-        body: JSON.stringify({ action: "test_wake", device_id: d.id }),
-      });
-      const b = (await res.json().catch(() => ({}))) as { configured?: boolean; registered?: boolean; result?: string; message?: string };
-      if (!res.ok) setWakeNote(`Could not send: ${b.message ?? res.status}.`);
-      else if (!b.configured) setWakeNote("Firebase is not set up on the server yet (the FIREBASE_SERVICE_ACCOUNT secret).");
-      else if (!b.registered) setWakeNote("This phone has not registered for wake-ups. Install the newest app and open it once.");
-      else if (b.result === "sent") setWakeNote("Sent to Google. Open Phone health in a minute: if it arrived, it says \"1 received\" or more.");
-      else setWakeNote("Google did not accept the message. Try again in a minute.");
-    } catch {
-      setWakeNote("Could not reach the server. Check your internet and try again.");
-    } finally {
-      setWaking(false);
-    }
+    setWakeNote(WAKE_TEXT[await wakePhone(d.id)]);
+    setWaking(false);
   }
 
   async function save() {
@@ -372,7 +380,7 @@ function DeviceCard({
           <HeartPulse aria-hidden /> Phone health{problems ? ` (${problems})` : ""}
         </Button>
         <Button size="sm" variant="outline" onClick={() => void testWake()} disabled={waking}>
-          <BellRing aria-hidden /> {waking ? "Sending…" : "Test wake-up"}
+          <BellRing aria-hidden /> {waking ? "Sending…" : "Wake up now"}
         </Button>
         <Confirm
           title={`Remove ${d.name || d.pair_code}?`}
