@@ -4,6 +4,7 @@ import { sb } from "@/lib/supabase";
 import { when } from "@/lib/format";
 import { depositInstructions } from "@/lib/apiDocs";
 import { RESULT_STYLE_NAMES } from "@/pay/ResultScreens";
+import { CRYPTO_STYLE_NAMES } from "@/pay/CryptoPanel";
 import { Confirm } from "@/components/Confirm";
 import { CopyButton } from "@/components/CopyButton";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +22,7 @@ export interface SiteKey {
   revoked_at: string | null;
   webhook_url: string | null;
   result_style: number | null;
+  crypto_style: number | null;
   redirect_success_url: string | null;
   redirect_failed_url: string | null;
 }
@@ -97,12 +99,24 @@ export function SiteCard({ site, onChanged, onRevoke }: { site: SiteKey; onChang
   const [secret, setSecret] = useState<string | null>(null);
   const [look, setLook] = useState<string | null>(null);
   const [lookNote, setLookNote] = useState("");
+  const [cLook, setCLook] = useState<string | null>(null);
+  const [cNote, setCNote] = useState("");
   const [okUrl, setOkUrl] = useState<string | null>(null);
   const [badUrl, setBadUrl] = useState<string | null>(null);
   const [goNote, setGoNote] = useState("");
   const okValue = okUrl ?? site.redirect_success_url ?? "";
   const badValue = badUrl ?? site.redirect_failed_url ?? "";
   const lookValue = look ?? (site.result_style === null ? AUTO : String(site.result_style));
+
+  const cValue = cLook ?? (site.crypto_style === null ? AUTO : String(site.crypto_style));
+  async function saveCryptoLook() {
+    setCNote("");
+    const { error } = await sb.rpc("set_key_crypto_style", { p_id: site.id, p_style: cValue === AUTO ? null : Number(cValue) });
+    if (error) return setCNote(error.message);
+    setCNote("Saved.");
+    setCLook(null);
+    onChanged();
+  }
 
   async function saveHook(clear: boolean) {
     setHookBusy(true);
@@ -208,6 +222,29 @@ export function SiteCard({ site, onChanged, onRevoke }: { site: SiteKey; onChang
           <Button size="sm" onClick={() => void saveLook()} disabled={look === null}>Save look</Button>
           <a href={`/pay/?demo=1&style=${lookValue === AUTO ? 0 : lookValue}`} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline", size: "sm" })}>Preview</a>
           {lookNote ? <span className="text-xs text-muted-foreground">{lookNote}</span> : null}
+        </div>
+      </section>
+
+      <section className="grid gap-2">
+        <h4 className="text-sm font-semibold">2b. How should this site's USDT payment page look?</h4>
+        <p className="text-xs text-muted-foreground">
+          Six clean looks for customers paying in USDT. Classic is the original. Automatic gives this site its own look that never changes. Every look shows the same facts and asks the customer for nothing.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="w-56">
+            <Select value={cValue} onValueChange={(v) => { setCLook(v); setCNote(""); }}>
+              <SelectTrigger aria-label={`USDT page look for ${site.name}`}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={AUTO}>Automatic</SelectItem>
+                {CRYPTO_STYLE_NAMES.map((n, i) => (
+                  <SelectItem key={n} value={String(i)}>{i + 1}. {n}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button size="sm" onClick={() => void saveCryptoLook()} disabled={cLook === null}>Save look</Button>
+          <a href={`/pay/?demo=1&provider=usdt_bep20&cstyle=${cValue === AUTO ? 0 : cValue}`} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline", size: "sm" })}>Preview</a>
+          {cNote ? <span className="text-xs text-muted-foreground">{cNote}</span> : null}
         </div>
       </section>
 

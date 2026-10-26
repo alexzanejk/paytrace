@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, XCircle, X } from "lucide-react";
-import { DEMO, Gone, demoStyle, demoSwitch, getOrder, pickProvider, submitTrx, type OrderView, type SubmitState } from "./api";
+import { DEMO, Gone, demoCryptoStyle, demoStyle, demoSwitch, getOrder, pickProvider, submitTrx, type OrderView, type SubmitState } from "./api";
 import { leaveTo, reportHeight, tellParent } from "./embed";
 import { BkashMenuRow, HowToBody, howCaption, howClose, howKind, howTitle } from "./HowTo";
 import { ResultScreen, RESULT_STYLE_NAMES, type Phase } from "./ResultScreens";
-import { CryptoPanel } from "./CryptoPanel";
+import { CryptoPanel, CRYPTO_STYLE_NAMES } from "./CryptoPanel";
 import { bannerColor, bdt, bnDigits, clock, headerColor, mmss, PROVIDER_NAME, t, variantFor, type Lang, type Variant } from "./i18n";
 import bkashLogo from "./logos/bkash.png";
 import nagadLogo from "./logos/nagad.png";
@@ -335,6 +335,16 @@ export function PayPage() {
               </button>
             ))}
           </div>
+          {view?.crypto && (
+            <div className="flex flex-wrap items-center justify-center gap-1.5">
+              <span className="font-semibold">USDT page look:</span>
+              {CRYPTO_STYLE_NAMES.map((n, i) => (
+                <button key={n} type="button" onClick={() => demoCryptoStyle(i)} className={`rounded-md border px-2 py-0.5 font-semibold ${(view.crypto_style ?? 0) === i ? "border-amber-900 bg-amber-900 text-white" : "border-amber-700"}`}>
+                  {n}
+                </button>
+              ))}
+            </div>
+          )}
           <p>Try any TrxID of 6+ letters or numbers. REVIEW001 ends in "held for review", EXPIRED01 in "expired". USEDTRX1 shows the "already used" message; FORMATBAD1 shows the red error message.</p>
         </div>
   ) : null;
@@ -466,7 +476,7 @@ export function PayPage() {
           {screen === "ready" && view && view.status === "pending" && !view.provider && <Notice icon="bad" title={tr("notFoundTitle")} body={tr("badLink")} />}
 
           {screen === "ready" && view && view.status === "pending" && view.provider && view.crypto && (
-            <CryptoPanel view={view} lang={lang} left={left} onCopy={(text) => void copy(text)} />
+            <CryptoPanel view={view} lang={lang} left={left} style={view.crypto_style ?? 0} onCopy={(text) => void copy(text)} />
           )}
 
           {screen === "ready" && view && view.status === "pending" && view.provider && !view.crypto && (

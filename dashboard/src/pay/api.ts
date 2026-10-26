@@ -17,6 +17,8 @@ export interface OrderView {
   failed_url?: string | null;
   merchant_order_id?: string | null;
   result_style?: number;
+  /** Which of the six USDT page looks this site uses (0 = the original). */
+  crypto_style?: number;
   /** USDT deposit: the exact amount to send, the network and the receiving address. */
   crypto?: { chain: "bep20" | "trc20"; asset: "USDT"; amount: number; address: string } | null;
 }
@@ -37,6 +39,7 @@ const demoAddress = (name: string): string | null => {
 
 const demo = {
   style: Number(new URLSearchParams(window.location.search).get("style") || 0) || 0,
+  cstyle: Number(new URLSearchParams(window.location.search).get("cstyle") || 0) || 0,
   outcome: "paid" as "paid" | "review" | "expired",
   provider: (new URLSearchParams(window.location.search).get("provider") || "bkash") as string | null,
   method: (new URLSearchParams(window.location.search).get("method") || "") as string,
@@ -68,6 +71,9 @@ export function demoSwitch(provider: string, method: string) {
 export function demoStyle(n: number) {
   demo.style = n;
 }
+export function demoCryptoStyle(n: number) {
+  demo.cstyle = n;
+}
 function demoView(): OrderView {
   const w0 = demo.provider ? DEMO_WALLET[demo.provider] : null;
   const m = (demo.method === "send_money" || demo.method === "cash_out" ? demo.method : w0?.m) ?? null;
@@ -87,6 +93,7 @@ function demoView(): OrderView {
   return {
     status,
     crypto: cryptoView,
+    crypto_style: demo.cstyle,
     result_style: demo.style,
     amount: Number(new URLSearchParams(window.location.search).get("amount")) || 500,
     currency: "BDT",

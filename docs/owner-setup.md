@@ -273,3 +273,6 @@ test amount to a new wallet address first.
 8. Test with a small real transfer first (the smallest deposit is 500 taka). Check that the order turns paid, the transaction hash shows on the Crypto page, and your website received the webhook.
 
 PayTrace only reads the blockchain. It never holds keys or moves your USDT. Customers pay the network fee themselves.
+
+
+On the Websites page each site can also choose how its USDT payment page looks (six looks, section 2b). Classic is the original; Automatic gives each site its own fixed look.
