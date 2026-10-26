@@ -106,18 +106,21 @@ async function watchdog(): Promise<Response> {
       async candidates() {
         const { data: devs } = await db
           .from("devices").select("id,name,last_seen_at,approved_at").eq("status", "approved");
-        const { data: toks } = await db.from("device_push").select("device_id,token");
-        const byId = new Map((toks ?? []).map((t) => [t.device_id as string, t.token as string]));
-        return (devs ?? []).filter((d) => byId.has(d.id)).map((d) => ({ ...d, token: byId.get(d.id)! }));
+        const { data: toks } = await db.from("device_push").select("device_id,token,woken_at,wake_tries,visible_at");
+        const byId = new Map((toks ?? []).map((t) => [t.device_id as string, t]));
+        return (devs ?? []).filter((d) => byId.has(d.id)).map((d) => {
+          const t = byId.get(d.id)!;
+          return { ...d, token: t.token as string, woken_at: t.woken_at as string | null, tries: Number(t.wake_tries) || 0, visible_at: t.visible_at as string | null };
+        });
       },
-      async claim(id, cooldownMin) {
-        const cutoff = new Date(Date.now() - cooldownMin * 60_000).toISOString();
-        const { data } = await db
-          .from("device_push")
-          .update({ woken_at: new Date().toISOString() })
-          .eq("device_id", id)
-          .or(`woken_at.is.null,woken_at.lt.${cutoff}`)
-          .select("device_id");
+      async claim(id, expectedWokenAt, next) {
+        const now = new Date().toISOString();
+        const change: Record<string, unknown> = { woken_at: now, wake_tries: next.tries };
+        if (next.visible) change.visible_at = now;
+        // Only the run that still sees the push time it read may write; an overlapping run matches no row.
+        let q = db.from("device_push").update(change).eq("device_id", id);
+        q = expectedWokenAt === null ? q.is("woken_at", null) : q.eq("woken_at", expectedWokenAt);
+        const { data } = await q.select("device_id");
         return !!data?.length;
       },
       async forget(id) {
