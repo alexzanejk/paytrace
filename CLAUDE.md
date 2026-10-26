@@ -59,6 +59,9 @@ and the deployed function identical.
   lost: `delete from auth.mfa_factors where user_id = '<admin id>';` (SQL editor or MCP).
 - Leaked-password protection is a **Pro plan** feature ($25/mo) and is NOT on. Do not describe it as free.
 
+## Supabase plan (corrected 2026-10-26)
+The owner's Supabase organization is on the **Pro plan** (seen on the dashboard, project `paytrace-payments`, MICRO compute, daily backups running). Earlier notes in this file that talk about the free plan's 500k Edge Function limit, "about 5 phones is the ceiling", "ask before suggesting Pro" and "leaked-password protection is NOT on / Pro only" are STALE: Pro includes about 2M Edge Function calls a month (extra about $2 per million), so 10 phones (about 86k calls a month each at the 30 s heartbeat, plus about 43k for the watchdog) is fine and the ceiling is roughly 20 phones. Leaked-password protection is available and is simply not switched on yet (an Authentication setting; offer it to the owner). A VPS backend is not needed.
+
 ## Frontend stack (fixed)
 - Dashboard: React + TypeScript + Vite, Tailwind CSS v4 (`@theme` tokens in `dashboard/src/index.css`, no JS config),
   shadcn/ui-style components copied into `components/ui`, Lucide icons, responsive for desktop and mobile.
