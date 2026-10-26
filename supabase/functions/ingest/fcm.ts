@@ -35,12 +35,14 @@ function parseAccount(json: string | undefined): ServiceAccount | null {
 }
 
 /** The body of the message: a data message the app's WakeService receives. Short lifetime, so a phone that is
- *  switched off does not get a stale wake-up hours later. */
-export const wakeMessage = (token: string) => ({
+ *  switched off does not get a stale wake-up hours later. The "visible" kind (sent after several unanswered tries)
+ *  also carries a small notification, which phone brands deliver more reliably; tapping it opens the app. */
+export const wakeMessage = (token: string, visible = false) => ({
   message: {
     token,
     data: { type: "wake" },
-    android: { priority: "HIGH", ttl: "60s" },
+    ...(visible ? { notification: { title: "PayTrace", body: "Tap to keep PayTrace running." } } : {}),
+    android: { priority: "HIGH", ttl: visible ? "120s" : "60s" },
   },
 });
 
@@ -89,7 +91,7 @@ export function makePusher(serviceAccountJson: string | undefined, fetchImpl: ty
 
   return {
     enabled: account !== null,
-    async wake(token: string): Promise<WakeResult> {
+    async wake(token: string, visible = false): Promise<WakeResult> {
       if (!account) return "failed";
       const access = await accessToken(account);
       if (!access) return "failed";
@@ -97,7 +99,7 @@ export function makePusher(serviceAccountJson: string | undefined, fetchImpl: ty
         const res = await fetchImpl(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(account.project_id)}/messages:send`, {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${access}` },
-          body: JSON.stringify(wakeMessage(token)),
+          body: JSON.stringify(wakeMessage(token, visible)),
           signal: AbortSignal.timeout(8000),
         });
         if (res.ok) return "sent";

@@ -1,4 +1,4 @@
-import { runWake, WAKE_AFTER_SEC, type Pusher, type WakeResult, type WakeRow, type WakeStore } from "../supabase/functions/ingest/wake.ts";
+import { planWake, runWake, WAKE_AFTER_SEC, type Pusher, type WakeResult, type WakeRow, type WakeStore } from "../supabase/functions/ingest/wake.ts";
 import { makePusher, wakeMessage } from "../supabase/functions/ingest/fcm.ts";
 import { corsHeaders } from "../supabase/functions/ingest/cors.ts";
 import { cleanInfo } from "../supabase/functions/ingest/health.ts";
@@ -16,18 +16,18 @@ const row = (id: string, quietSec: number | null, extra: Partial<WakeRow> = {}):
 });
 
 function fakeStore(rows: WakeRow[], claimResult: (id: string) => boolean = () => true) {
-  const log = { claimed: [] as string[], forgot: [] as string[], events: [] as string[] };
+  const log = { claimed: [] as string[], nexts: [] as { tries: number; visible: boolean }[], forgot: [] as string[], events: [] as string[] };
   const store: WakeStore = {
     candidates: async () => rows,
-    claim: async (id) => { log.claimed.push(id); return claimResult(id); },
+    claim: async (id, _expected, next) => { log.claimed.push(id); log.nexts.push(next); return claimResult(id); },
     forget: async (id) => { log.forgot.push(id); },
     record: async (kind) => { log.events.push(kind); },
   };
   return { store, log };
 }
 const fakePush = (result: WakeResult, enabled = true) => {
-  const sent: string[] = [];
-  const p: Pusher = { enabled, wake: async (t) => { sent.push(t); return result; } };
+  const sent: { token: string; visible: boolean }[] = [];
+  const p: Pusher = { enabled, wake: async (t, visible = false) => { sent.push({ token: t, visible }); return result; } };
   return { p, sent };
 };
 
@@ -38,7 +38,9 @@ const fakePush = (result: WakeResult, enabled = true) => {
   const r = await runWake(store, p, { now: NOW });
   check("only the quiet phone is woken", r.woken === 1 && sent.length === 1 && log.claimed.join() === "quiet", log);
   check("a wake-up is recorded", log.events.join() === "phone_wake_sent");
+  check("the first push is quiet (data only) and counts as try 1", sent[0].visible === false && log.nexts[0].tries === 1 && log.nexts[0].visible === false);
 }
+check("the first push goes out after 60 seconds of silence", WAKE_AFTER_SEC === 60 && planWake(row("a", 61), NOW)?.tries === 1 && planWake(row("a", 59), NOW) === null);
 {
   const { store } = fakeStore([row("never", null, { approved_at: ago(600) }), row("new", null, { approved_at: ago(30) })]);
   const { p, sent } = fakePush("sent");
@@ -49,7 +51,7 @@ const fakePush = (result: WakeResult, enabled = true) => {
   const { store, log } = fakeStore([row("a", 500)], () => false);
   const { p, sent } = fakePush("sent");
   const r = await runWake(store, p, { now: NOW });
-  check("cool-down or overlapping run: nothing is sent", r.woken === 0 && sent.length === 0 && log.events.length === 0);
+  check("an overlapping run won: nothing is sent", r.woken === 0 && sent.length === 0 && log.events.length === 0);
 }
 {
   const { store, log } = fakeStore([row("a", 500)]);
@@ -70,9 +72,49 @@ const fakePush = (result: WakeResult, enabled = true) => {
   check("Firebase not set up: nothing happens", r.woken === 0 && sent.length === 0 && log.claimed.length === 0);
 }
 
+// ---- how hard we keep trying ----
+{
+  // Simulate a phone that stays silent: the watchdog runs once a minute and the plan is followed exactly.
+  let d = row("a", 0, { last_seen_at: ago(0), woken_at: null, tries: 0, visible_at: null });
+  const lastSeen = NOW;
+  const pushes: { min: number; mode: string; tries: number }[] = [];
+  for (let min = 0; min <= 16; min++) {
+    const now = NOW + min * 60_000;
+    const plan = planWake({ ...d }, now);
+    if (plan) {
+      pushes.push({ min, mode: plan.mode, tries: plan.tries });
+      d = { ...d, woken_at: new Date(now).toISOString(), tries: plan.tries, visible_at: plan.mode === "visible" ? new Date(now).toISOString() : d.visible_at };
+    }
+  }
+  const minutes = pushes.map((x) => x.min).join();
+  check("pushes start at 2 minutes (60 s quiet + the next run) and repeat each minute for three tries, then every 2 minutes", minutes === "1,2,3,5,7,9,11,13,15", minutes);
+  check("tries are counted 1, 2, 3, ...", pushes.map((x) => x.tries).join() === "1,2,3,4,5,6,7,8,9");
+  const visible = pushes.filter((x) => x.mode === "visible").map((x) => x.min).join();
+  check("a visible notification starts at the fourth try and then at most once per 10 minutes", visible === "5,15", visible);
+  void lastSeen;
+}
+{
+  // The phone speaks after the third push: the count starts over and the next silence is a fresh first try.
+  const woke = ago(120);
+  const answered = row("a", 90, { woken_at: woke, tries: 5, visible_at: ago(700) });
+  // last_seen (90 s ago) is later than woken_at (120 s ago) -> it answered
+  const plan = planWake(answered, NOW);
+  check("after the phone answers, the next push is a fresh quiet try 1", plan?.tries === 1 && plan.mode === "data", plan);
+}
+{
+  const justPushed = row("a", 300, { woken_at: ago(30), tries: 1 });
+  check("too soon after a push: wait", planWake(justPushed, NOW) === null);
+  const slow = row("a", 900, { woken_at: ago(100), tries: 4 });
+  const dead = row("a", 3 * 3600, { woken_at: ago(300), tries: 40 });
+  check("a phone silent for hours is only tried every 10 minutes", planWake(dead, NOW) === null && planWake({ ...dead, woken_at: ago(596) }, NOW) !== null);
+  check("after three tries the gap is two minutes", planWake(slow, NOW) === null && planWake({ ...slow, woken_at: ago(116) }, NOW)?.tries === 5);
+}
+
 // ---- the Firebase message ----
 const m = wakeMessage("TOKEN");
 check("high priority, short lifetime, data only", m.message.android.priority === "HIGH" && m.message.android.ttl === "60s" && m.message.data.type === "wake" && !("notification" in m.message));
+const mv = wakeMessage("TOKEN", true) as { message: { notification?: { title: string; body: string }; data: { type: string }; android: { priority: string; ttl: string } } };
+check("the visible kind adds a small notification and keeps the wake data", mv.message.notification?.title === "PayTrace" && mv.message.data.type === "wake" && mv.message.android.priority === "HIGH" && mv.message.android.ttl === "120s");
 check("makePusher without a key is disabled", makePusher(undefined).enabled === false && makePusher("not json").enabled === false && makePusher('{"project_id":"x"}').enabled === false);
 
 // A real (throwaway) RSA key, so signing is exercised for real.
