@@ -21,7 +21,7 @@
     <application
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
-        android:label="PayTrace"
+        android:label="支付追踪"
         android:theme="@style/Theme.PayTrace"
         android:usesCleartextTraffic="true">
 
