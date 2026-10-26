@@ -5,7 +5,8 @@
 // How hard we try (the watchdog calls this once a minute): the first push goes out when a phone has been quiet for
 // 60 seconds, then again each minute for the next two tries, then every 2 minutes for as long as it stays quiet.
 // From the fourth try a push carries a small visible notification (at most one per 10 minutes), because phone
-// brands treat those better than silent ones. A phone that speaks again starts over from the first try.
+// brands treat those better than silent ones. A phone that speaks again starts over from the first try. A phone quiet
+// for over 30 minutes (flat battery, switched off) is only tried every 10 minutes, so a dead phone does not fill the log.
 
 export interface WakeRow {
   id: string; // device id
@@ -44,6 +45,9 @@ export const WAKE_AFTER_SEC = 60;
 export const FAST_TRIES = 3;
 export const FAST_GAP_SEC = 55;
 export const SLOW_GAP_SEC = 115;
+/** After this long without a word the phone is probably off, so slow right down. */
+export const GIVE_UP_AFTER_SEC = 30 * 60;
+export const DEAD_GAP_SEC = 595;
 /** After this many unanswered pushes the next one carries a visible notification, at most once per this many seconds. */
 export const VISIBLE_AFTER_TRIES = 3;
 export const VISIBLE_GAP_SEC = 600;
@@ -67,7 +71,8 @@ export function planWake(d: WakeRow, now: number, afterSec = WAKE_AFTER_SEC): { 
   const tries = answered || wokenAt === null ? 0 : Math.max(0, d.tries ?? 0);
 
   if (wokenAt !== null && !answered) {
-    const gap = tries < FAST_TRIES ? FAST_GAP_SEC : SLOW_GAP_SEC;
+    const quiet = (now - since) / 1000;
+    const gap = tries < FAST_TRIES ? FAST_GAP_SEC : quiet >= GIVE_UP_AFTER_SEC ? DEAD_GAP_SEC : SLOW_GAP_SEC;
     if ((now - wokenAt) / 1000 < gap) return null;
   }
 

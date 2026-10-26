@@ -105,6 +105,8 @@ check("the first push goes out after 60 seconds of silence", WAKE_AFTER_SEC === 
   const justPushed = row("a", 300, { woken_at: ago(30), tries: 1 });
   check("too soon after a push: wait", planWake(justPushed, NOW) === null);
   const slow = row("a", 900, { woken_at: ago(100), tries: 4 });
+  const dead = row("a", 3 * 3600, { woken_at: ago(300), tries: 40 });
+  check("a phone silent for hours is only tried every 10 minutes", planWake(dead, NOW) === null && planWake({ ...dead, woken_at: ago(596) }, NOW) !== null);
   check("after three tries the gap is two minutes", planWake(slow, NOW) === null && planWake({ ...slow, woken_at: ago(116) }, NOW)?.tries === 5);
 }
 
