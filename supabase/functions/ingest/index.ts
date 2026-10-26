@@ -274,7 +274,7 @@ async function handle(req: Request): Promise<Response> {
     const brief = jobError
       ? null
       : (((jobData as { jobs?: Array<Record<string, unknown>> } | null)?.jobs) ?? []).map((j) => ({
-          provider: j.provider, agent: j.agent, urgency: j.urgency, balance: j.balance, balance_at: j.balance_at,
+          kind: j.kind ?? "send", provider: j.provider, agent: j.agent, urgency: j.urgency, balance: j.balance, balance_at: j.balance_at,
         }));
     return json({ success: true, message: "heartbeat ok", device_status: "approved", ...(brief ? { jobs: brief } : {}) });
   }
@@ -310,6 +310,22 @@ async function handle(req: Request): Promise<Response> {
     const { data, error } = body.action === "job_sent"
       ? await db.rpc("device_job_sent", { p_device: device.id, p_provider: String(body.provider ?? ""), p_amount: amount, p_charge: charge })
       : await db.rpc("device_job_fix", { p_device: device.id, p_id: String(body.id ?? ""), p_amount: amount, p_charge: charge });
+    if (error) {
+      console.error(body.action + " failed", error.code);
+      return json({ success: false, message: "could not save" }, 500);
+    }
+    return json({ success: true, ...((data ?? { ok: false }) as Record<string, unknown>) });
+  }
+  // Cash-in job (migration 035): the partner cashed in to the personal number and types the amount and the cash-in commission the wallet gave
+  // (it is added to the balance and no SMS is sent for it); the next Cash Out message for that wallet checks it.
+  if (body.action === "cashin_sent" || body.action === "cashin_fix") {
+    if (!device) return json({ success: false, message: "not paired" }, 403);
+    const amount = Number(body.amount);
+    const commission = body.commission == null || body.commission === "" ? 0 : Number(body.commission);
+    if (!Number.isFinite(amount) || !Number.isFinite(commission)) return json({ success: false, message: "bad_amount" }, 400);
+    const { data, error } = body.action === "cashin_sent"
+      ? await db.rpc("device_cashin_sent", { p_device: device.id, p_provider: String(body.provider ?? ""), p_amount: amount, p_commission: commission })
+      : await db.rpc("device_cashin_fix", { p_device: device.id, p_id: String(body.id ?? ""), p_amount: amount, p_commission: commission });
     if (error) {
       console.error(body.action + " failed", error.code);
       return json({ success: false, message: "could not save" }, 500);

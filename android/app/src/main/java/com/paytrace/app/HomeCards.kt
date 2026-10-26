@@ -65,6 +65,7 @@ fun StatusPill(healthy: Boolean, configured: Boolean) {
 /** "কাজ করুন এখনই": what to do, in a box, and the wallet address to do it with. */
 @Composable
 fun JobCard(job: Job, onSent: suspend (Double, Double) -> String?) {
+    val cashIn = job.isCashIn
     val clip = LocalClipboardManager.current
     var copied by remember(job.wallet) { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
@@ -108,7 +109,7 @@ fun JobCard(job: Job, onSent: suspend (Double, Double) -> String?) {
             Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
                 Text(job.instruction, Modifier.padding(16.dp), style = MaterialTheme.typography.bodyLarge)
             }
-            Text("Wallet address", style = MaterialTheme.typography.labelLarge, color = on)
+            Text(if (cashIn) "Cash in to this number" else "Wallet address", style = MaterialTheme.typography.labelLarge, color = on)
             Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
                 Row(
                     Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
@@ -124,22 +125,25 @@ fun JobCard(job: Job, onSent: suspend (Double, Double) -> String?) {
                     FilledTonalButton(onClick = { clip.setText(AnnotatedString(job.wallet)); copied = true }) { Text(if (copied) "Copied" else "Copy") }
                 }
             }
-            if (job.network.isNotBlank()) {
+            if (!cashIn && job.network.isNotBlank()) {
                 Column {
                     Text("Network: " + job.network, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = on)
                     Text("Send only on this network, or the money can be lost.", style = MaterialTheme.typography.bodySmall, color = on)
                 }
             }
-            Button(onClick = { confirm = true }, Modifier.fillMaxWidth()) { Text("I sent it") }
+            Button(onClick = { confirm = true }, Modifier.fillMaxWidth()) { Text(if (cashIn) "I did it" else "I sent it") }
         }
     }
 
     if (confirm) {
         SendDialog(
-            title = "How much did you send?",
-            text = "Type exactly what left the wallet, then the P2P charge. PayTrace checks it against the next cash-out message.",
+            title = if (cashIn) "How much did you cash in?" else "How much did you send?",
+            text = if (cashIn) "Type the exact cash-in amount, then the cash-in commission your wallet gave you for it (for example 0.38 on 100). A cash-in sends no SMS, so PayTrace checks these numbers against the next cash-out message."
+            else "Type exactly what left the wallet, then the P2P charge. PayTrace checks it against the next cash-out message.",
             initialAmount = "",
             initialCharge = "",
+            amountLabel = if (cashIn) "Cash-in amount (Tk)" else "Amount you sent (Tk)",
+            chargeLabel = if (cashIn) "Cash-in commission you got (Tk)" else "P2P charge (Tk)",
             onSubmit = onSent,
             onClose = { confirm = false },
         )
@@ -155,6 +159,8 @@ fun SendDialog(
     initialCharge: String,
     onSubmit: suspend (Double, Double) -> String?,
     onClose: () -> Unit,
+    amountLabel: String = "Amount you sent (Tk)",
+    chargeLabel: String = "P2P charge (Tk)",
 ) {
     val scope = rememberCoroutineScope()
     var amount by remember { mutableStateOf(initialAmount) }
@@ -169,12 +175,12 @@ fun SendDialog(
                 Text(text, style = MaterialTheme.typography.bodyMedium)
                 OutlinedTextField(
                     amount, { amount = it; problem = null }, Modifier.fillMaxWidth(),
-                    label = { Text("Amount you sent (Tk)") }, singleLine = true,
+                    label = { Text(amountLabel) }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 )
                 OutlinedTextField(
                     charge, { charge = it; problem = null }, Modifier.fillMaxWidth(),
-                    label = { Text("P2P charge (Tk)") }, singleLine = true,
+                    label = { Text(chargeLabel) }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 )
                 problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
@@ -323,9 +329,9 @@ fun ActivityRow(t: Transfer, onFix: suspend (Double, Double) -> String?) {
                     Text(mark, color = fg, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                 }
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                    Text("Sent " + EarningsFormat.money(t.amount), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text((if (t.isCashIn) "Cash in " else "Sent ") + EarningsFormat.money(t.amount), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     Text(
-                        EarningsFormat.provider(t.provider) + " \u00B7 charge " + EarningsFormat.money(t.charge) + (if (whenText.isNotBlank()) " \u00B7 $whenText" else ""),
+                        EarningsFormat.provider(t.provider) + (if (t.isCashIn) " \u00B7 commission " else " \u00B7 charge ") + EarningsFormat.money(t.charge) + (if (whenText.isNotBlank()) " \u00B7 $whenText" else ""),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -342,9 +348,12 @@ fun ActivityRow(t: Transfer, onFix: suspend (Double, Double) -> String?) {
     if (fixing) {
         SendDialog(
             title = "Fix the numbers",
-            text = "You can change them once. Look at your wallet history and type exactly what left the wallet.",
+            text = if (t.isCashIn) "You can change them once. Look at your cash-in receipt and type the exact amount and the commission you got."
+            else "You can change them once. Look at your wallet history and type exactly what left the wallet.",
             initialAmount = t.amount.toLong().toString(),
             initialCharge = if (t.charge == 0.0) "" else t.charge.toString(),
+            amountLabel = if (t.isCashIn) "Cash-in amount (Tk)" else "Amount you sent (Tk)",
+            chargeLabel = if (t.isCashIn) "Cash-in commission you got (Tk)" else "P2P charge (Tk)",
             onSubmit = { a, c -> onFix(a, c) },
             onClose = { fixing = false },
         )

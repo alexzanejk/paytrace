@@ -18,7 +18,7 @@ import org.json.JSONObject
 
 /** The short form of a job that rides back on every heartbeat (about every 30 seconds), enough to ring the phone and name the agent.
  *  The full job (instruction, wallet address) is shown inside the app. */
-data class JobBrief(val provider: String, val agent: String, val urgency: String, val balance: Double, val balanceAt: String)
+data class JobBrief(val provider: String, val agent: String, val urgency: String, val balance: Double, val balanceAt: String, val kind: String = "send")
 
 /** When to ring. Pure, so it is unit tested. A job rings the moment it first appears (its balance reading is new), and again every
  *  [REPEAT_MS] while it is still open, so an agent who missed it is reminded. A job that comes back after Done rings at once, because
@@ -26,7 +26,7 @@ data class JobBrief(val provider: String, val agent: String, val urgency: String
 object JobAlertPolicy {
     const val REPEAT_MS = 10 * 60_000L
 
-    fun key(j: JobBrief): String = j.provider + "|" + j.balanceAt
+    fun key(j: JobBrief): String = (if (j.kind == "cashin") "cashin|" else "") + j.provider + "|" + j.balanceAt
 
     /** Reads the heartbeat reply. Null when the reply carries no job list at all (an older server, or an error): the app then changes nothing. */
     fun parseBrief(text: String?): List<JobBrief>? = try {
@@ -45,6 +45,7 @@ object JobAlertPolicy {
                     urgency = j.optString("urgency", "normal").let { if (it == "urgent" || it == "critical") it else "normal" },
                     balance = j.optDouble("balance", 0.0),
                     balanceAt = j.optString("balance_at", ""),
+                    kind = j.optString("kind", "send").let { if (it == "cashin") it else "send" },
                 )
             }
         }
@@ -100,7 +101,7 @@ object JobAlertPolicy {
 
     /** One line per job for the notification: "Karim · bKash · Tk 12,000.00". */
     fun lines(jobs: List<JobBrief>): List<String> = jobs.map {
-        (if (it.agent.isBlank()) "" else it.agent + " · ") + EarningsFormat.provider(it.provider) + " · " + EarningsFormat.money(it.balance)
+        (if (it.agent.isBlank()) "" else it.agent + " · ") + EarningsFormat.provider(it.provider) + (if (it.kind == "cashin") " · cash in · " else " · ") + EarningsFormat.money(it.balance)
     }
 }
 
