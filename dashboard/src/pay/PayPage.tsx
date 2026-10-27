@@ -274,6 +274,79 @@ export function PayPage() {
     </section>
   );
 
+  // ---- Cash Out layout, 1:1 with the reference page's own code (measured in a browser at 450, 700 and 1200 px) ----
+  // Gap between blocks: 8 px under 600 px wide, 0 from 600 to 1023, 24 px from 1024 (the reference's q-col-gutter rules).
+  const cashBanner = (
+    <div className="flex h-[76px] items-center rounded-[4px] px-[9px] text-white" style={{ background: color }}>
+      {LOGO[provider] ? (
+        <img src={LOGO[provider]} alt="" width={60} height={60} className="size-[60px] rounded-full bg-white" />
+      ) : (
+        <span className="grid size-[60px] place-items-center rounded-full bg-white text-2xl font-bold" style={{ color }}>
+          {pname.slice(0, 1)}
+        </span>
+      )}
+      <b className="relative -top-1 pl-[6px] text-base font-bold leading-6">{`${pname.toUpperCase()} ${tr("deposit")}`}</b>
+    </div>
+  );
+  const cashWalletBox = (
+    <div className="flex h-14 items-center justify-between rounded-t-[4px] bg-black/5 pl-3 pr-3">
+      <span className="ml-[23px] text-base leading-7">{view?.wallet_number}</span>
+      <button type="button" onClick={() => void copy(view?.wallet_number ?? "")} aria-label={tr("copy")} className="text-[#006644]">
+        <svg viewBox="0 0 24 24" className="size-[27px]" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <rect x="8" y="3" width="12" height="15" rx="2" />
+          <path d="M16 21H6a2 2 0 0 1-2-2V8" />
+          <path d="M11 8h6M11 11h6M11 14h4" />
+        </svg>
+      </button>
+    </div>
+  );
+  const cashTrxBox = (
+    <div className="relative">
+      <label
+        htmlFor="trx"
+        className="pay-float-label pointer-events-none absolute left-3 text-[#9e9e9e]"
+        style={{ top: floating ? 6 : 18, fontSize: floating ? 12 : 16, lineHeight: 1.25 }}
+      >
+        {tr("placeholder")}
+      </label>
+      <input
+        id="trx"
+        value={trx}
+        onChange={(e) => setTrx(e.target.value)}
+        onFocus={() => {
+          setFocused(true);
+          setTouched(true);
+        }}
+        onBlur={() => setFocused(false)}
+        autoComplete="off"
+        autoCapitalize="characters"
+        spellCheck={false}
+        maxLength={60}
+        className="h-14 w-full bg-transparent px-3 text-base outline-none"
+        style={{ paddingTop: floating ? 18 : 0, borderRadius: 4, border: "2px solid red" }}
+      />
+    </div>
+  );
+  const cashConfirm = (
+    <div className="flex justify-center">
+      <button
+        type="button"
+        onClick={pressConfirm}
+        disabled={busy}
+        className="rounded-[10px] border border-black bg-transparent px-[55px] py-[11px] text-sm font-medium leading-6 text-black transition-colors hover:bg-neutral-200 active:bg-neutral-300 disabled:opacity-50"
+      >
+        {busy ? "…" : tr("confirm")}
+      </button>
+    </div>
+  );
+  const cashWarning = (
+    <section>
+      <p className="text-[12.8px] font-bold leading-[19.2px]">{tr("warnTitle").endsWith(":") ? tr("warnTitle") : tr("warnTitle") + ":"}</p>
+      <p className="pay-warn-pulse text-center text-[10.24px] font-bold leading-[15.36px] text-[#f44336]">{tr("warnRed")}</p>
+      <p className="text-[10.24px] leading-[15.36px] text-[#9e9e9e]">{tr("warnGray", { P: pname.toUpperCase() })}</p>
+    </section>
+  );
+
   const checkingPanel = (
     <section className="space-y-3 rounded-xl border border-neutral-200 p-4 text-center">
       <Loader2 className="mx-auto size-8 animate-spin" style={{ color: head }} />
@@ -385,7 +458,7 @@ export function PayPage() {
   }
 
   return (
-    <div data-page="form" className="min-h-screen bg-[#eceff1] sm:px-3 sm:py-8" style={{ fontFamily: FONT, color: "#222" }}>
+    <div data-page="form" className={`pay-gutter min-h-screen min-[1024px]:px-6 min-[1024px]:pt-12 ${variant === "cash" ? "bg-white" : "bg-[#eceff1]"}`} style={{ fontFamily: FONT, color: variant === "cash" ? "#000" : "#222" }}>
       {demoBar}
 
       {dim && <div className="pay-fade fixed inset-0 z-40 bg-black/45" onClick={() => (howOpen ? setHowOpen(false) : setConfirmOpen(false))} />}
@@ -402,32 +475,35 @@ export function PayPage() {
         </div>
       )}
 
-      <main data-variant={variant} className="mx-auto w-full max-w-[680px] overflow-hidden bg-white shadow-md sm:rounded-[10px]">
-        <header className="px-4 py-2 text-white min-[360px]:px-5 min-[360px]:py-2 max-[359px]:min-h-[60px] min-[360px]:min-h-[74px]" style={{ background: head }}>
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-lg font-bold leading-tight min-[360px]:text-xl">{view ? amountText : tr("loading")}</p>
-              <p className={`mt-0.5 font-bold leading-tight min-[360px]:mt-1 ${variant === "bsend" ? "text-[13px] min-[360px]:text-sm" : "text-sm min-[360px]:text-base"}`}>{view ? (view.crypto ? (lang === "bn" ? "ঠিক পরিমাণ USDT পাঠান" : "Send the exact USDT amount") : tr("sub")) : ""}</p>
+      <main data-variant={variant} className={`mx-auto w-full max-w-[680px] overflow-hidden bg-white min-[1024px]:rounded-[10px] ${variant === "cash" ? "pay-card" : "shadow-md"}`}>
+        {/* Header sizes follow the reference page's own code: a fixed 74 px bar (never grows), 16 px side padding, the amount at 20 px,
+            the hint in 16 px bold, and a 130 x 20 px mark with a small language switch under it. */}
+        <header className="flex h-[74px] items-center gap-2 px-4 text-white" style={{ background: head }}>
+          <div className="min-w-0 flex-[0_1_auto]">
+            <p className="text-[20px] font-black leading-[30px]">{view ? amountText : tr("loading")}</p>
+            <p className="text-base font-bold leading-6 tracking-[0.03125em]">
+              {view ? (view.crypto ? (lang === "bn" ? "ঠিক পরিমাণ USDT পাঠান" : "Send the exact USDT amount") : tr("sub")) : ""}
+            </p>
+          </div>
+          <div className="flex-1" />
+          <div className="flex w-[130px] shrink-0 flex-col items-center gap-2">
+            <div className="flex h-5 w-[130px] items-center justify-center gap-2" aria-label={shop}>
+              <span className="rounded-[3px] bg-white px-1.5 text-[15px] font-extrabold leading-5" style={{ color: head }}>
+                PAY
+              </span>
+              <span className="text-[13px] font-light leading-5 tracking-[0.2em]">SERVICE</span>
             </div>
-            <div className="flex shrink-0 flex-col items-end gap-1 min-[360px]:gap-1.5">
-              <div className="flex items-center gap-1.5 min-[360px]:gap-2" aria-label={shop}>
-                <span className="rounded bg-white px-1.5 py-0.5 text-[15px] font-extrabold leading-none min-[360px]:text-xl" style={{ color: head }}>
-                  PAY
-                </span>
-                <span className="text-[15px] font-light tracking-[0.14em] min-[360px]:text-xl min-[360px]:tracking-[0.2em]">SERVICE</span>
-              </div>
-              <div className="flex overflow-hidden rounded text-[11px] font-bold shadow" role="group" aria-label="Language">
-                {(["en", "bn"] as Lang[]).map((l) => (
-                  <button key={l} type="button" onClick={() => changeLang(l)} aria-pressed={lang === l} className={`px-3 py-1 ${lang === l ? "bg-neutral-300 text-neutral-800" : "bg-white text-black"}`}>
-                    {l === "en" ? "EN" : "বাং"}
-                  </button>
-                ))}
-              </div>
+            <div className="flex overflow-hidden rounded-[3px] text-[10px] font-medium leading-[17.15px] text-black shadow-[0_1px_5px_rgba(0,0,0,0.2),0_2px_2px_rgba(0,0,0,0.14),0_3px_1px_-2px_rgba(0,0,0,0.12)]" role="group" aria-label="Language">
+              {(["en", "bn"] as Lang[]).map((l) => (
+                <button key={l} type="button" onClick={() => changeLang(l)} aria-pressed={lang === l} className={`px-2 ${lang === l ? "bg-[#9e9e9e]" : "bg-white"}`}>
+                  {l === "en" ? "EN" : "বাং"}
+                </button>
+              ))}
             </div>
           </div>
         </header>
 
-        <div className="space-y-2 px-4 pb-3 pt-3 min-[360px]:px-7 min-[360px]:pb-7 min-[360px]:pt-7">
+        <div className={variant === "cash" ? "p-7" : "space-y-2 px-4 pb-3 pt-3 min-[360px]:px-7 min-[360px]:pb-7 min-[360px]:pt-7"}>
           {screen === "loading" && (
             <p className="flex items-center justify-center gap-2 py-10 text-neutral-600">
               <Loader2 className="size-5 animate-spin" /> {tr("loading")}
@@ -481,11 +557,52 @@ export function PayPage() {
 
           {screen === "ready" && view && view.status === "pending" && view.provider && !view.crypto && (
             <>
-              <p className="text-[15px] font-bold leading-snug text-[#e0392b] min-[360px]:text-base min-[360px]:leading-6">{tr("amountNote", { amount: lang === "bn" && variant === "send" ? redAmount : redAmount })}</p>
+              <p className={variant === "cash" ? "mb-[var(--g)] text-base font-bold leading-6 text-[#f44336]" : "text-[15px] font-bold leading-snug text-[#e0392b] min-[360px]:text-base min-[360px]:leading-6"}>{tr("amountNote", { amount: lang === "bn" && variant === "send" ? redAmount : redAmount })}</p>
 
               {wallProblem && !view.wallet_number && <p className="rounded bg-amber-50 p-3 text-sm text-amber-900">{tr("noWallet")}</p>}
 
-              {view.wallet_number && (variant === "cash" || variant === "bsend") && (
+              {view.wallet_number && variant === "cash" && (
+                <div className="cash-ref flex flex-col gap-[var(--g)]">
+                  <div className="flex flex-col-reverse min-[1025px]:flex-row min-[1025px]:items-end min-[1025px]:justify-between">
+                    <div className="min-[1025px]:mr-6 min-[1025px]:flex-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <p className="text-base font-bold leading-6">
+                          {tr("walletNo")}
+                          <span className="text-[#9c27b0]">*</span>
+                        </p>
+                        {timerLine}
+                      </div>
+                      <p className="text-base leading-6">{tr("walletOnly", { P: pname.toUpperCase() })}</p>
+                      {cashWalletBox}
+                    </div>
+                    <div className="min-[1025px]:w-1/2">
+                      <p className="mb-1 hidden text-base font-bold leading-[17px] min-[1025px]:block">{tr("walletProvider")}</p>
+                      {cashBanner}
+                    </div>
+                  </div>
+                  {view.trx_id && !editing ? (
+                    checkingPanel
+                  ) : (
+                    <div className="flex flex-col gap-4">
+                      <p className="text-base font-black leading-6">
+                        {tr("trxLabel")}
+                        {lang === "en" && <span className="text-[#9c27b0]"> *</span>}
+                        <span className="text-[#f44336]">{tr("required")}</span>
+                      </p>
+                      {touched && (
+                        <button type="button" onClick={() => setHowOpen(true)} className="block text-left text-sm font-bold leading-5 text-[#2196f3]">
+                          {tr("link")}
+                        </button>
+                      )}
+                      {cashTrxBox}
+                      {cashConfirm}
+                    </div>
+                  )}
+                  {cashWarning}
+                </div>
+              )}
+
+              {view.wallet_number && variant === "bsend" && (
                 <>
                   {banner}
                   <div>
