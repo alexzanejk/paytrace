@@ -29,7 +29,7 @@ export function ApiAccess() {
       must(
         await sb
           .from("api_keys")
-          .select("id,name,key_prefix,created_at,last_used_at,revoked_at,webhook_url,result_style,crypto_style,redirect_success_url,redirect_failed_url")
+          .select("id,name,key_prefix,created_at,last_used_at,revoked_at,webhook_url,result_style,crypto_style,crypto_result_style,redirect_success_url,redirect_failed_url")
           .order("created_at", { ascending: false }),
       ) as SiteKey[],
     [],
