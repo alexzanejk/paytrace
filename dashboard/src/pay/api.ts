@@ -43,8 +43,8 @@ const demo = {
   outcome: "paid" as "paid" | "review" | "expired",
   provider: (new URLSearchParams(window.location.search).get("provider") || "bkash") as string | null,
   method: (new URLSearchParams(window.location.search).get("method") || "") as string,
-  trx: null as string | null,
-  paidAt: 0,
+  trx: (new URLSearchParams(window.location.search).get("paid") === "1" ? "0x" + "ab12".repeat(16) : null) as string | null,
+  paidAt: new URLSearchParams(window.location.search).get("paid") === "1" ? Date.now() : 0,
   endsAt: Date.now() + 15 * 60_000,
   tries: 0,
 };

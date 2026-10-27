@@ -23,6 +23,7 @@ export interface SiteKey {
   webhook_url: string | null;
   result_style: number | null;
   crypto_style: number | null;
+  crypto_result_style: number | null;
   redirect_success_url: string | null;
   redirect_failed_url: string | null;
 }
@@ -101,6 +102,8 @@ export function SiteCard({ site, onChanged, onRevoke }: { site: SiteKey; onChang
   const [lookNote, setLookNote] = useState("");
   const [cLook, setCLook] = useState<string | null>(null);
   const [cNote, setCNote] = useState("");
+  const [crLook, setCrLook] = useState<string | null>(null);
+  const [crNote, setCrNote] = useState("");
   const [okUrl, setOkUrl] = useState<string | null>(null);
   const [badUrl, setBadUrl] = useState<string | null>(null);
   const [goNote, setGoNote] = useState("");
@@ -109,6 +112,17 @@ export function SiteCard({ site, onChanged, onRevoke }: { site: SiteKey; onChang
   const lookValue = look ?? (site.result_style === null ? AUTO : String(site.result_style));
 
   const cValue = cLook ?? (site.crypto_style === null ? AUTO : String(site.crypto_style));
+  // The page after a USDT payment (waiting, paid, held, expired). "Same" = follow the site's result look above.
+  const SAME = "same";
+  const crValue = crLook ?? (site.crypto_result_style === null ? SAME : String(site.crypto_result_style));
+  async function saveCryptoResultLook() {
+    setCrNote("");
+    const { error } = await sb.rpc("set_key_crypto_result_style", { p_id: site.id, p_style: crValue === SAME ? null : Number(crValue) });
+    if (error) return setCrNote(error.message);
+    setCrNote("Saved.");
+    setCrLook(null);
+    onChanged();
+  }
   async function saveCryptoLook() {
     setCNote("");
     const { error } = await sb.rpc("set_key_crypto_style", { p_id: site.id, p_style: cValue === AUTO ? null : Number(cValue) });
@@ -245,6 +259,34 @@ export function SiteCard({ site, onChanged, onRevoke }: { site: SiteKey; onChang
           <Button size="sm" onClick={() => void saveCryptoLook()} disabled={cLook === null}>Save look</Button>
           <a href={`/pay/?demo=1&provider=usdt_bep20&cstyle=${cValue === AUTO ? 0 : cValue}`} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline", size: "sm" })}>Preview</a>
           {cNote ? <span className="text-xs text-muted-foreground">{cNote}</span> : null}
+        </div>
+      </section>
+
+      <section className="grid gap-2">
+        <h4 className="text-sm font-semibold">2c. How should this site's USDT confirmation page look?</h4>
+        <p className="text-xs text-muted-foreground">
+          What a customer sees after paying in USDT: waiting for the blockchain, paid, held or expired. “Same as the result page look” follows section 2. Pick one of the six to give USDT its own look for this site.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="w-56">
+            <Select value={crValue} onValueChange={(v) => { setCrLook(v); setCrNote(""); }}>
+              <SelectTrigger aria-label={`USDT confirmation page look for ${site.name}`}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SAME}>Same as the result page look</SelectItem>
+                {RESULT_STYLE_NAMES.map((n, i) => (
+                  <SelectItem key={n} value={String(i)}>{i + 1}. {n}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button size="sm" onClick={() => void saveCryptoResultLook()} disabled={crLook === null}>Save look</Button>
+          <a
+            href={`/pay/?demo=1&provider=usdt_bep20&paid=1&style=${crValue === SAME ? (site.result_style ?? 0) : crValue}`}
+            target="_blank"
+            rel="noreferrer"
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >Preview</a>
+          {crNote ? <span className="text-xs text-muted-foreground">{crNote}</span> : null}
         </div>
       </section>
 
