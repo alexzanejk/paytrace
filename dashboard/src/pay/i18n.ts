@@ -9,6 +9,12 @@ export const PROVIDER_NAME: Record<string, string> = { bkash: "bKash", nagad: "N
 
 /** Banner colour per provider and way of paying (from the owner's recordings). */
 export function bannerColor(provider: string, variant: Variant): string {
+  // The Cash Out layout follows the reference page's own colours (bKash rgb(200,0,161), Nagad rgb(242,79,65), Rocket rgb(138,39,143)).
+  if (variant === "cash") {
+    if (provider === "bkash") return "#c800a1";
+    if (provider === "nagad") return "#f24f41";
+    if (provider === "rocket") return "#8a278f";
+  }
   if (provider === "bkash") return "#b8269c";
   if (provider === "rocket") return "#7b2d8e";
   if (provider === "upay") return "#0b6cb5";
@@ -16,7 +22,9 @@ export function bannerColor(provider: string, variant: Variant): string {
 }
 export const HEADER_GREEN = "#216a4a";
 /** The header is green for Cash Out pages and takes the provider's colour on Send Money pages. */
-export const headerColor = (provider: string, variant: Variant) => (variant === "send" ? bannerColor(provider, variant) : HEADER_GREEN);
+export const REF_GREEN = "#006644"; // the reference page's header, rgb(0, 102, 68)
+export const headerColor = (provider: string, variant: Variant) =>
+  variant === "send" ? bannerColor(provider, variant) : variant === "cash" ? REF_GREEN : HEADER_GREEN;
 
 /** Which layout a provider and way of paying use. */
 export function variantFor(provider: string, method: string | null): Variant {

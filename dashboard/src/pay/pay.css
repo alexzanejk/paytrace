@@ -84,3 +84,9 @@ html[data-framed] main {
   box-shadow: none !important;
   border-radius: 0 !important;
 }
+
+/* Cash Out layout: the reference page's own gutter rules (8 px under 600 px, none from 600 to 1023, 24 px from 1024) and its card shadow. */
+.pay-gutter { --g: 8px; }
+@media (min-width: 600px) { .pay-gutter { --g: 0px; } }
+@media (min-width: 1024px) { .pay-gutter { --g: 24px; } }
+.pay-card { box-shadow: 0 1px 5px rgba(0, 0, 0, 0.2), 0 2px 2px rgba(0, 0, 0, 0.14), 0 3px 1px -2px rgba(0, 0, 0, 0.12); }
