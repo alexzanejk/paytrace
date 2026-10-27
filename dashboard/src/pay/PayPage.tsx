@@ -385,7 +385,7 @@ export function PayPage() {
   }
 
   return (
-    <div data-page="form" className="min-h-screen bg-[#eceff1] sm:px-3 sm:py-8" style={{ fontFamily: FONT, color: "#222" }}>
+    <div data-page="form" className="min-h-screen bg-[#eceff1] min-[1024px]:px-6 min-[1024px]:pt-12" style={{ fontFamily: FONT, color: "#222" }}>
       {demoBar}
 
       {dim && <div className="pay-fade fixed inset-0 z-40 bg-black/45" onClick={() => (howOpen ? setHowOpen(false) : setConfirmOpen(false))} />}
@@ -402,27 +402,30 @@ export function PayPage() {
         </div>
       )}
 
-      <main data-variant={variant} className="mx-auto w-full max-w-[680px] overflow-hidden bg-white shadow-md sm:rounded-[10px]">
-        <header className="px-4 py-2 text-white min-[360px]:px-5 min-[360px]:py-2 max-[359px]:min-h-[60px] min-[360px]:min-h-[74px]" style={{ background: head }}>
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-lg font-bold leading-tight min-[360px]:text-xl">{view ? amountText : tr("loading")}</p>
-              <p className={`mt-0.5 font-bold leading-tight min-[360px]:mt-1 ${variant === "bsend" ? "text-[13px] min-[360px]:text-sm" : "text-sm min-[360px]:text-base"}`}>{view ? (view.crypto ? (lang === "bn" ? "ঠিক পরিমাণ USDT পাঠান" : "Send the exact USDT amount") : tr("sub")) : ""}</p>
+      <main data-variant={variant} className="mx-auto w-full max-w-[680px] overflow-hidden bg-white shadow-md min-[1024px]:rounded-[10px]">
+        {/* Header sizes follow the reference page's own code: a fixed 74 px bar (never grows), 16 px side padding, the amount at 20 px,
+            the hint in 16 px bold, and a 130 x 20 px mark with a small language switch under it. */}
+        <header className="flex h-[74px] items-center gap-2 px-4 text-white" style={{ background: head }}>
+          <div className="min-w-0 flex-[0_1_auto]">
+            <p className="text-[20px] font-bold leading-[30px]">{view ? amountText : tr("loading")}</p>
+            <p className="text-base font-bold leading-6 tracking-[0.03125em]">
+              {view ? (view.crypto ? (lang === "bn" ? "ঠিক পরিমাণ USDT পাঠান" : "Send the exact USDT amount") : tr("sub")) : ""}
+            </p>
+          </div>
+          <div className="flex-1" />
+          <div className="flex w-[130px] shrink-0 flex-col items-center gap-2">
+            <div className="flex h-5 w-[130px] items-center justify-center gap-2" aria-label={shop}>
+              <span className="rounded-[3px] bg-white px-1.5 text-[13px] font-extrabold leading-[18px]" style={{ color: head }}>
+                PAY
+              </span>
+              <span className="text-[12px] font-light leading-5 tracking-[0.2em]">SERVICE</span>
             </div>
-            <div className="flex shrink-0 flex-col items-end gap-1 min-[360px]:gap-1.5">
-              <div className="flex items-center gap-1.5 min-[360px]:gap-2" aria-label={shop}>
-                <span className="rounded bg-white px-1.5 py-0.5 text-[15px] font-extrabold leading-none min-[360px]:text-xl" style={{ color: head }}>
-                  PAY
-                </span>
-                <span className="text-[15px] font-light tracking-[0.14em] min-[360px]:text-xl min-[360px]:tracking-[0.2em]">SERVICE</span>
-              </div>
-              <div className="flex overflow-hidden rounded text-[11px] font-bold shadow" role="group" aria-label="Language">
-                {(["en", "bn"] as Lang[]).map((l) => (
-                  <button key={l} type="button" onClick={() => changeLang(l)} aria-pressed={lang === l} className={`px-3 py-1 ${lang === l ? "bg-neutral-300 text-neutral-800" : "bg-white text-black"}`}>
-                    {l === "en" ? "EN" : "বাং"}
-                  </button>
-                ))}
-              </div>
+            <div className="flex overflow-hidden rounded text-[12px] font-bold leading-4 shadow" role="group" aria-label="Language">
+              {(["en", "bn"] as Lang[]).map((l) => (
+                <button key={l} type="button" onClick={() => changeLang(l)} aria-pressed={lang === l} className={`px-3 py-[5px] ${lang === l ? "bg-neutral-300 text-neutral-800" : "bg-white text-black"}`}>
+                  {l === "en" ? "EN" : "বাং"}
+                </button>
+              ))}
             </div>
           </div>
         </header>
