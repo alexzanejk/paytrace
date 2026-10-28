@@ -28,14 +28,13 @@ export function Review() {
           .from("payments")
           .select("*")
           .in("status", ["review", "unmatched"])
-          .neq("txn_type", "cash_out")
           .order("received_at", { ascending: false })
           .limit(100),
       ) as Payment[];
       const orders = must(
         await sb
           .from("orders")
-          .select("id,order_no,expected_amount,customer_name,status")
+          .select("id,order_no,expected_amount,customer_name,status,wallet_method")
           .in("status", ["pending", "review"])
           .order("created_at", { ascending: false })
           .limit(100),
@@ -75,6 +74,8 @@ export function Review() {
           {payments.map((p) => {
             const choice = picked[p.id] ?? "";
             const order = orders.find((o) => o.id === choice);
+            // A held Cash Out receipt can only pay a deposit that asked for Cash Out (the database refuses the rest).
+            const choices = p.txn_type === "cash_out" ? orders.filter((o) => o.wallet_method === "cash_out") : orders;
             return (
               <Card key={p.id} className="flex flex-col gap-3 p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -105,12 +106,12 @@ export function Review() {
                       <SelectValue placeholder="Match to order…" />
                     </SelectTrigger>
                     <SelectContent>
-                      {orders.length === 0 ? (
+                      {choices.length === 0 ? (
                         <SelectItem value="none" disabled>
                           No open orders
                         </SelectItem>
                       ) : (
-                        orders.map((o) => (
+                        choices.map((o) => (
                           <SelectItem key={o.id} value={o.id}>
                             {o.order_no} · {tk(o.expected_amount)}
                             {o.customer_name ? ` · ${o.customer_name}` : ""}
