@@ -26,6 +26,7 @@ Spaces and lower case are tidied for you (`" bk12ab34cd "` is looked up as `BK12
 |---|---|---|---|
 | Exact ID found | 200 | `{"found": true, "provider": "bkash", "amount": 500, "currency": "BDT", "amount_matches": true}` | **Verified** (see below) |
 | Not found (or not a possible ID) | 200 | `{"found": false}` | **Unverified** |
+| Message received but held for review (could be fake) | 200 | `{"found": false, "held": true}` | **Unverified** (you may show "being checked"; never credit) |
 | Same ID on two providers and no `provider` sent | 200 | `{"found": true, "ambiguous": true, ...}` | send `provider` and ask again |
 | Wrong, missing or revoked key | 401 | `{"error": "unauthorized"}` | fix the key, or ask the owner for a new one |
 | Bad request (not JSON, no `transaction_id`, unknown provider) | 400 | `{"error": "..."}` | fix the request |
