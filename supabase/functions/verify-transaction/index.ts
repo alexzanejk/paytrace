@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
   }
   if (data?.unauthorized) return json({ error: "unauthorized" }, 401);
   if (data?.limited) return json({ error: "too many lookups, try again in a minute" }, 429, { "retry-after": "60" });
-  if (!trx || data?.found !== true) return json({ found: false });
+  if (!trx || data?.found !== true) return json(data?.held === true ? { found: false, held: true } : { found: false });
   // The same ID exists on two providers and the caller did not say which: do not guess an amount.
   if (data.ambiguous) return json({ found: true, ambiguous: true, message: "send provider to pick one" });
   const amount = Number(data.amount);
