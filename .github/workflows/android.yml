@@ -88,6 +88,8 @@ jobs:
           FP="$(grep -m1 'certificate SHA-256 digest' "$RUNNER_TEMP/sig.txt" | sed 's/.*: //')"
           mkdir -p app/build/outputs/final && cp "$APK" app/build/outputs/final/paytrace.apk
           rm -f "$KS"
+          # Later steps need to know whether this build carries the permanent key (only those may be published for updates).
+          echo "SIGNING=$KIND" >> "$GITHUB_ENV"
 
           {
             echo "### PayTrace APK build $PAYTRACE_VERSION_CODE"
@@ -108,3 +110,47 @@ jobs:
           name: paytrace-apk
           path: android/app/build/outputs/final/paytrace.apk
           if-no-files-found: error
+
+      # In-app updates (optional). Only a build signed with the PERMANENT key, only from main, and only when the Cloudflare R2
+      # secrets exist. The APK is uploaded first and the small latest.json last, so phones never see a version whose file is
+      # not there yet. Nothing is published, and the build still passes, when any of the four secrets is missing.
+      - name: Publish to the download bucket (optional)
+        if: github.ref == 'refs/heads/main' && env.SIGNING == 'permanent'
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          set -euo pipefail
+          if [ -z "$R2_ACCOUNT_ID" ] || [ -z "$R2_ACCESS_KEY_ID" ] || [ -z "$R2_SECRET_ACCESS_KEY" ] || [ -z "$R2_BUCKET" ]; then
+            echo "- Download bucket: not set up yet (R2 secrets missing), so this build was **not** published for in-app updates." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" AWS_DEFAULT_REGION=auto
+          # R2 does not take the newer automatic checksum headers.
+          export AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
+          EP="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          APK=android/app/build/outputs/final/paytrace.apk
+          CODE="$PAYTRACE_VERSION_CODE"
+
+          # Never go backwards: an older run that finishes late must not replace a newer latest.json.
+          CURRENT="$(aws s3 cp "s3://$R2_BUCKET/latest.json" - --endpoint-url "$EP" 2>/dev/null | jq -r '.version_code // 0' 2>/dev/null || echo 0)"
+          if [ "${CURRENT:-0}" -ge "$CODE" ] 2>/dev/null; then
+            echo "- Download bucket: version $CURRENT is already published, so version $CODE was left out." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          SHA="$(sha256sum "$APK" | cut -d' ' -f1)"
+          SIZE="$(stat -c %s "$APK")"
+          NOTES="$(head -c 300 android/release-notes.txt 2>/dev/null | tr '\n\r' '  ' || true)"
+          aws s3 cp "$APK" "s3://$R2_BUCKET/paytrace-$CODE.apk" --endpoint-url "$EP" \
+            --content-type application/vnd.android.package-archive --cache-control "public, max-age=31536000, immutable" --only-show-errors
+          jq -n --argjson code "$CODE" --arg apk "paytrace-$CODE.apk" --arg sha "$SHA" --argjson size "$SIZE" --arg notes "$NOTES" \
+            '{version_code:$code, apk:$apk, sha256:$sha, size:$size, notes:$notes}' > latest.json
+          aws s3 cp latest.json "s3://$R2_BUCKET/latest.json" --endpoint-url "$EP" \
+            --content-type application/json --cache-control "no-cache" --only-show-errors
+          {
+            echo "- Download bucket: **published** version 1.0.$CODE ($SIZE bytes) for in-app updates."
+            echo "  Checksum: \`$SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"

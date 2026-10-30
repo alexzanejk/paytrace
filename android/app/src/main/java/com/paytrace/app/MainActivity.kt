@@ -128,6 +128,15 @@ fun App() {
         }
     }
 
+    // A newer version of the app: looked for (at most every 6 hours) whenever the screen is shown; the banner and the Settings card offer it.
+    var updateRev by remember { mutableIntStateOf(0) }
+    val update = remember(updateRev) { Updater.available(ctx, settings) }
+    WhileVisible(Unit) {
+        val found = withContext(Dispatchers.IO) { Updater.check(ctx, settings) }
+        if (found != null) UpdateNotice.onFound(ctx, settings, found)
+        updateRev++
+    }
+
     // The phone is a plain forwarder: what to watch and what to show is managed in the web dashboard. Undo any old
     // on/off choices made here in earlier versions so nothing stays switched off with no way to see it.
     LaunchedEffect(Unit) {
@@ -203,6 +212,7 @@ fun App() {
     LaunchedEffect(tick) { unread = withContext(Dispatchers.IO) { if (SmsStore.canRead(ctx)) SmsStore.unreadTotal(ctx) else 0 } }
 
     Column(Modifier.fillMaxSize().systemBarsPadding()) {
+        if (update != null) UpdateBanner(update)
         Box(Modifier.weight(1f)) {
             when (tab) {
                 0 -> Home(
@@ -227,7 +237,7 @@ fun App() {
                 )
                 1 -> EarningsScreen(earnings)
                 2 -> MessagesScreen(tick, onOpenDashboard = { tab = 0 })
-                else -> SettingsScreen(settings, tick)
+                else -> SettingsScreen(settings, tick, onUpdateChecked = { updateRev++ })
             }
         }
         val navColors = NavigationBarItemDefaults.colors(
@@ -342,7 +352,7 @@ fun Home(
 }
 
 @Composable
-fun SettingsScreen(settings: AppSettings, tick: Int) {
+fun SettingsScreen(settings: AppSettings, tick: Int, onUpdateChecked: () -> Unit = {}) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var url by remember { mutableStateOf(settings.serverUrl) }
@@ -371,6 +381,8 @@ fun SettingsScreen(settings: AppSettings, tick: Int) {
         }
 
         SmsAppModeCard(tick)
+
+        UpdateCard(settings, onUpdateChecked)
 
         Card(Modifier.fillMaxWidth()) {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
