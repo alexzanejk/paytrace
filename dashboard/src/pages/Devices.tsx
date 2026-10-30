@@ -17,6 +17,7 @@ import { ProviderChip } from "@/components/ProviderChip";
 import { DeviceHealthBadge } from "@/components/DeviceHealthBadge";
 import { DeviceDetails } from "@/components/DeviceDetails";
 import { WalletsCard } from "@/components/WalletsCard";
+import { AppVersionCard, VersionChip } from "@/components/AppVersionCard";
 import { GROUP_CODE, GroupChoice } from "@/components/GroupChoice";
 import { CommissionCard } from "@/components/CommissionCard";
 import type { CommissionBalance, RateRow } from "@/lib/commission";
@@ -50,7 +51,10 @@ export function Devices() {
       const rates = must(await sb.from("commission_rates").select("device_id,provider,kind,rate_pct,effective_from")) as RateRow[];
       const commission = must(await sb.from("device_commission_balance").select("*")) as CommissionBalance[];
       const groups = (must(await sb.from("wallet_groups").select("name").order("name")) as { name: string }[]).map((g) => g.name);
-      return { devices, totals, balances, wallets, rates, commission, groups };
+      // The newest app version (update system). A missing table never stops the page.
+      const rel = await sb.from("app_release").select("version_code,notes").limit(1);
+      const release = (rel.data?.[0] ?? null) as { version_code: number; notes: string | null } | null;
+      return { devices, totals, balances, wallets, rates, commission, groups, release };
     },
     [day],
     { refreshMs: 10000 },
@@ -131,6 +135,13 @@ export function Devices() {
       />
 
       {wakeAllNote ? <p role="status" className="mb-4 text-sm text-muted-foreground">{wakeAllNote}</p> : null}
+
+      <AppVersionCard
+        newest={data?.release?.version_code || null}
+        notes={data?.release?.notes ?? null}
+        versions={approved.map((d) => d.info?.app_version)}
+        onChanged={refresh}
+      />
 
       <div className={`mb-6 ${STAT_GRID}`}>
         <StatCard tone="blue" label="Phones online" value={`${online} of ${approved.length}`} sub={dayLabel(day)} icon={Smartphone} />
@@ -222,6 +233,7 @@ export function Devices() {
               wallets={(data?.wallets ?? []).filter((w) => w.device_id === d.id)}
               rates={(data?.rates ?? []).filter((r) => r.device_id === d.id)}
               commission={(data?.commission ?? []).find((c) => c.device_id === d.id)}
+              newest={data?.release?.version_code || null}
               error={failed[d.id]}
               onChanged={refresh}
               onRemove={() => setStatus(d, "revoked")}
@@ -243,6 +255,7 @@ function DeviceCard({
   wallets,
   rates,
   commission,
+  newest,
   error,
   onChanged,
   onRemove,
@@ -256,6 +269,7 @@ function DeviceCard({
   wallets: DeviceWallet[];
   rates: RateRow[];
   commission: CommissionBalance | undefined;
+  newest: number | null;
   error: string | undefined;
   onChanged: () => void;
   onRemove: () => void;
@@ -313,7 +327,7 @@ function DeviceCard({
             {d.info?.battery !== undefined ? (
               <span className="inline-flex items-center gap-1"><BatteryMedium className="h-3.5 w-3.5" aria-hidden />{d.info.battery}%</span>
             ) : null}
-            {d.info?.app_version ? <span>v{d.info.app_version}</span> : null}
+            <VersionChip version={d.info?.app_version} newest={newest} />
           </p>
         </div>
         <DeviceHealthBadge device={d} />
