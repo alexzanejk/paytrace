@@ -1,0 +1,1 @@
+Update system added: the app can now update itself.

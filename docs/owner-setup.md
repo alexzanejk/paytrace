@@ -276,3 +276,24 @@ PayTrace only reads the blockchain. It never holds keys or moves your USDT. Cust
 
 
 On the Websites page each site can also choose how its USDT payment page looks (six looks, section 2b). Classic is the original; Automatic gives each site its own fixed look.
+
+## Step 9: App updates inside the app
+
+After this is set up, every new build is published automatically, and each phone shows **"Update available"** at the top of the app. The partner taps **Update now**,
+then **Install** on Android's own screen. Android always asks for that last tap; a normal app cannot install silently.
+
+**One-time setup in Cloudflare and GitHub (about 10 minutes):**
+1. Cloudflare, **R2 Object Storage**, **Create bucket**, name it `paytrace-app`.
+2. Open the bucket, **Settings**, **Custom Domains**, **Add** `app.xn--bnq875cj52amsb.click` (this is `app.` plus the web form of your domain). Wait until it says Active.
+3. R2, **Manage API tokens**, **Create API token**, permission **Object Read & Write**, limited to the bucket `paytrace-app`. Copy the Access Key ID and the Secret Access Key (shown once) and your **Account ID**.
+4. GitHub, the repo's **Settings**, **Secrets and variables**, **Actions**, add four secrets with exactly these names: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` (value `paytrace-app`).
+   Never paste these values into a chat.
+
+**How it works:** each build that uses your permanent key and runs from `main` uploads `paytrace-<number>.apk` and a small `latest.json` to the bucket (the app file first, the small file last).
+Builds without the permanent key, or without these four secrets, are never published. The words partners see under "Update available" come from the first lines of `android/release-notes.txt`; edit that file before a build.
+
+**On each phone, once:** the first time, Android asks to allow PayTrace to install apps ("Install unknown apps"). Tap Allow, go back, tap **Update now** again.
+The first phones need the new app installed by hand once (this build); after that they update themselves. Phones check for a new version when the app is open and about every 6 hours in the background, and show one quiet notification the first time.
+
+**Check it works:** the build's summary page in GitHub says "Download bucket: published version 1.0.N". Open `https://app.xn--bnq875cj52amsb.click/latest.json` in a browser; you should see the version number.
+The Phones page then shows which phones are behind, using the **Newest phone app** number (type the new build number there after each build; automatic filling comes later).

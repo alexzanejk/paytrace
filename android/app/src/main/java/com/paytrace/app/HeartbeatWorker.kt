@@ -26,6 +26,13 @@ class HeartbeatWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
             // Never let the safety net stop the heartbeat.
         }
         beat(applicationContext)
+        // Look for a newer version of the app (at most every 6 hours) and tell the phone once when there is one.
+        try {
+            val s = AppSettings(applicationContext)
+            Updater.check(applicationContext, s)?.let { UpdateNotice.onFound(applicationContext, s, it) }
+        } catch (e: Exception) {
+            // Updates are a convenience: never let them stop the heartbeat.
+        }
         // If Android stopped the always-on service, try to bring it back. It may refuse from the background; that is fine.
         MonitorService.start(applicationContext)
         return Result.success()

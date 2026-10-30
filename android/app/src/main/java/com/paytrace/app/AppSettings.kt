@@ -271,6 +271,18 @@ class AppSettings(ctx: Context) {
         get() = p.getInt("test_screen_off_min", 0)
         set(v) { p.edit().putInt("test_screen_off_min", v).apply() }
 
+    /** The newest-version file as last read from the download address (see Update.kt), when it was read, and the version
+     *  the phone has already been told about with a notification. */
+    var updateJson: String
+        get() = p.getString("update_json", "") ?: ""
+        set(v) { p.edit().putString("update_json", v).apply() }
+    var updateCheckedAt: Long
+        get() = p.getLong("update_checked_at", 0L)
+        set(v) { p.edit().putLong("update_checked_at", v).apply() }
+    var updateNotifiedCode: Int
+        get() = p.getInt("update_notified_code", 0)
+        set(v) { p.edit().putInt("update_notified_code", v).apply() }
+
     fun providerEnabled(provider: String): Boolean = p.getBoolean("prov_$provider", true)
     fun setProviderEnabled(provider: String, on: Boolean) {
         p.edit().putBoolean("prov_$provider", on).apply()
