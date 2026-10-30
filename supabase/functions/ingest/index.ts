@@ -472,9 +472,11 @@ async function handle(req: Request): Promise<Response> {
 
 // The dashboard's address is the only website allowed to call this from a browser (see cors.ts).
 const DASHBOARD_ORIGIN = new URL(DASHBOARD_URL).origin;
+// The old address keeps working beside a new one, so switching the dashboard to its own domain never locks the owner out.
+const LEGACY_DASHBOARD_ORIGIN = "https://paytrace.ashkawser54.workers.dev";
 
 Deno.serve(async (req) => {
-  const cors = corsHeaders(req.headers.get("origin"), DASHBOARD_ORIGIN);
+  const cors = corsHeaders(req.headers.get("origin"), [DASHBOARD_ORIGIN, LEGACY_DASHBOARD_ORIGIN]);
   // The browser's "may I?" question before a real request.
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
   const res = await handle(req);

@@ -3,8 +3,10 @@
 // browsers and need none of this. Only the dashboard's own address is allowed, never "any site": the admin's login
 // token is sent in a header, so another website must not be able to use it.
 
-export function corsHeaders(origin: string | null, allowedOrigin: string): Record<string, string> {
-  if (!origin || origin !== allowedOrigin) return {};
+// `allowed` is one address, or several (the dashboard's new address and its old one while the owner switches over).
+export function corsHeaders(origin: string | null, allowed: string | string[]): Record<string, string> {
+  const list = Array.isArray(allowed) ? allowed : [allowed];
+  if (!origin || !list.includes(origin)) return {};
   return {
     "access-control-allow-origin": origin,
     "access-control-allow-methods": "POST, OPTIONS",

@@ -27,6 +27,13 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const db = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 const DASHBOARD_URL = (Deno.env.get("DASHBOARD_URL") ?? "https://paytrace.ashkawser54.workers.dev").replace(/\/+$/, "");
 const DASHBOARD_ORIGIN = new URL(DASHBOARD_URL).origin;
+// The customer pay page can live on its own address (secret PAY_URL, for example https://pay.example.com). New orders get
+// pay links on it; until it is set the dashboard's address is used, exactly as before.
+const PAY_URL = (Deno.env.get("PAY_URL") ?? DASHBOARD_URL).replace(/\/+$/, "");
+const PAY_ORIGIN = new URL(PAY_URL).origin;
+// Pay links already given to customers keep working: the original address stays allowed beside any new one.
+const LEGACY_ORIGIN = "https://paytrace.ashkawser54.workers.dev";
+const PAY_ORIGINS = [...new Set([DASHBOARD_ORIGIN, PAY_ORIGIN, LEGACY_ORIGIN])];
 const MERCHANT_LIMIT_PER_MINUTE = 120; // per key
 
 const json = (body: unknown, status = 200, extra: Record<string, string> = {}) =>
@@ -68,7 +75,7 @@ async function createDeposit(req: Request, body: Record<string, unknown>): Promi
   if (data?.error) return json({ error: data.error }, 400);
   return json({
     tracking_number: data.tracking_number,
-    pay_url: `${DASHBOARD_URL}/pay/?trackingNumber=${data.tracking_number}`,
+    pay_url: `${PAY_URL}/pay/?trackingNumber=${data.tracking_number}`,
     status: data.status, expires_at: data.expires_at, group: data.group,
   });
 }
@@ -88,7 +95,7 @@ async function createCryptoDeposit(key: string, d: DepositRequest): Promise<Resp
   if (data?.error) return json({ error: data.error }, 400);
   return json({
     tracking_number: data.tracking_number,
-    pay_url: `${DASHBOARD_URL}/pay/?trackingNumber=${data.tracking_number}`,
+    pay_url: `${PAY_URL}/pay/?trackingNumber=${data.tracking_number}`,
     status: data.status, expires_at: data.expires_at, crypto: data.crypto,
   });
 }
@@ -242,9 +249,9 @@ async function handle(req: Request): Promise<Response> {
   }
 }
 
-// Only the dashboard's own address may call the pay-* routes from a browser; the website API is server to server.
+// Only our own addresses (dashboard, pay page, the original address) may call the pay-* routes from a browser; the website API is server to server.
 function cors(origin: string | null): Record<string, string> {
-  if (!origin || origin !== DASHBOARD_ORIGIN) return {};
+  if (!origin || !PAY_ORIGINS.includes(origin)) return {};
   return { "access-control-allow-origin": origin, "access-control-allow-methods": "POST, OPTIONS", "access-control-allow-headers": "content-type", "access-control-max-age": "86400", vary: "Origin" };
 }
 
