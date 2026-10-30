@@ -185,6 +185,9 @@ check("push_ready is kept as a true/false", cleanInfo({ push_ready: true }).push
   check("another website gets no permission", Object.keys(corsHeaders("https://evil.example", DASH)).length === 0);
   check("a request with no origin (the phones) gets nothing added", Object.keys(corsHeaders(null, DASH)).length === 0);
   check("a look-alike address is not allowed", Object.keys(corsHeaders(DASH + ".evil.example", DASH)).length === 0);
+  const NEW = "https://dash.example.com";
+  check("a list of addresses allows each of them", corsHeaders(NEW, [NEW, DASH])["access-control-allow-origin"] === NEW && corsHeaders(DASH, [NEW, DASH])["access-control-allow-origin"] === DASH);
+  check("a list still refuses anyone else", Object.keys(corsHeaders("https://evil.example", [NEW, DASH])).length === 0);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
