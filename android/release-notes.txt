@@ -1,1 +1,1 @@
-Update system added: the app can now update itself.
+Test build: checking that the in-app update works. Nothing else changed.
