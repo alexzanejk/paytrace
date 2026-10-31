@@ -3,7 +3,9 @@ package com.paytrace.app
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,7 +33,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -215,11 +219,16 @@ private fun ThreadView(start: ThreadSummary?, tick: Int, onBack: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Bubble(m: SmsRow) {
     val mine = !m.incoming
+    val clip = LocalClipboardManager.current
+    var copied by remember(m.id) { mutableStateOf(false) }
+    val copy = { clip.setText(AnnotatedString(m.body)); copied = true }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
         Card(
+            modifier = Modifier.combinedClickable(onClick = {}, onLongClick = { copy() }),
             colors = CardDefaults.cardColors(
                 containerColor = when {
                     m.failed -> MaterialTheme.colorScheme.errorContainer
@@ -238,6 +247,12 @@ private fun Bubble(m: SmsRow) {
                     else -> ""
                 }
                 Text(whenText(m.date) + if (state.isNotEmpty()) "  ·  $state" else "", style = MaterialTheme.typography.labelSmall)
+                Text(
+                    if (copied) "Copied" else "Copy",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable { copy() }.padding(vertical = 4.dp),
+                )
             }
         }
     }

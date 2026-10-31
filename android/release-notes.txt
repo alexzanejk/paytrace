@@ -1,1 +1,1 @@
-Test build: checking that the in-app update works. Nothing else changed.
+Messages: each message now has a Copy button (long-press also copies).
