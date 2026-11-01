@@ -111,6 +111,18 @@ fun UssdCard(settings: AppSettings, tick: Int) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
+            Text("Way to ask the wallet", style = MaterialTheme.typography.bodyMedium)
+            var dialerWay by remember { mutableStateOf(settings.ussdDialerWay) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = !dialerWay, onClick = { dialerWay = false; settings.ussdDialerWay = false }, label = { Text("Direct") })
+                FilterChip(selected = dialerWay, onClick = { dialerWay = true; settings.ussdDialerWay = true }, label = { Text("Dialer (needs Accessibility)") })
+            }
+            Text(
+                "Direct is quicker. If it keeps failing on this phone, choose Dialer: PayTrace then dials the code like a person would.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
             Text((if (pinSaved) "✓ " else "3. ") + "$label PIN" + if (pinSaved) " saved on this phone" else "", style = MaterialTheme.typography.bodyMedium)
             OutlinedTextField(
                 value = pin,

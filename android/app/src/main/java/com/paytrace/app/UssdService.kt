@@ -35,7 +35,7 @@ object UssdText {
         "busy" -> "Another check is still running."
         "network_refused" -> "The provider answered that the service is not available right now. Try again a little later."
         "too_soon" -> "A check just finished. Wait about a minute and try again."
-        "ussd_failed" -> "The network did not answer the code. PayTrace did not try again. Check the Nagad SMS, then try again later."
+        "ussd_failed" -> "The phone could not get an answer through the direct way (failure code). PayTrace did not try again. In Settings choose the Dialer way for this phone, or try the other SIM."
         "timeout" -> "The phone did not answer in time. Try again."
         "no_answer_after_pin" -> "The PIN was entered but no balance came back. PayTrace did not try the PIN again. Check the Nagad SMS, then try again later."
         "unexpected_screen" -> "The Nagad menu looked different from what PayTrace expects, so it stopped. Nothing was sent."
@@ -397,7 +397,7 @@ object UssdRunner {
         val slot = s.ussdSlotOf(provider)
         if (n == 1) {
             if (UssdApi.tooSoon()) return fail("too_soon")
-            if (UssdApi.available(app)) {
+            if (!s.ussdDialerWay && UssdApi.available(app)) {
                 if (UssdProviders.oneCode(provider)) {
                     UssdApi.run(app, slot, pin, onFinish) { viaDialer(app, provider, 1, "", onFinish, s, pin) }
                 } else {
