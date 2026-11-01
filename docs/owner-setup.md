@@ -304,7 +304,7 @@ The dashboard can ask a phone to read its Nagad balance by itself. The phone ope
 This is the first test version: it has not been tried on a real phone yet, so try it on **one** phone first, with the screen on.
 
 **On the phone (once), in the PayTrace app, Settings, "Nagad balance check from the dashboard":**
-1. **Accessibility:** tap "Open Accessibility settings", find "PayTrace Nagad balance check" and switch it on. If Android says the setting is restricted: Settings, Apps, PayTrace, the three dots at the top right, **Allow restricted settings**, then try again.
+1. **Accessibility:** tap "Open Accessibility settings", find "PayTrace Nagad balance check" and switch it on. On OnePlus, Redmi and other new phones the name may be **grey** and refuse to switch on (Android blocks this for apps installed outside the Play Store). Fix, once per phone: tap the grey name once and press OK; then in the PayTrace card tap **Open PayTrace's app page**, tap the **three dots at the top right**, choose **Allow restricted settings** and confirm (PIN or fingerprint); go back to Accessibility and switch it on. The three-dots entry only appears after you have tapped the grey name once.
 2. **Phone calls:** tap Allow (the app needs it to open `*167#`).
 3. **SIM:** choose which SIM has Nagad (SIM 1 or SIM 2).
 4. **PIN:** type the Nagad PIN on the phone and tap Save PIN. It stays encrypted on that phone only. It is never sent to the dashboard, and never type it anywhere else.

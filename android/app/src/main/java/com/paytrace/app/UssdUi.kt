@@ -69,10 +69,24 @@ fun UssdCard(settings: AppSettings, tick: Int) {
             Text((if (accessibility) "✓ " else "1. ") + "Switch on PayTrace in Accessibility", style = MaterialTheme.typography.bodyMedium)
             if (!accessibility) {
                 Text(
-                    "Tap the button, find \"PayTrace Nagad balance check\" and switch it on. If Android says it is restricted: go to Settings, Apps, PayTrace, tap the three dots, then \"Allow restricted settings\", and try again.",
+                    "Tap the button, find \"PayTrace Nagad balance check\" and switch it on.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 OutlinedButton(onClick = { ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }) { Text("Open Accessibility settings") }
+                Text(
+                    "If the name is grey and will not switch on (OnePlus, Redmi and other new phones do this for apps installed outside the Play Store): " +
+                        "1) tap the grey name once and press OK; 2) tap the button below; 3) tap the three dots at the top right and choose \"Allow restricted settings\", then confirm; " +
+                        "4) come back to Accessibility and switch it on. This is needed once per phone.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedButton(
+                    onClick = {
+                        ctx.startActivity(
+                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", ctx.packageName, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    },
+                ) { Text("Open PayTrace's app page") }
             }
 
             Text((if (call) "✓ " else "2. ") + "Allow phone calls (needed to open *167#)", style = MaterialTheme.typography.bodyMedium)
