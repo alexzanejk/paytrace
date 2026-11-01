@@ -42,6 +42,7 @@ object UssdText {
         "too_many_steps" -> "The menu took too many steps, so it stopped."
         "no_input_box", "no_send_button" -> "PayTrace could not use the phone's menu box."
         "sim_not_found" -> "Could not pick the SIM. Check the SIM number in settings."
+        "sim_no_service" -> "The SIM chosen here is grey on the phone's own screen, so it has no network and cannot be used. Choose the other SIM above, or put a working SIM in that slot."
         "dial_failed" -> "The phone could not start the code."
         "unsupported" -> "This phone's app does not know that command yet. Update the app."
         else -> "It did not work."
@@ -58,6 +59,10 @@ class UssdWindow(
     val simRows: List<AccessibilityNodeInfo>,
     val positive: AccessibilityNodeInfo? = null,
     val negative: AccessibilityNodeInfo? = null,
+    /** Everything on the screen that can be tapped, in the order the phone drew it. Used to pick a SIM on a phone whose
+     *  chooser names the networks ("Grameenphone ... No signal") instead of "SIM 1" and "SIM 2". The words usually sit on
+     *  the row's children, not the row itself, so each one's text is gathered from everything inside it. */
+    val choices: List<AccessibilityNodeInfo> = emptyList(),
 )
 
 private class Collector {
@@ -70,11 +75,10 @@ private class Collector {
      *  PayTrace does not know (another language) or are not of class Button. */
     var positive: AccessibilityNodeInfo? = null
     var negative: AccessibilityNodeInfo? = null
+    val choices = ArrayList<AccessibilityNodeInfo>()
 
-    fun window() = UssdWindow(texts.joinToString("\n"), edit, buttons, callButton, simRows, positive, negative)
+    fun window() = UssdWindow(texts.joinToString("\n"), edit, buttons, callButton, simRows, positive, negative, choices)
 }
-
-private val SIM_ROW = Regex("^\\s*SIM\\s*[12]\\b", RegexOption.IGNORE_CASE)
 
 private fun walk(n: AccessibilityNodeInfo?, c: Collector, depth: Int) {
     if (n == null || depth > 25) return
@@ -90,15 +94,28 @@ private fun walk(n: AccessibilityNodeInfo?, c: Collector, depth: Int) {
     } else {
         // Any clickable thing with a word on it counts as a button: on some phones the dialog's Send is not of class Button.
         if (cls.endsWith("Button") || (n.isClickable && !text.isNullOrBlank())) c.buttons.add(n)
+        if (n.isClickable && !cls.endsWith("Button")) c.choices.add(n)
         if (cls.endsWith("TextView") && !text.isNullOrBlank()) c.texts.add(text)
         // The dialer's Call button is an icon: found by its description, its own text or its view id (any of the three).
         if (c.callButton == null &&
             (UssdLabels.isCallButton(n.contentDescription?.toString()) || UssdLabels.isCallButton(text) || UssdLabels.isCallButtonId(n.viewIdResourceName)) &&
             (n.isClickable || n.parent?.isClickable == true)
         ) c.callButton = n
-        if (text != null && SIM_ROW.containsMatchIn(text)) c.simRows.add(n)
+        if (UssdLabels.namesSim(text, 0) || UssdLabels.namesSim(text, 1)) c.simRows.add(n)
     }
     for (i in 0 until n.childCount) walk(n.getChild(i), c, depth + 1)
+}
+
+/** Everything written inside one node, joined: a row of the SIM chooser keeps its words on its children. */
+private fun allWords(n: AccessibilityNodeInfo?, depth: Int = 0): String {
+    if (n == null || depth > 6) return ""
+    val mine = n.text?.toString()?.trim().orEmpty()
+    val kids = StringBuilder()
+    for (i in 0 until n.childCount) {
+        val k = allWords(n.getChild(i), depth + 1)
+        if (k.isNotBlank()) { if (kids.isNotEmpty()) kids.append(' '); kids.append(k) }
+    }
+    return listOf(mine, kids.toString()).filter { it.isNotBlank() }.joinToString(" ")
 }
 
 private fun clickUp(node: AccessibilityNodeInfo?): Boolean {
@@ -287,7 +304,7 @@ object UssdSession {
         val f = synchronized(this) { flow } ?: return
         val now = SystemClock.elapsedRealtime()
         val lower = w.text.lowercase()
-        val chooser = lower.contains("choose sim") || lower.contains("select sim")
+        val chooser = UssdLabels.asksWhichSim(w.text)
         val ussdScreen = f.recognises(w.text)
         // The dialer is open with *167# typed in: press its Call button, as a person does. Looked for again on every tick.
         if (phase == 0) {
@@ -302,10 +319,34 @@ object UssdSession {
         // "Choose SIM for this call": tap the SIM picked in settings.
         if (chooser) {
             simTries++
-            val want = "sim" + (slot + 1)
-            val row = w.simRows.firstOrNull { it.text?.toString()?.lowercase()?.replace(" ", "")?.startsWith(want) == true } ?: w.simRows.getOrNull(slot)
-            if (row != null && clickUp(row)) { note("SIM " + (slot + 1) + " tapped"); lastActionAt = now; return }
-            if (simTries >= MAX_SIM_TRIES) finish(UssdOutcome(false, null, "sim_not_found"))
+            // Written down once, so a chooser PayTrace cannot work out can be read afterwards (no long numbers).
+            noteOnce("chooser", "SIM question: " + UssdRedact.snippet(w.text))
+            // First a row that names the SIM ("SIM 2", "SIM2 +880 ..."). Failing that, the rows of the dialog in the order
+            // the phone drew them, which is SIM 1 then SIM 2 on every chooser seen so far; only when there are exactly two,
+            // so a one-off dialog can never be tapped by position.
+            // The Vivo writes "SIM1 +880 ..." on the row itself; the Redmi writes "Grameenphone", the number and "No signal"
+            // on the row's children, so each row's words are gathered from everything inside it.
+            val nodes = if (w.simRows.isNotEmpty()) w.simRows else w.choices.filter { UssdLabels.isChoice(allWords(it)) }
+            val rows = nodes.map { SimRow(allWords(it), it.isEnabled) }
+            when (val pick = UssdSimPick.choose(rows, slot)) {
+                is UssdSimPick.Pick.Tap -> {
+                    if (clickUp(nodes[pick.index])) {
+                        note("SIM " + (slot + 1) + " tapped")
+                        lastActionAt = now
+                        return
+                    }
+                }
+                is UssdSimPick.Pick.Stop -> {
+                    note("SIM " + (slot + 1) + " is grey on this screen: " + UssdRedact.snippet(w.text))
+                    finish(UssdOutcome(false, null, pick.reason))
+                    return
+                }
+                is UssdSimPick.Pick.Wait -> Unit
+            }
+            if (simTries >= MAX_SIM_TRIES) {
+                note("could not pick the SIM on this screen: " + UssdRedact.snippet(w.text))
+                finish(UssdOutcome(false, null, "sim_not_found"))
+            }
             return
         }
         // The phone's own refusal of the code.

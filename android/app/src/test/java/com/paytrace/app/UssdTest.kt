@@ -319,4 +319,81 @@ class UssdTest {
         assertEquals(1, UssdDirectHealth.count(0, refused))
         assertEquals(0, UssdDirectHealth.count(1, "0.0s direct USSD request, SIM 1\n2.0s balance read"))
     }
+
+    @Test fun theSimQuestionIsRecognisedHoweverThePhoneWordsIt() {
+        // The owner's Vivo, word for word.
+        assertTrue(UssdLabels.asksWhichSim("Choose SIM for this call\nSIM1 +880 1706-630756\nSIM2 +880 1345-567224"))
+        // MIUI and other brands.
+        assertTrue(UssdLabels.asksWhichSim("Select SIM card"))
+        assertTrue(UssdLabels.asksWhichSim("SIM card"))
+        assertTrue(UssdLabels.asksWhichSim("Call with"))
+        // No words PayTrace knows, but both SIMs are named: still the question.
+        assertTrue(UssdLabels.asksWhichSim("Grameenphone SIM 1\nRobi SIM 2"))
+        // Not the question.
+        assertTrue(!UssdLabels.asksWhichSim("Enter PIN:"))
+        assertTrue(!UssdLabels.asksWhichSim("1. Cash In 2. Register Customer"))
+        assertTrue(!UssdLabels.asksWhichSim(null))
+    }
+
+    @Test fun aRowThatNamesASimIsFoundWhateverElseIsOnIt() {
+        assertTrue(UssdLabels.namesSim("SIM1 +880 1706-630756", 0))
+        assertTrue(UssdLabels.namesSim("SIM 2  Robi", 1))
+        assertTrue(!UssdLabels.namesSim("SIM 2  Robi", 0))
+        assertTrue(!UssdLabels.namesSim("Grameenphone", 0))
+        assertTrue(!UssdLabels.namesSim(null, 0))
+    }
+
+    @Test fun aButtonIsNeverTakenForAChoice() {
+        // So picking a SIM by its position can never land on Cancel.
+        assertTrue(UssdLabels.isChoice("Grameenphone"))
+        assertTrue(UssdLabels.isChoice("SIM 1"))
+        assertTrue(!UssdLabels.isChoice("Cancel"))
+        assertTrue(!UssdLabels.isChoice("CANCEL"))
+        assertTrue(!UssdLabels.isChoice("OK"))
+        assertTrue(!UssdLabels.isChoice(" "))
+        assertTrue(!UssdLabels.isChoice(null))
+    }
+
+    @Test fun aGreySimIsNeverTappedAndTheRunSaysWhy() {
+        // The owner's Redmi: both phones show the Google dialer's "Choose SIM for this call", but one SIM is in the phone
+        // without a network, so the phone draws it grey. Tapping it does nothing, and the run used to run out of time.
+        val grey2 = listOf(SimRow("SIM1 +880 1706-630756", true), SimRow("SIM2", false))
+        assertEquals(UssdSimPick.Pick.Tap(0), UssdSimPick.choose(grey2, 0))
+        assertEquals(UssdSimPick.Pick.Stop("sim_no_service"), UssdSimPick.choose(grey2, 1))
+
+        // Both working: the row that names the wanted SIM wins, wherever it sits.
+        val both = listOf(SimRow("SIM 2  Robi", true), SimRow("SIM 1  Grameenphone", true))
+        assertEquals(UssdSimPick.Pick.Tap(1), UssdSimPick.choose(both, 0))
+        assertEquals(UssdSimPick.Pick.Tap(0), UssdSimPick.choose(both, 1))
+
+        // No row names a SIM (some phones show only the networks): first row is SIM 1, second is SIM 2.
+        val networks = listOf(SimRow("Grameenphone", true), SimRow("Robi", false))
+        assertEquals(UssdSimPick.Pick.Tap(0), UssdSimPick.choose(networks, 0))
+        assertEquals(UssdSimPick.Pick.Stop("sim_no_service"), UssdSimPick.choose(networks, 1))
+
+        // Anything else is left alone rather than guessed at.
+        assertEquals(UssdSimPick.Pick.Wait, UssdSimPick.choose(listOf(SimRow("Grameenphone", true)), 0))
+        assertEquals(UssdSimPick.Pick.Wait, UssdSimPick.choose(emptyList(), 0))
+        assertEquals(UssdSimPick.Pick.Wait, UssdSimPick.choose(listOf(SimRow("a", true), SimRow("b", true), SimRow("c", true)), 1))
+    }
+
+    @Test fun theOwnersTwoRealSimChoosersBothWork() {
+        // Photographed side by side, 2026-11-02. Same dialog title on both phones, different rows.
+        // The Vivo names the SIMs.
+        val vivo = listOf(SimRow("1 SIM1 +880 1706-630756", true), SimRow("2 SIM2 +880 1345-567224", true))
+        assertEquals(UssdSimPick.Pick.Tap(0), UssdSimPick.choose(vivo, 0))
+        assertEquals(UssdSimPick.Pick.Tap(1), UssdSimPick.choose(vivo, 1))
+
+        // The Redmi names the network on both rows, and the SIM with no network says so in words.
+        val redmi = listOf(
+            SimRow("1 Grameenphone +880 1721-627183 No signal", true),
+            SimRow("2 Grameenphone +880 1732-533847", true),
+        )
+        // Nagad is on SIM 2 there, which is the row PayTrace must tap.
+        assertEquals(UssdSimPick.Pick.Tap(1), UssdSimPick.choose(redmi, 1))
+        // Choosing the other one is refused rather than tapped: "No signal" means no call can go out on it.
+        assertEquals(UssdSimPick.Pick.Stop("sim_no_service"), UssdSimPick.choose(redmi, 0))
+        assertTrue(!UssdSimPick.usable(redmi[0]))
+        assertTrue(UssdSimPick.usable(redmi[1]))
+    }
 }
