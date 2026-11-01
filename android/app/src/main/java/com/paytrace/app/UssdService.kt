@@ -63,6 +63,8 @@ class UssdWindow(
      *  chooser names the networks ("Grameenphone ... No signal") instead of "SIM 1" and "SIM 2". The words usually sit on
      *  the row's children, not the row itself, so each one's text is gathered from everything inside it. */
     val choices: List<AccessibilityNodeInfo> = emptyList(),
+    /** The window's own top node, for finding rows by the shape of the screen when nothing on them can be clicked. */
+    val root: AccessibilityNodeInfo? = null,
 )
 
 private class Collector {
@@ -76,8 +78,9 @@ private class Collector {
     var positive: AccessibilityNodeInfo? = null
     var negative: AccessibilityNodeInfo? = null
     val choices = ArrayList<AccessibilityNodeInfo>()
+    var root: AccessibilityNodeInfo? = null
 
-    fun window() = UssdWindow(texts.joinToString("\n"), edit, buttons, callButton, simRows, positive, negative, choices)
+    fun window() = UssdWindow(texts.joinToString("\n"), edit, buttons, callButton, simRows, positive, negative, choices, root)
 }
 
 private fun walk(n: AccessibilityNodeInfo?, c: Collector, depth: Int) {
@@ -132,6 +135,40 @@ private fun tapOnScreen(svc: AccessibilityService?, node: AccessibilityNodeInfo?
     } catch (e: Exception) {
         false
     }
+}
+
+/** The two rows of a SIM chooser, found by the shape of the screen instead of by any word on it.
+ *
+ *  WHY: on the owner's Redmi (run log, 2026-11-02) the chooser is read perfectly — "Choose SIM for this call",
+ *  "Grameenphone ... No signal", "Grameenphone ..." — but no row could be picked, because the rows of a list report no
+ *  click of their own (the list itself takes the tap), and nothing on them says "SIM". So the rows are looked for as what
+ *  they are: the deepest place on the screen that holds exactly two things, both with words on them, neither of them the
+ *  question itself. */
+private fun twoRows(root: AccessibilityNodeInfo?): List<AccessibilityNodeInfo>? {
+    var best: List<AccessibilityNodeInfo>? = null
+    var bestLength = 0
+
+    fun look(n: AccessibilityNodeInfo?, depth: Int) {
+        if (n == null || depth > 20) return
+        if (n.childCount == 2) {
+            val a = n.getChild(0)
+            val b = n.getChild(1)
+            val ta = allWords(a)
+            val tb = allWords(b)
+            // Both sides must carry words, and neither may be the question itself (that would be title beside list).
+            if (a != null && b != null && ta.isNotBlank() && tb.isNotBlank() &&
+                !UssdLabels.asksWhichSim(ta) && !UssdLabels.asksWhichSim(tb)
+            ) {
+                // The list of SIMs holds more words than any single row inside it, so the wordiest pair is the list.
+                val length = ta.length + tb.length
+                if (length > bestLength) { bestLength = length; best = listOf(a, b) }
+            }
+        }
+        for (i in 0 until n.childCount) look(n.getChild(i), depth + 1)
+    }
+
+    look(root, 0)
+    return best
 }
 
 private fun clickUp(node: AccessibilityNodeInfo?): Boolean {
@@ -282,6 +319,7 @@ object UssdSession {
         for (r in roots) {
             val pkg = r.packageName?.toString() ?: continue
             val c = Collector()
+            c.root = r
             walk(r, c, 0)
             val w = c.window()
             if (w.text.isBlank() && w.edit == null && w.callButton == null) continue
@@ -346,7 +384,15 @@ object UssdSession {
             // so a one-off dialog can never be tapped by position.
             // The Vivo writes "SIM1 +880 ..." on the row itself; the Redmi writes "Grameenphone", the number and "No signal"
             // on the row's children, so each row's words are gathered from everything inside it.
-            val nodes = if (w.simRows.isNotEmpty()) w.simRows else w.choices.filter { UssdLabels.isChoice(allWords(it)) }
+            val nodes = when {
+                w.simRows.isNotEmpty() -> w.simRows
+                else -> {
+                    val tappable = w.choices.filter { UssdLabels.isChoice(allWords(it)) }
+                    // A row of a list reports no click of its own, so when nothing tappable is found the two rows are
+                    // looked for by the shape of the screen and touched in the middle instead.
+                    if (tappable.size == 2) tappable else twoRows(w.root) ?: tappable
+                }
+            }
             val rows = nodes.map { SimRow(allWords(it), it.isEnabled) }
             when (val pick = UssdSimPick.choose(rows, slot)) {
                 is UssdSimPick.Pick.Tap -> {
