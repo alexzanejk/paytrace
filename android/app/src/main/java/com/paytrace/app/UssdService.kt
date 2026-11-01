@@ -573,6 +573,14 @@ object UssdSetup {
  *  first; the PIN is read from the encrypted store only now and kept in memory for this run. A failed dialer try before the PIN was
  *  really submitted is tried once more; after the PIN, never. */
 object UssdRunner {
+    private const val RUN_MS = 90_000L
+    private const val DIAL_FALLBACK_MS = 3_500L
+    private const val RETRY_PAUSE_MS = 4_000L
+    /** After a bKash session was opened by the direct way and could not go on, let the network drop it before the dialer way starts. */
+    private const val SWITCH_PAUSE_MS = 4_000L
+    /** After switching PayTrace back on in Accessibility settings, the time Android needs to start the service. */
+    private const val HEAL_PAUSE_MS = 2_500L
+
     fun run(ctx: Context, provider: String, onFinish: (UssdOutcome) -> Unit) {
         val app = ctx.applicationContext
         fun go() = attempt(app, provider, 1, "") { outcome -> onFinish(afterRun(app, outcome)) }
