@@ -19,6 +19,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -52,6 +54,8 @@ fun UssdCard(settings: AppSettings, tick: Int) {
     val accessibility = UssdSetup.accessibilityOn(ctx)
     val call = UssdSetup.callPermission(ctx)
     val last = remember(tick, running) { parseLast(settings.ussdLast) }
+    val steps = remember(tick, running) { lastTrace(settings.ussdLast) }
+    var details by remember { mutableStateOf(false) }
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -128,6 +132,10 @@ fun UssdCard(settings: AppSettings, tick: Int) {
                 },
             ) { Text(if (running) "Checking… keep the screen on" else "Check Nagad balance now") }
             if (last != null) Text(last, style = MaterialTheme.typography.bodyMedium)
+            if (steps.isNotBlank()) {
+                TextButton(onClick = { details = !details }) { Text(if (details) "Hide what happened" else "Show what happened (send this if it fails)") }
+                if (details) Text(steps, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+            }
         }
     }
 }
@@ -142,4 +150,10 @@ private fun parseLast(json: String): String? {
     } catch (e: Exception) {
         null
     }
+}
+
+/** The step-by-step log of the last run (never contains the PIN), for sending to support when something fails. */
+private fun lastTrace(json: String): String {
+    if (json.isBlank()) return ""
+    return try { JSONObject(json).optString("trace", "") } catch (e: Exception) { "" }
 }

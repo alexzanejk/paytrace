@@ -82,11 +82,29 @@ class NagadBalanceFlow(private val pin: () -> String) {
     companion object { const val MAX_SCREENS = 6 }
 }
 
-/** Labels of buttons the dialer shows, judged from their accessibility description. Pure, unit tested. */
+/** Labels of buttons the dialer shows, judged from their accessibility description, text or view id. Pure, unit tested. */
 object UssdLabels {
-    /** The green Call button of the dialer (an icon; the description is "Dial" or "Call"). Never "Call history" or a contact's call button. */
-    fun isCallButton(description: String?): Boolean {
-        val d = description?.trim()?.lowercase() ?: return false
-        return d == "dial" || d == "call" || d == "make a call" || d == "voice call"
+    private val CALL_WORDS = setOf("dial", "call", "make a call", "voice call", "start call", "কল", "কল করুন")
+    private val CALL_IDS = listOf("dialpad_floating_action_button", "dial_button", "dialbutton", "call_button", "callbutton", "btn_call", "btn_dial", "fab_dial", "dialpad_fab")
+
+    /** The dialer's Call button (an icon; its description or text is "Dial" or "Call"). Never "Call history" or a contact's call button. */
+    fun isCallButton(label: String?): Boolean {
+        val d = label?.trim()?.lowercase() ?: return false
+        return d in CALL_WORDS
     }
+
+    /** The same button found by its view id, for dialers that give the icon no description. */
+    fun isCallButtonId(id: String?): Boolean {
+        val last = id?.substringAfterLast('/')?.substringAfterLast(':')?.lowercase() ?: return false
+        return last.isNotEmpty() && CALL_IDS.any { last.contains(it) }
+    }
+}
+
+/** When a failed run may be tried once more by itself. Never after the PIN was really submitted (a repeated PIN can lock the
+ *  wallet), never for a missing setup, and only once. */
+object UssdRetry {
+    private val NEVER = setOf("not_allowed", "no_accessibility", "no_call_permission", "no_pin", "busy", "unsupported", "no_answer_after_pin")
+
+    fun shouldRetry(error: String?, ok: Boolean, pinSent: Boolean, attempt: Int): Boolean =
+        !ok && !pinSent && attempt < 2 && error != null && error !in NEVER
 }

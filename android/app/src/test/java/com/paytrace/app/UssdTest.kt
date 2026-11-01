@@ -115,4 +115,33 @@ class UssdTest {
         assertTrue(!UssdLabels.isCallButton(null))
         assertTrue(!UssdLabels.isCallButton(""))
     }
+
+    @Test fun findsTheCallButtonByTextOrByViewIdToo() {
+        assertTrue(UssdLabels.isCallButton("কল"))
+        assertTrue(UssdLabels.isCallButtonId("com.google.android.dialer:id/dialpad_floating_action_button"))
+        assertTrue(UssdLabels.isCallButtonId("com.android.contacts:id/dial_button"))
+        assertTrue(UssdLabels.isCallButtonId("com.samsung.android.dialer:id/call_button"))
+        assertTrue(!UssdLabels.isCallButtonId("com.google.android.dialer:id/dialpad_key_one"))
+        assertTrue(!UssdLabels.isCallButtonId("com.google.android.dialer:id/call_history_tab"))
+        assertTrue(!UssdLabels.isCallButtonId(null))
+        assertTrue(!UssdLabels.isCallButtonId(""))
+    }
+
+    @Test fun aFailedRunIsTriedOnceMoreOnlyBeforeThePin() {
+        // Before the PIN was submitted a timing failure may be tried again, once.
+        assertTrue(UssdRetry.shouldRetry("timeout", ok = false, pinSent = false, attempt = 1))
+        assertTrue(UssdRetry.shouldRetry("no_send_button", ok = false, pinSent = false, attempt = 1))
+        assertTrue(UssdRetry.shouldRetry("sim_not_found", ok = false, pinSent = false, attempt = 1))
+        assertTrue(!UssdRetry.shouldRetry("timeout", ok = false, pinSent = false, attempt = 2))
+        // After the PIN went in: never, whatever the error.
+        assertTrue(!UssdRetry.shouldRetry("timeout", ok = false, pinSent = true, attempt = 1))
+        assertTrue(!UssdRetry.shouldRetry("unexpected_screen", ok = false, pinSent = true, attempt = 1))
+        assertTrue(!UssdRetry.shouldRetry("no_answer_after_pin", ok = false, pinSent = false, attempt = 1))
+        // A missing setup cannot be fixed by trying again; a success is not retried.
+        assertTrue(!UssdRetry.shouldRetry("no_pin", ok = false, pinSent = false, attempt = 1))
+        assertTrue(!UssdRetry.shouldRetry("not_allowed", ok = false, pinSent = false, attempt = 1))
+        assertTrue(!UssdRetry.shouldRetry("no_accessibility", ok = false, pinSent = false, attempt = 1))
+        assertTrue(!UssdRetry.shouldRetry(null, ok = true, pinSent = false, attempt = 1))
+        assertTrue(!UssdRetry.shouldRetry(null, ok = false, pinSent = false, attempt = 1))
+    }
 }

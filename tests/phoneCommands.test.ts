@@ -19,6 +19,7 @@ check("running wording", commandLine({ ...base, status: "running" }, money, when
 check("done shows the balance and time", commandLine({ ...base, status: "done", balance: 17200.42, finished_at: "2026-11-01T10:01:00Z" }, money, when) === "Nagad balance Tk 17200.42 as of @2026-11-01T10:01:00Z");
 check("failed shows the reason", commandLine({ ...base, status: "failed", error: "unexpected_screen", finished_at: "2026-11-01T10:01:00Z" }, money, when).includes("Nothing was sent"));
 check("expired is explained", errorText("expired").includes("offline"));
+check("no answer after the PIN is explained and not retried", errorText("no_answer_after_pin").includes("did not try the PIN again"));
 check("unknown error code falls back", errorText("zzz") === errorText("failed"));
 check("missing error code falls back", errorText(null) === errorText("failed"));
 check("no command gives an empty line", commandLine(null, money, when) === "");
