@@ -294,7 +294,8 @@ class UssdTest {
         assertTrue(!UssdDirectHealth.directFailed(dialerOnly))
 
         // Two failures in a row are enough; one is not, and a run that works starts the count again.
-        assertEquals(1, UssdDirectHealth.count(0, failed))
+        // "failure code -1" is the one that can never work here, so it counts straight to the end (see the log test).
+        assertEquals(UssdDirectHealth.ENOUGH, UssdDirectHealth.count(0, failed))
         assertEquals(2, UssdDirectHealth.count(1, refused))
         assertEquals(0, UssdDirectHealth.count(1, worked))
         assertEquals(0, UssdDirectHealth.count(1, dialerOnly))

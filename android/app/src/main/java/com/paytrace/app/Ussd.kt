@@ -34,6 +34,10 @@ object NagadUssd {
      *  the network answers with the balance directly). Null unless the PIN is 4 to 8 digits, so nothing else (a "*", a "#")
      *  can ever be slipped into a code the phone sends. */
     fun balanceCode(pin: String): String? = if (PIN.matches(pin)) "*167*6*1*$pin#" else null
+
+    /** The balance ONLY when the words are a plain balance answer. Used where text is read in bulk (the phone log), so a
+     *  cash-in receipt, which also prints a balance, can never be taken for the answer to a balance enquiry. */
+    fun balanceOnly(text: String): Double? = if (classify(text) == UssdScreen.BALANCE) balanceOf(text) else null
     private val PIN = Regex("^[0-9]{4,8}$")
 
     /** Anything that moves or confirms money. The balance flow must never be on such a screen. */
@@ -110,6 +114,9 @@ object BkashUssd {
 
     fun balanceOf(text: String): Double? =
         BALANCE.find(text)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
+
+    /** As NagadUssd.balanceOnly: only a plain balance answer counts. */
+    fun balanceOnly(text: String): Double? = if (classify(text) == UssdScreen.BALANCE) balanceOf(text) else null
 
     /** Anything that moves or confirms money. The balance flow must never be on such a screen. */
     private fun mentionsMoneyMove(t: String): Boolean =

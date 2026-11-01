@@ -77,7 +77,7 @@ object UssdApi {
             // The log is written a moment after the answer arrives.
             main.postDelayed({
                 if (finished.get()) return@postDelayed
-                val b = try { UssdLogRead.balanceIn(UssdLogs.lines(), NagadUssd::balanceOf) } catch (e: Exception) { null }
+                val b = try { UssdLogRead.balanceIn(UssdLogs.lines(), NagadUssd::balanceOnly) } catch (e: Exception) { null }
                 if (b != null) { note("balance read from the phone log"); finish(UssdOutcome(true, b, null)) }
                 else { note("the phone log had no balance either"); finish(UssdOutcome(false, null, fallback)) }
             }, LOG_PAUSE_MS)
