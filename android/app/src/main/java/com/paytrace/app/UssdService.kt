@@ -573,43 +573,6 @@ object UssdSetup {
  *  first; the PIN is read from the encrypted store only now and kept in memory for this run. A failed dialer try before the PIN was
  *  really submitted is tried once more; after the PIN, never. */
 object UssdRunner {
-    /** The phone's own name for the SIM in [slot]. Putting it on the call means the phone does NOT ask which SIM to use:
-     *  the chooser never appears, which is the step every brand words differently. Null when it cannot be worked out, and
-     *  then the chooser is answered as before. */
-    @Suppress("DEPRECATION")
-    private fun simAccount(app: Context, slot: Int): android.telecom.PhoneAccountHandle? {
-        return try {
-            if (ContextCompat.checkSelfPermission(app, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) return null
-            val sm = app.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as android.telephony.SubscriptionManager
-            val info = sm.getActiveSubscriptionInfoForSimSlotIndex(slot) ?: return null
-            val tm = app.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-            val mine = tm.callCapablePhoneAccounts
-            // Most phones name the handle after the subscription; otherwise the handles come in SIM order.
-            mine.firstOrNull { it.id == info.subscriptionId.toString() }
-                ?: (if (mine.size == 2) mine.getOrNull(slot) else null)
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    /** Puts the chosen SIM on an intent, where the phone allows it. */
-    private fun withSim(intent: Intent, app: Context, slot: Int): Intent {
-        val account = simAccount(app, slot)
-        if (account != null) {
-            intent.putExtra(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, account)
-            UssdSession.note("call set to SIM " + (slot + 1) + ", so the phone should not ask")
-        }
-        return intent
-    }
-
-    private const val RUN_MS = 90_000L
-    private const val DIAL_FALLBACK_MS = 3_500L
-    private const val RETRY_PAUSE_MS = 4_000L
-    /** After a bKash session was opened by the direct way and could not go on, let the network drop it before the dialer way starts. */
-    private const val SWITCH_PAUSE_MS = 4_000L
-    /** After switching PayTrace back on in Accessibility settings, the time Android needs to start the service. */
-    private const val HEAL_PAUSE_MS = 2_500L
-
     fun run(ctx: Context, provider: String, onFinish: (UssdOutcome) -> Unit) {
         val app = ctx.applicationContext
         fun go() = attempt(app, provider, 1, "") { outcome -> onFinish(afterRun(app, outcome)) }
