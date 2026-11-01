@@ -42,6 +42,7 @@ object UssdText {
         "too_many_steps" -> "The menu took too many steps, so it stopped."
         "no_input_box", "no_send_button" -> "PayTrace could not use the phone's menu box."
         "sim_not_found" -> "Could not pick the SIM. Check the SIM number in settings."
+        "dialled_as_call" -> "The phone turned the menu code into an ordinary call instead of opening the menu. PayTrace stopped it. Try the check again."
         "sim_no_service" -> "The SIM chosen here is grey on the phone's own screen, so it has no network and cannot be used. Choose the other SIM above, or put a working SIM in that slot."
         "dial_failed" -> "The phone could not start the code."
         "unsupported" -> "This phone's app does not know that command yet. Update the app."
@@ -422,6 +423,12 @@ object UssdSession {
             }
             return
         }
+        // The code went out as an ordinary call with its hash lost, so no menu will ever come: say so at once.
+        if (!seenUssd && UssdLabels.looksLikeACall(w.text)) {
+            note("the code went out as a call, not a menu: " + UssdRedact.snippet(w.text, 40))
+            finish(UssdOutcome(false, null, "dialled_as_call"))
+            return
+        }
         // The phone's own refusal of the code.
         if (lower.contains("connection problem") || lower.contains("invalid mmi")) { note("phone refused the code"); finish(UssdOutcome(false, null, "dial_failed")); return }
         // The provider's own refusal ("service is not available at the moment, please try again later").
@@ -677,7 +684,9 @@ object UssdRunner {
             // The call may still work with the screen on.
         }
         val opener = UssdSession.launchContext() ?: app
-        val dial = withSim(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(code))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), app, s.ussdSlotOf(provider))
+        // NOT withSim: naming the SIM on the dialer turns the menu code into an ordinary call on the owner's phones
+        // (video 2026-11-02: the dialer holds "*247#", the call goes out as "*247*", the hash gone, and no menu ever opens).
+        val dial = Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(code))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             if (dialer != null) dial.setPackage(dialer)
             opener.startActivity(dial)
@@ -692,17 +701,14 @@ object UssdRunner {
                 return
             }
         }
-        val slotNow = s.ussdSlotOf(provider)
-        // If the Call button was not found and pressed in a few seconds, place the call directly instead (same result, no keypad).
+        // If the Call button was not found and pressed in a few seconds, open the dialer once more and look again.
+        // A menu code is NEVER placed with ACTION_CALL: Android treats that as an ordinary call and the code's hash is
+        // lost on the way (the owner's video shows "*247#" in the dialer going out as a call to "*247*").
         Handler(Looper.getMainLooper()).postDelayed({
             if (UssdSession.stillDialing()) {
-                UssdSession.note("no Call button found, placing the call directly")
+                UssdSession.note("no Call button yet, opening the dialer again")
                 try {
-                    (UssdSession.launchContext() ?: app).startActivity(
-                        withSim(Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(code))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), app, slotNow),
-                    )
-                } catch (e: SecurityException) {
-                    UssdSession.abort("no_call_permission")
+                    (UssdSession.launchContext() ?: app).startActivity(dial)
                 } catch (e: Exception) {
                     UssdSession.abort("dial_failed")
                 }

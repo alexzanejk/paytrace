@@ -396,4 +396,15 @@ class UssdTest {
         assertTrue(!UssdSimPick.usable(redmi[0]))
         assertTrue(UssdSimPick.usable(redmi[1]))
     }
+
+    @Test fun aCodeThatWentOutAsACallIsNoticedAtOnce() {
+        // The owner's video: the dialer holds "*247#", then the phone shows a call screen with "*247*" on it.
+        assertTrue(UssdLabels.looksLikeACall("Calling via SIM1\n*247*\n*247*"))
+        assertTrue(UssdLabels.looksLikeACall("*167*\nKeypad Mute Speaker More"))
+        // A real menu, a dialer keypad and an ordinary call are not that.
+        assertTrue(!UssdLabels.looksLikeACall("Calling via SIM1\n+880 1706-630756"))
+        assertTrue(!UssdLabels.looksLikeACall("1. Cash In 2. B2B Transfer"))
+        assertTrue(!UssdLabels.looksLikeACall("*247#"))
+        assertTrue(!UssdLabels.looksLikeACall(null))
+    }
 }

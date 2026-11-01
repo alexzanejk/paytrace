@@ -216,6 +216,18 @@ object UssdLabels {
         return t.isNotEmpty() && t !in NOT_A_CHOICE
     }
 
+    /** A code that lost its hash on the way out: "*247#" placed as a call shows up as "*247*". */
+    private val CUT_CODE = Regex("""\*\d{3,4}\*""")
+
+    /** The phone's own call screen with a cut-short menu code on it. Seen on the owner's phones (video 2026-11-02): the
+     *  dialer holds "*247#", the call goes out as "*247*", and no menu ever opens, so a run can only wait out its time. */
+    fun looksLikeACall(text: String?): Boolean {
+        if (text == null) return false
+        val t = text.lowercase()
+        val callScreen = t.contains("calling via") || (t.contains("keypad") && t.contains("speaker") && t.contains("mute"))
+        return callScreen && CUT_CODE.containsMatchIn(text)
+    }
+
     private val POSITIVE_IDS = setOf("button1", "button_positive", "positive_button", "ok", "send", "btn_ok", "btn_send", "confirm_button")
     private val NEGATIVE_IDS = setOf("button2", "button_negative", "negative_button", "cancel", "btn_cancel", "button3")
 
