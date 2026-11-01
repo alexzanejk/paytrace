@@ -17,6 +17,8 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Dials the Nagad menu code (*167#) when the owner asks for a balance check from the dashboard. -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
+    <!-- Lets the balance check pick the right SIM (SIM 1 or SIM 2) on a dual-SIM phone. -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
     <uses-feature
         android:name="android.hardware.telephony"

@@ -315,3 +315,10 @@ This is the first test version: it has not been tried on a real phone yet, so tr
 
 If it stops, the message says why (for example "The Nagad menu looked different from what PayTrace expects, so it stopped. Nothing was sent."). Send me that message.
 The PIN will not be retried after a wrong PIN, so a mistake cannot lock the wallet by repetition. Change the PIN after testing, because it was visible in your recordings.
+
+**Update (2026-11-01): the check now goes straight to the phone network.** PayTrace sends one code (`*167*6*1*<PIN>#`) through Android's own USSD request and reads the answer. Nothing opens on the screen, so the dialer, the Call button and the SIM pop-up are no longer needed, and **Accessibility is only a backup** (switch it on only if the check does not work without it on a phone). What the phone needs: step "Allow phone and SIM access", the SIM choice, the PIN and the switch. Two checks in a row must be about a minute apart (the network keeps a menu open after an answer). bKash and Rocket will follow once their menu steps are known.
+
+**If Accessibility is needed on an OnePlus/Redmi (grey switch) and the three-dots menu does not show "Allow restricted settings":** it can be unlocked from a computer, once per phone. Install Tailscale on the phone and on the computer, sign in with the same account on both, turn on Developer options, Wireless debugging, tap "Pair device with pairing code", then on the computer (use the phone's Tailscale address, not the Wi-Fi one):
+`adb pair <tailscale-ip>:<pairing-port>`, then `adb connect <tailscale-ip>:<port>`, then
+`adb -s <tailscale-ip>:<port> shell appops set com.paytrace.app ACCESS_RESTRICTED_SETTINGS allow`.
+Turn Wireless debugging off afterwards and keep 2-step verification on the Tailscale account (it can reach every phone you add).

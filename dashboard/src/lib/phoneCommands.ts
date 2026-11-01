@@ -23,6 +23,8 @@ const ERROR_TEXT: Record<string, string> = {
   no_call_permission: "That phone has not allowed phone calls for PayTrace.",
   no_pin: "No Nagad PIN is saved on that phone.",
   busy: "That phone was already busy with a check. Try again in a minute.",
+  too_soon: "That phone had just finished a check. Wait about a minute and try again.",
+  ussd_failed: "The network did not answer the code. The phone did not try again. Check the Nagad SMS, then try again later.",
   timeout: "The phone did not answer in time.",
   no_answer_after_pin: "The PIN was entered but no balance came back. The phone did not try the PIN again. Check the Nagad SMS, then try again later.",
   unexpected_screen: "The Nagad menu looked different from what PayTrace expects, so it stopped. Nothing was sent.",

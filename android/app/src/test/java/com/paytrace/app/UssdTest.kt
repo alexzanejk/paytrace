@@ -144,4 +144,44 @@ class UssdTest {
         assertTrue(!UssdRetry.shouldRetry(null, ok = true, pinSent = false, attempt = 1))
         assertTrue(!UssdRetry.shouldRetry(null, ok = false, pinSent = false, attempt = 1))
     }
+
+    @Test fun buildsTheOneLineBalanceCodeOnlyFromADigitPin() {
+        assertEquals("*167*6*1*1234#", NagadUssd.balanceCode("1234"))
+        assertEquals("*167*6*1*12345678#", NagadUssd.balanceCode("12345678"))
+        // Anything that is not 4 to 8 digits is refused, so no "*" or "#" can be slipped into a code the phone sends.
+        assertNull(NagadUssd.balanceCode(""))
+        assertNull(NagadUssd.balanceCode("123"))
+        assertNull(NagadUssd.balanceCode("123456789"))
+        assertNull(NagadUssd.balanceCode("12#4"))
+        assertNull(NagadUssd.balanceCode("1234*"))
+        assertNull(NagadUssd.balanceCode("12 34"))
+        assertNull(NagadUssd.balanceCode("12a4"))
+    }
+
+    @Test fun readsTheNetworksAnswerToTheOneLineCode() {
+        assertEquals(UssdAction.Done(17200.42), UssdDirect.readReply("Balance: Tk 17200.42\n0. Main Menu"))
+        assertEquals(UssdAction.Done(1234567.5), UssdDirect.readReply("  Your Balance: Tk 1,234,567.50  "))
+        // A menu, an error or a cash-in receipt is never taken for a balance.
+        assertEquals(UssdAction.Fail("unexpected_screen"), UssdDirect.readReply("Enter PIN:"))
+        assertEquals(UssdAction.Fail("unexpected_screen"), UssdDirect.readReply("Service is not available at the moment"))
+        assertEquals(UssdAction.Fail("unexpected_screen"), UssdDirect.readReply(cashInDone))
+        assertEquals(UssdAction.Fail("unexpected_screen"), UssdDirect.readReply(""))
+    }
+
+    @Test fun onlyAnUnavailableServiceMeansNothingWasSent() {
+        // -2 = the phone could not start the request, so the dialer way may still be tried. Any other failure may have carried the PIN.
+        assertTrue(UssdDirect.nothingWasSent(-2))
+        assertTrue(!UssdDirect.nothingWasSent(-1))
+        assertTrue(!UssdDirect.nothingWasSent(0))
+        assertEquals("dial_failed", UssdDirect.failureError(-2))
+        assertEquals("ussd_failed", UssdDirect.failureError(-1))
+    }
+
+    @Test fun twoChecksTooCloseTogetherAreRefused() {
+        assertTrue(!UssdDirect.tooSoon(0L, 100_000L))
+        assertTrue(UssdDirect.tooSoon(100_000L, 100_000L + 44_999L))
+        assertTrue(!UssdDirect.tooSoon(100_000L, 100_000L + 45_000L))
+        // A clock that went backwards must not block for ever.
+        assertTrue(!UssdDirect.tooSoon(100_000L, 50_000L))
+    }
 }

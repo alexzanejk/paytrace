@@ -33,6 +33,8 @@ object UssdText {
         "no_call_permission" -> "The phone-call permission is missing."
         "no_pin" -> "No Nagad PIN is saved on this phone."
         "busy" -> "Another check is still running."
+        "too_soon" -> "A check just finished. Wait about a minute and try again."
+        "ussd_failed" -> "The network did not answer the code. PayTrace did not try again. Check the Nagad SMS, then try again later."
         "timeout" -> "The phone did not answer in time. Try again."
         "no_answer_after_pin" -> "The PIN was entered but no balance came back. PayTrace did not try the PIN again. Check the Nagad SMS, then try again later."
         "unexpected_screen" -> "The Nagad menu looked different from what PayTrace expects, so it stopped. Nothing was sent."
@@ -362,9 +364,10 @@ object UssdSetup {
     fun pinSaved(ctx: Context): Boolean = SecretStore(ctx.applicationContext, "ussd_pin").get().isNotEmpty()
 }
 
-/** Opens the phone's dialer with *167# typed in and lets [UssdSession] press Call, pick the SIM and walk the menus.
- *  Everything is checked first; the PIN is read from the encrypted store only now, and only kept in memory for this run.
- *  If a try fails before the PIN was really submitted, it is tried once more after a short pause; after the PIN, never. */
+/** Runs the balance check. First choice is the direct way ([UssdApi]: one code, the answer comes back as text, nothing on the screen).
+ *  If the phone cannot start that, the dialer way is used: open the dialer with *167# typed in and let [UssdSession] press Call, pick
+ *  the SIM and walk the menus. Everything is checked first; the PIN is read from the encrypted store only now and kept in memory for
+ *  this run. A failed dialer try before the PIN was really submitted is tried once more; after the PIN, never. */
 object UssdRunner {
     private const val RUN_MS = 90_000L
     private const val DIAL_FALLBACK_MS = 3_500L
@@ -372,15 +375,28 @@ object UssdRunner {
 
     fun run(ctx: Context, onFinish: (UssdOutcome) -> Unit) = attempt(ctx.applicationContext, 1, "", onFinish)
 
-    @Suppress("DEPRECATION")
     private fun attempt(app: Context, n: Int, earlier: String, onFinish: (UssdOutcome) -> Unit) {
         val s = AppSettings(app)
         fun fail(e: String) = onFinish(UssdOutcome(false, null, e, trace = earlier))
         if (!s.ussdAllowed) return fail("not_allowed")
-        if (!UssdSetup.accessibilityOn(app)) return fail("no_accessibility")
         if (!UssdSetup.callPermission(app)) return fail("no_call_permission")
         val pin = SecretStore(app, "ussd_pin").get()
         if (pin.isEmpty()) return fail("no_pin")
+        if (UssdSession.active() || UssdApi.active()) return fail("busy")
+        if (n == 1) {
+            if (UssdApi.tooSoon()) return fail("too_soon")
+            if (UssdApi.available(app)) {
+                UssdApi.run(app, s.ussdSlot, pin, onFinish) { viaDialer(app, 1, "", onFinish, s, pin) }
+                return
+            }
+        }
+        viaDialer(app, n, earlier, onFinish, s, pin)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun viaDialer(app: Context, n: Int, earlier: String, onFinish: (UssdOutcome) -> Unit, s: AppSettings, pin: String) {
+        fun fail(e: String) = onFinish(UssdOutcome(false, null, e, trace = earlier))
+        if (!UssdSetup.accessibilityOn(app)) return fail("no_accessibility")
         if (UssdSession.active()) return fail("busy")
         // The phone's own dialer, so the right app opens whatever the brand or the home screen looks like.
         val dialer = try { (app.getSystemService(Context.TELECOM_SERVICE) as TelecomManager).defaultDialerPackage } catch (e: Exception) { null }
@@ -392,7 +408,7 @@ object UssdRunner {
                 onFinish(outcome)
             }
         }
-        UssdSession.note("start, try " + n + (if (dialer != null) ", dialer " + dialer else ""))
+        UssdSession.note("start, dialer way, try " + n + (if (dialer != null) ", dialer " + dialer else ""))
         try {
             // The phone's screen may be off: wake it so the menu can be shown.
             val pm = app.getSystemService(Context.POWER_SERVICE) as PowerManager

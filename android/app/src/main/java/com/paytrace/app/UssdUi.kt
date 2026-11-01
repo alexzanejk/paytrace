@@ -48,7 +48,7 @@ fun UssdCard(settings: AppSettings, tick: Int) {
     var pin by remember { mutableStateOf("") }
     var pinSaved by remember { mutableStateOf(UssdSetup.pinSaved(ctx)) }
     var running by remember { mutableStateOf(false) }
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
 
     // Read again every time the screen refreshes (tick changes), so the ticks follow what Android says.
     val accessibility = UssdSetup.accessibilityOn(ctx)
@@ -66,7 +66,8 @@ fun UssdCard(settings: AppSettings, tick: Int) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            Text((if (accessibility) "✓ " else "1. ") + "Switch on PayTrace in Accessibility", style = MaterialTheme.typography.bodyMedium)
+            Text((if (accessibility) "✓ " else "") + "Backup way (optional): PayTrace in Accessibility", style = MaterialTheme.typography.bodyMedium)
+            if (!accessibility) Text("Normally not needed: PayTrace sends the check straight to the phone network. Switch this on only if the check does not work without it on this phone.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (!accessibility) {
                 Text(
                     "Tap the button, find \"PayTrace Nagad balance check\" and switch it on.",
@@ -89,21 +90,21 @@ fun UssdCard(settings: AppSettings, tick: Int) {
                 ) { Text("Open PayTrace's app page") }
             }
 
-            Text((if (call) "✓ " else "2. ") + "Allow phone calls (needed to open *167#)", style = MaterialTheme.typography.bodyMedium)
-            if (!call) OutlinedButton(onClick = { permission.launch(Manifest.permission.CALL_PHONE) }) { Text("Allow") }
+            Text((if (call) "✓ " else "1. ") + "Allow phone and SIM access (to send the check and pick the SIM)", style = MaterialTheme.typography.bodyMedium)
+            if (!call) OutlinedButton(onClick = { permission.launch(arrayOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE)) }) { Text("Allow") }
 
-            Text("3. Which SIM has Nagad?", style = MaterialTheme.typography.bodyMedium)
+            Text("2. Which SIM has Nagad?", style = MaterialTheme.typography.bodyMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = slot == 0, onClick = { slot = 0; settings.ussdSlot = 0 }, label = { Text("SIM 1") })
                 FilterChip(selected = slot == 1, onClick = { slot = 1; settings.ussdSlot = 1 }, label = { Text("SIM 2") })
             }
             Text(
-                "If the phone never asks which SIM to use, set the Nagad SIM as the phone's default for calls.",
+                "PayTrace uses the SIM you choose here.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            Text((if (pinSaved) "✓ " else "4. ") + "Nagad PIN" + if (pinSaved) " saved on this phone" else "", style = MaterialTheme.typography.bodyMedium)
+            Text((if (pinSaved) "✓ " else "3. ") + "Nagad PIN" + if (pinSaved) " saved on this phone" else "", style = MaterialTheme.typography.bodyMedium)
             OutlinedTextField(
                 value = pin,
                 onValueChange = { v -> pin = v.filter { it.isDigit() }.take(8) },
@@ -128,7 +129,7 @@ fun UssdCard(settings: AppSettings, tick: Int) {
 
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                    Text("5. Let the dashboard check the balance", style = MaterialTheme.typography.bodyMedium)
+                    Text("4. Let the dashboard check the balance", style = MaterialTheme.typography.bodyMedium)
                     Text("Off means the dashboard's request is refused on this phone.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Switch(checked = allowed, onCheckedChange = { allowed = it; settings.ussdAllowed = it })

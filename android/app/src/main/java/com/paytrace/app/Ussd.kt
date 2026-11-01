@@ -21,6 +21,12 @@ object NagadUssd {
     fun balanceOf(text: String): Double? =
         BALANCE.find(text)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
 
+    /** The whole balance check as ONE code with the PIN inside: "*167*6*1*<PIN>#" (confirmed on the owner's phones 2026-11-01:
+     *  the network answers with the balance directly). Null unless the PIN is 4 to 8 digits, so nothing else (a "*", a "#")
+     *  can ever be slipped into a code the phone sends. */
+    fun balanceCode(pin: String): String? = if (PIN.matches(pin)) "*167*6*1*$pin#" else null
+    private val PIN = Regex("^[0-9]{4,8}$")
+
     /** Anything that moves or confirms money. The balance flow must never be on such a screen. */
     private fun mentionsMoneyMove(t: String): Boolean =
         t.contains("amount") || t.contains("to:") || t.contains("cash in") || t.contains("successful") ||
@@ -107,4 +113,29 @@ object UssdRetry {
 
     fun shouldRetry(error: String?, ok: Boolean, pinSent: Boolean, attempt: Int): Boolean =
         !ok && !pinSent && attempt < 2 && error != null && error !in NEVER
+}
+
+/** Reading the network's answer to the one-line balance code, and what to do when the phone could not send it. Pure, tested. */
+object UssdDirect {
+    /** A plain "Balance: Tk ..." answer is the result. Anything else (a menu, an error, a cash-in receipt) is not, and is never retried. */
+    fun readReply(text: String): UssdAction {
+        val t = text.trim()
+        val lower = t.lowercase()
+        if (lower.contains("trxid") || lower.contains("successful")) return UssdAction.Fail("unexpected_screen")
+        val b = NagadUssd.balanceOf(t) ?: return UssdAction.Fail("unexpected_screen")
+        return UssdAction.Done(b)
+    }
+
+    /** TelephonyManager.USSD_ERROR_SERVICE_UNAVAIL (-2): the phone could not even start it, so nothing reached the network and
+     *  the dialer way may be tried. Any other failure (-1 and the rest) may have reached the network with the PIN: never repeated. */
+    const val SERVICE_UNAVAILABLE = -2
+
+    fun nothingWasSent(failureCode: Int): Boolean = failureCode == SERVICE_UNAVAILABLE
+
+    fun failureError(failureCode: Int): String = if (nothingWasSent(failureCode)) "dial_failed" else "ussd_failed"
+
+    /** Two checks in a row would hit a menu the network still holds open from the first one. */
+    const val COOLDOWN_MS = 45_000L
+
+    fun tooSoon(lastFinishMs: Long, nowMs: Long): Boolean = lastFinishMs > 0 && nowMs >= lastFinishMs && nowMs - lastFinishMs < COOLDOWN_MS
 }
