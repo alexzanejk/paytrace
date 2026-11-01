@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.READ_SMS" />
@@ -19,6 +20,13 @@
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <!-- Lets the balance check pick the right SIM (SIM 1 or SIM 2) on a dual-SIM phone. -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- Android cannot grant this to an app by itself: the owner gives it once per phone over a cable or wireless debugging
+         ("adb shell pm grant com.paytrace.app android.permission.WRITE_SECURE_SETTINGS"). Without it nothing changes; with it,
+         PayTrace puts its own balance-check service back into the Accessibility list after an app update wipes it. It is used
+         for that one setting and nothing else (see AccessibilityHeal). -->
+    <uses-permission
+        android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
 
     <uses-feature
         android:name="android.hardware.telephony"

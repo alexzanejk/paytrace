@@ -457,10 +457,15 @@ object UssdRunner {
     private const val RETRY_PAUSE_MS = 4_000L
     /** After a bKash session was opened by the direct way and could not go on, let the network drop it before the dialer way starts. */
     private const val SWITCH_PAUSE_MS = 4_000L
+    /** After switching PayTrace back on in Accessibility settings, the time Android needs to start the service. */
+    private const val HEAL_PAUSE_MS = 2_500L
 
     fun run(ctx: Context, provider: String, onFinish: (UssdOutcome) -> Unit) {
         val app = ctx.applicationContext
-        attempt(app, provider, 1, "") { outcome -> onFinish(afterRun(app, outcome)) }
+        fun go() = attempt(app, provider, 1, "") { outcome -> onFinish(afterRun(app, outcome)) }
+        // An app update switches PayTrace off in Accessibility settings. Where the phone lets it, put it back first and give
+        // Android a moment to start the service before the dialer way needs it.
+        if (AccessibilityHeal.heal(app)) Handler(Looper.getMainLooper()).postDelayed({ go() }, HEAL_PAUSE_MS) else go()
     }
 
     /** A phone whose modem will not send a balance code from an app (the owner's Vivo: "failure code -1", or the network's

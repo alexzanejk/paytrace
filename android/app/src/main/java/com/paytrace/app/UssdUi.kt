@@ -74,6 +74,11 @@ fun UssdCard(settings: AppSettings, tick: Int) {
             }
 
             Text((if (accessibility) "✓ " else "") + "Backup way (optional): PayTrace in Accessibility", style = MaterialTheme.typography.bodyMedium)
+            if (AccessibilityHeal.allowed(ctx)) Text(
+                "This phone can switch it back on by itself after an app update.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             if (!accessibility) Text("Normally not needed: PayTrace sends the check straight to the phone network. Switch this on only if the check does not work without it on this phone.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (!accessibility) {
                 Text(
