@@ -436,7 +436,7 @@ object UssdRunner {
             // The call may still work with the screen on.
         }
         val opener = UssdSession.launchContext() ?: app
-        val dial = Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", code, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val dial = Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(code))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             if (dialer != null) dial.setPackage(dialer)
             opener.startActivity(dial)
@@ -457,7 +457,7 @@ object UssdRunner {
                 UssdSession.note("no Call button found, placing the call directly")
                 try {
                     (UssdSession.launchContext() ?: app).startActivity(
-                        Intent(Intent.ACTION_CALL, Uri.fromParts("tel", code, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(code))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                     )
                 } catch (e: SecurityException) {
                     UssdSession.abort("no_call_permission")
