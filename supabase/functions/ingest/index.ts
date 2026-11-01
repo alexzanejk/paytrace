@@ -385,11 +385,13 @@ async function handle(req: Request): Promise<Response> {
   }
 
   // ---- balance chain: a forged SMS cannot know the live account balance ----
+  // Money the agent SENT OUT (B2B to the distributor) lowers the balance: judge it as a negative amount.
+  const outgoing = d.txnType === "transfer_out";
   const { data: chain } = await db.rpc("balance_chain_check", {
     p_provider: d.provider,
     p_at: d.occurredAt ?? new Date().toISOString(),
     p_balance: d.balance,
-    p_amount: d.amount,
+    p_amount: outgoing ? -d.amount : d.amount,
     p_fee: d.fee,
     p_commission: d.commission,
   });
@@ -401,7 +403,10 @@ async function handle(req: Request): Promise<Response> {
   // ---- status rules ----
   let status = "unmatched";
   let reviewReason: string | null = null;
-  if (d.txnType === "cash_out") status = "tracked_only"; // receipts only, never credit an order
+  // An outgoing B2B transfer is kept (its balance keeps the chain and the phone's balance right) but is never
+  // money received: stored as type unknown, status ignored, so no total, commission, job check or lookup counts it.
+  if (outgoing) { status = "ignored"; reviewReason = "b2b_transfer_out"; }
+  else if (d.txnType === "cash_out") status = "tracked_only"; // receipts only, never credit an order
   else if (d.txnType === "unknown") { status = "review"; reviewReason = "unrecognized_type"; }
   else if (d.confidence === "generic") { status = "review"; reviewReason = "unverified_format"; }
 
@@ -415,7 +420,7 @@ async function handle(req: Request): Promise<Response> {
       observed_change: chain?.delta ?? null, expected_change: chain?.expected ?? null,
       held: status !== "tracked_only",
     });
-    if (status !== "tracked_only") {
+    if (status !== "tracked_only" && !outgoing) {
       status = "review";
       reviewReason = "balance_chain_mismatch";
     }
@@ -425,7 +430,7 @@ async function handle(req: Request): Promise<Response> {
   const { data: inserted, error } = await db
     .from("payments")
     .insert({
-      provider: d.provider, txn_type: d.txnType, trx_id: d.trxId,
+      provider: d.provider, txn_type: outgoing ? "unknown" : d.txnType, trx_id: d.trxId,
       amount: d.amount, fee: d.fee, commission, balance: d.balance,
       counterparty: d.counterparty, occurred_at: d.occurredAt,
       raw_message: raw, status, review_reason: reviewReason,

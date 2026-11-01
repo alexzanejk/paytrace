@@ -7,6 +7,7 @@ const PLAIN: [string, string][] = [
   ["wrong_phone", "Arrived on a different phone than the number the customer was shown"],
   ["unsupported_type", "This kind of message cannot credit an order"],
   ["unrecognized_type", "Could not tell what kind of payment this is"],
+  ["b2b_transfer_out", "Money your agent sent to the distributor (B2B). Not a customer payment; kept only so the balance adds up"],
   ["unverified_format", "Message format not confirmed yet, held to be safe"],
   ["balance_chain_mismatch", "Account balance does not follow the previous message — possibly a fake SMS"],
 ];

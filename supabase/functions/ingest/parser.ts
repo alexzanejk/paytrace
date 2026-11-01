@@ -2,7 +2,7 @@
 // Pure functions, no I/O, so they can be unit tested anywhere.
 
 export type Provider = "bkash" | "nagad" | "rocket" | "upay";
-export type TxnType = "payment_received" | "send_money_received" | "cash_out" | "unknown";
+export type TxnType = "payment_received" | "send_money_received" | "cash_out" | "transfer_out" | "unknown";
 
 export interface Parsed {
   provider: Provider;
@@ -164,7 +164,37 @@ function parseNagad(text: string): ParseResult {
 // Rocket (sender 16216), confirmed against a real agent receipt:
 //   "B2C: Cash-Out from A/C: ***460 Tk500.00 Comm:Tk2.10; A/C Balance: Tk36,068.90.
 //    TxnId: 6889402212 Date:28-AUG-26 11:04:50 pm"
+//
+// B2B outgoing (owner's real sample): the AGENT sends e-money to the distributor (DSO). Not a customer payment:
+//   "B2B: Cash-Out to A/C: ***238 Tk1,040.00, Your A/C Balance: Tk16.18.TxnId: 7096347555 Date:28-OCT-26 12:49:03 pm."
+// The balance FALLS by the amount, so the server keeps it only to keep the balance chain right.
+function parseRocketB2B(text: string): ParseResult | null {
+  const m = text.match(new RegExp(`B2B\\s*:?\\s*Cash[\\s-]*Out\\s+to\\s+A/C\\s*:?\\s*([*\\dXx]+)\\s+Tk\\.?\\s*${NUM}`, "i"));
+  if (!m) return null;
+  const amount = num(m[2]);
+  if (amount == null) return null;
+  const trx = pick(text, /TxnId\s*:?\s*([A-Z0-9]{6,})/i);
+  if (!trx) return { kind: "failed", reason: "rocket: no TxnId" };
+  return {
+    kind: "parsed",
+    data: {
+      provider: "rocket",
+      txnType: "transfer_out",
+      trxId: trx.toUpperCase(),
+      amount,
+      fee: num(pick(text, new RegExp(`Fee\\s*:?\\s*Tk\\.?\\s*${NUM}`, "i"))) ?? 0,
+      commission: 0,
+      balance: num(pick(text, new RegExp(`A/C\\s*Balance\\s*:?\\s*Tk\\.?\\s*${NUM}`, "i"))),
+      counterparty: m[1],
+      occurredAt: parseDate(text),
+      confidence: "exact",
+    },
+  };
+}
+
 function parseRocket(text: string): ParseResult | null {
+  const b2b = parseRocketB2B(text);
+  if (b2b) return b2b;
   const m = text.match(
     new RegExp(`Cash[\\s-]*Out\\s+from\\s+A/C\\s*:?\\s*([*\\dXx]+)\\s+Tk\\.?\\s*${NUM}`, "i"),
   );
@@ -196,6 +226,7 @@ function parseGeneric(provider: Provider, text: string): ParseResult {
   const trx = pick(text, /(?:Trx\s?ID|Txn\s?ID|TID|Transaction\s?ID)\s*[:\-]?\s*([A-Z0-9]{6,})/i);
   const amount = num(pick(text, new RegExp(`Tk\\.?\\s*${NUM}`, "i")));
   if (!trx || amount == null) return { kind: "failed", reason: `${provider}: could not find TrxID and amount` };
+  if (/\bB2B\b/i.test(text)) return { kind: "failed", reason: `${provider}: unrecognized B2B layout (not a customer payment)` };
   const isCashOut = /cash[\s-]*out/i.test(text);
   const received = /received|credited|cash\s*in/i.test(text);
   return {
