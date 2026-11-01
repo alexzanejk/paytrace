@@ -244,6 +244,29 @@ object UssdDirect {
     fun tooSoon(lastFinishMs: Long, nowMs: Long): Boolean = lastFinishMs > 0 && nowMs >= lastFinishMs && nowMs - lastFinishMs < COOLDOWN_MS
 }
 
+/** Some phones will not send a balance code from an app at all: the owner's Vivo V2120 answers "failure code -1" or the network
+ *  says "try again later", while the very same code dialed by hand works. Nothing in PayTrace can change that, so instead the
+ *  phone notices it: after [ENOUGH] runs in a row where the direct way failed, that phone moves itself to the dialer way for good
+ *  (it can be moved back by hand in Settings). Pure, so it is tested. */
+object UssdDirectHealth {
+    const val ENOUGH = 2
+
+    /** Judged from a finished run's own log. Only the direct way's own failures count, never a wrong PIN or a stopped menu. */
+    fun directFailed(trace: String): Boolean {
+        val t = trace.lowercase()
+        if (!t.contains("direct ussd request") && !t.contains("direct menu walk")) return false
+        return t.contains("failure code") || t.contains("direct way could not go on") ||
+            t.contains("answer was not a balance") || t.contains("network never answered")
+    }
+
+    /** True when this phone should stop trying the direct way. [accessibilityOn] because the dialer way cannot work without it. */
+    fun shouldSwitch(failsInARow: Int, accessibilityOn: Boolean): Boolean = accessibilityOn && failsInARow >= ENOUGH
+
+    /** The new count after a run: back to nothing when the direct way did its job, one more when it failed. */
+    fun count(before: Int, trace: String): Int =
+        if (directFailed(trace)) (before + 1).coerceAtMost(ENOUGH) else 0
+}
+
 /** The wallets a balance check can be run for. */
 object UssdProviders {
     const val NAGAD = "nagad"

@@ -458,7 +458,25 @@ object UssdRunner {
     /** After a bKash session was opened by the direct way and could not go on, let the network drop it before the dialer way starts. */
     private const val SWITCH_PAUSE_MS = 4_000L
 
-    fun run(ctx: Context, provider: String, onFinish: (UssdOutcome) -> Unit) = attempt(ctx.applicationContext, provider, 1, "", onFinish)
+    fun run(ctx: Context, provider: String, onFinish: (UssdOutcome) -> Unit) {
+        val app = ctx.applicationContext
+        attempt(app, provider, 1, "") { outcome -> onFinish(afterRun(app, outcome)) }
+    }
+
+    /** A phone whose modem will not send a balance code from an app (the owner's Vivo: "failure code -1", or the network's
+     *  "try again later", while the same code dialed by hand works) moves itself to the dialer way, rather than failing every
+     *  time until someone notices. It says so in the run's own log, and Settings still lets it be moved back by hand. */
+    private fun afterRun(app: Context, outcome: UssdOutcome): UssdOutcome {
+        val s = AppSettings(app)
+        if (s.ussdDialerWay) return outcome
+        val fails = UssdDirectHealth.count(s.ussdDirectFails, outcome.trace)
+        s.ussdDirectFails = fails
+        if (!UssdDirectHealth.shouldSwitch(fails, UssdSetup.accessibilityOn(app))) return outcome
+        s.ussdDialerWay = true
+        s.ussdDirectFails = 0
+        val line = "this phone cannot send the code from the app, so it has moved itself to the dialer way"
+        return outcome.copy(trace = (outcome.trace + "\n" + line).trim())
+    }
 
     private fun attempt(app: Context, provider: String, n: Int, earlier: String, onFinish: (UssdOutcome) -> Unit) {
         val s = AppSettings(app)

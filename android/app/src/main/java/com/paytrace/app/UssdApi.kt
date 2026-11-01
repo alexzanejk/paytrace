@@ -102,7 +102,7 @@ object UssdApi {
             return
         }
         // If the network never answers, say so; the PIN was already sent, so it is not tried again.
-        main.postDelayed({ finish(UssdOutcome(false, null, "no_answer_after_pin")) }, ANSWER_MS)
+        main.postDelayed({ note("network never answered"); finish(UssdOutcome(false, null, "no_answer_after_pin")) }, ANSWER_MS)
     }
 
     /** The same direct way for a wallet that cannot take one long code (bKash): send the first code, read the menu the network sends

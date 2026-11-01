@@ -277,4 +277,30 @@ class UssdTest {
         assertTrue(!UssdLabels.isPositiveId("com.android.phone:id/message"))
         assertTrue(!UssdLabels.isPositiveId(null) && !UssdLabels.isNegativeId(null))
     }
+
+    @Test fun aPhoneThatCannotSendTheCodeMovesItselfToTheDialerWay() {
+        val failed = "0.0s direct USSD request, SIM 1\n0.0s request handed to the phone\n1.0s phone reported failure code -1"
+        val refused = "0.0s direct USSD request, SIM 1\n0.8s answer was not a balance: Please try later. Thank you!"
+        val silent = "0.0s direct USSD request, SIM 1\n45.0s network never answered"
+        val walked = "0.0s direct menu walk, SIM 1\n2.8s direct way could not go on: failure code -1"
+        val worked = "0.0s direct USSD request, SIM 1\n0.0s request handed to the phone\n2.0s balance read"
+        val dialerOnly = "0.0s start, dialer way, bKash, try 1\n1.0s Call pressed\n8.0s no answer, saying it again"
+        assertTrue(UssdDirectHealth.directFailed(failed))
+        assertTrue(UssdDirectHealth.directFailed(refused))
+        assertTrue(UssdDirectHealth.directFailed(silent))
+        assertTrue(UssdDirectHealth.directFailed(walked))
+        assertTrue(!UssdDirectHealth.directFailed(worked))
+        // A run that never used the direct way says nothing about it, whatever went wrong in the dialer.
+        assertTrue(!UssdDirectHealth.directFailed(dialerOnly))
+
+        // Two failures in a row are enough; one is not, and a run that works starts the count again.
+        assertEquals(1, UssdDirectHealth.count(0, failed))
+        assertEquals(2, UssdDirectHealth.count(1, refused))
+        assertEquals(0, UssdDirectHealth.count(1, worked))
+        assertEquals(0, UssdDirectHealth.count(1, dialerOnly))
+        assertTrue(!UssdDirectHealth.shouldSwitch(1, true))
+        assertTrue(UssdDirectHealth.shouldSwitch(2, true))
+        // Never switch to a way that cannot work: the dialer way needs Accessibility.
+        assertTrue(!UssdDirectHealth.shouldSwitch(2, false))
+    }
 }
