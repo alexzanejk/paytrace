@@ -303,4 +303,19 @@ class UssdTest {
         // Never switch to a way that cannot work: the dialer way needs Accessibility.
         assertTrue(!UssdDirectHealth.shouldSwitch(2, false))
     }
+
+    @Test fun oneFailureCodeMinusOneIsEnoughToMoveAPhoneToTheDialerWay() {
+        // From the owner's Redmi log (2026-11-02): the network answered "Balance: Tk 818.35 / 0. Main Menu", but because
+        // that answer keeps the menu open Android gave the app only "failure code -1". It will do so every time, so the
+        // phone does not wait for a second try before moving to the dialer way.
+        val minusOne = "0.0s direct USSD request, SIM 1\n0.0s request handed to the phone\n1.0s phone reported failure code -1"
+        assertTrue(UssdDirectHealth.cannotWorkHere(minusOne))
+        assertEquals(UssdDirectHealth.ENOUGH, UssdDirectHealth.count(0, minusOne))
+        assertTrue(UssdDirectHealth.shouldSwitch(UssdDirectHealth.count(0, minusOne), true))
+        // Another kind of failure still needs two in a row, and a run that worked clears the count.
+        val refused = "0.0s direct USSD request, SIM 1\n0.8s answer was not a balance: Please try later."
+        assertTrue(!UssdDirectHealth.cannotWorkHere(refused))
+        assertEquals(1, UssdDirectHealth.count(0, refused))
+        assertEquals(0, UssdDirectHealth.count(1, "0.0s direct USSD request, SIM 1\n2.0s balance read"))
+    }
 }

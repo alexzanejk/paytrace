@@ -251,6 +251,13 @@ object UssdDirect {
 object UssdDirectHealth {
     const val ENOUGH = 2
 
+    /** PROVED on the owner's Redmi (phone log, 2026-11-02): Nagad DOES answer the direct request with the balance
+     *  ("Balance: Tk 818.35 / 0. Main Menu"), but because the answer offers a next step the network keeps the menu open,
+     *  and Android hands an app only the answers that close it. The app is told "failure code -1" and never sees the words.
+     *  Nothing in PayTrace can change that, and it will happen on every phone and every try, so one such failure is enough
+     *  to move that phone to the dialer way (where the phone's own menu is read instead). */
+    fun cannotWorkHere(trace: String): Boolean = trace.contains("failure code -1")
+
     /** Judged from a finished run's own log. Only the direct way's own failures count, never a wrong PIN or a stopped menu. */
     fun directFailed(trace: String): Boolean {
         val t = trace.lowercase()
@@ -263,8 +270,11 @@ object UssdDirectHealth {
     fun shouldSwitch(failsInARow: Int, accessibilityOn: Boolean): Boolean = accessibilityOn && failsInARow >= ENOUGH
 
     /** The new count after a run: back to nothing when the direct way did its job, one more when it failed. */
-    fun count(before: Int, trace: String): Int =
-        if (directFailed(trace)) (before + 1).coerceAtMost(ENOUGH) else 0
+    fun count(before: Int, trace: String): Int = when {
+        cannotWorkHere(trace) -> ENOUGH
+        directFailed(trace) -> (before + 1).coerceAtMost(ENOUGH)
+        else -> 0
+    }
 }
 
 /** The wallets a balance check can be run for. */

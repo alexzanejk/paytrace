@@ -35,7 +35,7 @@ object UssdText {
         "busy" -> "Another check is still running."
         "network_refused" -> "The provider answered that the service is not available right now. Try again a little later."
         "too_soon" -> "A check just finished. Wait about a minute and try again."
-        "ussd_failed" -> "The phone could not get an answer through the direct way (failure code). PayTrace did not try again. In Settings choose the Dialer way for this phone, or try the other SIM."
+        "ussd_failed" -> "The wallet answered, but Android does not pass that kind of answer on to an app. PayTrace has moved this phone to the Dialer way, which reads the phone's own menu. Try the check again."
         "timeout" -> "The phone did not answer in time. Try again."
         "no_answer_after_pin" -> "The PIN was entered but no balance came back. PayTrace did not try the PIN again. Check the Nagad SMS, then try again later."
         "unexpected_screen" -> "The Nagad menu looked different from what PayTrace expects, so it stopped. Nothing was sent."
