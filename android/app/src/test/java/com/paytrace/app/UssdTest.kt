@@ -407,4 +407,24 @@ class UssdTest {
         assertTrue(!UssdLabels.looksLikeACall("*247#"))
         assertTrue(!UssdLabels.looksLikeACall(null))
     }
+
+    @Test fun onlyTheKeypadsOwnCallButtonIsTrusted() {
+        // The dialer lists recent calls above the keypad, each with its own call icon. Pressing one of those redials that
+        // old number: the owner's video shows "*247#" in the box going out as a call to "*247*".
+        assertTrue(UssdLabels.isDialpadCallId("com.google.android.dialer:id/dialpad_floating_action_button"))
+        assertTrue(UssdLabels.isDialpadCallId("com.android.dialer:id/dialpad_fab"))
+        assertTrue(!UssdLabels.isDialpadCallId("com.google.android.dialer:id/call_button"))
+        assertTrue(!UssdLabels.isDialpadCallId("com.google.android.dialer:id/primary_action_button"))
+        assertTrue(!UssdLabels.isDialpadCallId(null))
+        // The wider list still recognises those as call-ish, which is why the keypad one has to be preferred.
+        assertTrue(UssdLabels.isCallButtonId("com.google.android.dialer:id/call_button"))
+    }
+
+    @Test fun aCallPayTraceDidNotMeanToMakeCanBeEnded() {
+        assertTrue(UssdLabels.isEndCall("End call", null))
+        assertTrue(UssdLabels.isEndCall("end", null))
+        assertTrue(UssdLabels.isEndCall(null, "com.android.incallui:id/incall_end_call"))
+        assertTrue(!UssdLabels.isEndCall("Call", "com.google.android.dialer:id/dialpad_fab"))
+        assertTrue(!UssdLabels.isEndCall(null, null))
+    }
 }

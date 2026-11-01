@@ -72,7 +72,7 @@ private class Collector {
     val texts = ArrayList<String>()
     var edit: AccessibilityNodeInfo? = null
     val buttons = ArrayList<AccessibilityNodeInfo>()
-    var callButton: AccessibilityNodeInfo? = null
+    val callButtons = ArrayList<AccessibilityNodeInfo>()
     val simRows = ArrayList<AccessibilityNodeInfo>()
     /** The dialog's own positive and negative buttons, found by their view id, for phones whose buttons carry a word
      *  PayTrace does not know (another language) or are not of class Button. */
@@ -81,7 +81,26 @@ private class Collector {
     val choices = ArrayList<AccessibilityNodeInfo>()
     var root: AccessibilityNodeInfo? = null
 
-    fun window() = UssdWindow(texts.joinToString("\n"), edit, buttons, callButton, simRows, positive, negative, choices, root)
+    fun window() = UssdWindow(texts.joinToString("\n"), edit, buttons, lowestOnScreen(callButtons), simRows, positive, negative, choices, root)
+}
+
+/** Of several things that look like a Call button, the one nearest the bottom of the screen.
+ *
+ *  WHY: the phone's dialer lists recent calls ABOVE the keypad, each with its own little call icon, and every failed try
+ *  adds one more. Pressing one of those redials that old number: the owner's video shows the dialer holding "*247#" while
+ *  the call goes out to "*247*", an earlier broken attempt. The keypad's own Call button is always the lowest one. */
+private fun lowestOnScreen(nodes: List<AccessibilityNodeInfo>): AccessibilityNodeInfo? {
+    // First choice, and the certain one: the button the dialer itself calls its keypad Call button. Only that button
+    // calls what is typed in; the icons beside recent calls redial their own old numbers.
+    nodes.firstOrNull { UssdLabels.isDialpadCallId(it.viewIdResourceName) }?.let { return it }
+    var best: AccessibilityNodeInfo? = null
+    var bestY = Int.MIN_VALUE
+    val box = android.graphics.Rect()
+    for (n in nodes) {
+        try { n.getBoundsInScreen(box) } catch (e: Exception) { continue }
+        if (box.centerY() > bestY) { bestY = box.centerY(); best = n }
+    }
+    return best
 }
 
 private fun walk(n: AccessibilityNodeInfo?, c: Collector, depth: Int) {
@@ -101,10 +120,9 @@ private fun walk(n: AccessibilityNodeInfo?, c: Collector, depth: Int) {
         if (n.isClickable && !cls.endsWith("Button")) c.choices.add(n)
         if (cls.endsWith("TextView") && !text.isNullOrBlank()) c.texts.add(text)
         // The dialer's Call button is an icon: found by its description, its own text or its view id (any of the three).
-        if (c.callButton == null &&
-            (UssdLabels.isCallButton(n.contentDescription?.toString()) || UssdLabels.isCallButton(text) || UssdLabels.isCallButtonId(n.viewIdResourceName)) &&
+        if ((UssdLabels.isCallButton(n.contentDescription?.toString()) || UssdLabels.isCallButton(text) || UssdLabels.isCallButtonId(n.viewIdResourceName)) &&
             (n.isClickable || n.parent?.isClickable == true)
-        ) c.callButton = n
+        ) c.callButtons.add(n)
         if (UssdLabels.namesSim(text, 0) || UssdLabels.namesSim(text, 1)) c.simRows.add(n)
     }
     for (i in 0 until n.childCount) walk(n.getChild(i), c, depth + 1)
@@ -370,7 +388,13 @@ object UssdSession {
             if (!chooser && !ussdScreen) {
                 val btn = w.callButton
                 if (btn == null) { noteOnce("nocall", "dialer open, looking for the Call button [" + UssdRedact.snippet(w.text, 60) + "]"); return }
-                if (clickUp(btn)) { note("Call pressed"); phase = 1; lastActionAt = now }
+                // Only the icon itself, or a parent that is just the icon's wrapper. Never a whole row: a recent-calls row
+                // carries an old number, and clicking it would redial that instead of what is typed in.
+                val wrapper = btn.parent
+                val pressed = (btn.isClickable && btn.performAction(AccessibilityNodeInfo.ACTION_CLICK)) ||
+                    (wrapper != null && wrapper.isClickable && allWords(wrapper).length <= 20 && wrapper.performAction(AccessibilityNodeInfo.ACTION_CLICK)) ||
+                    tapOnScreen(service, btn)
+                if (pressed) { note("Call pressed"); phase = 1; lastActionAt = now }
                 return
             }
             phase = 1
@@ -426,6 +450,10 @@ object UssdSession {
         // The code went out as an ordinary call with its hash lost, so no menu will ever come: say so at once.
         if (!seenUssd && UssdLabels.looksLikeACall(w.text)) {
             note("the code went out as a call, not a menu: " + UssdRedact.snippet(w.text, 40))
+            // Do not leave a call running on the owner's phone.
+            val end = w.buttons.firstOrNull { UssdLabels.isEndCall(it.text?.toString(), it.viewIdResourceName) }
+                ?: w.buttons.firstOrNull { UssdLabels.isEndCall(it.contentDescription?.toString(), it.viewIdResourceName) }
+            if (end != null && clickUp(end)) note("call ended") else service?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
             finish(UssdOutcome(false, null, "dialled_as_call"))
             return
         }

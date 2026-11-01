@@ -179,6 +179,23 @@ object UssdLabels {
     private val CALL_WORDS = setOf("dial", "call", "make a call", "voice call", "start call", "কল", "কল করুন")
     private val CALL_IDS = listOf("dialpad_floating_action_button", "dial_button", "dialbutton", "call_button", "callbutton", "btn_call", "btn_dial", "fab_dial", "dialpad_fab")
 
+    /** The KEYPAD's own Call button, by the name the dialer gives it in its own code. This is the one that calls what is
+     *  typed in. The little call icons beside recent calls are named differently, and pressing one of those redials that
+     *  old number instead - which is how "*247#" in the box went out as a call to "*247*" (owner's video, 2026-11-02). */
+    private val DIALPAD_IDS = listOf("dialpad_floating_action_button", "dialpad_fab", "fab_dial", "dial_button", "btn_dial", "dialbutton")
+
+    fun isDialpadCallId(id: String?): Boolean {
+        val last = lastPart(id)
+        return last.isNotEmpty() && DIALPAD_IDS.any { last.contains(it) }
+    }
+
+    /** The button that ends a call, so a call PayTrace did not mean to make can be stopped at once. */
+    fun isEndCall(label: String?, id: String?): Boolean {
+        val d = label?.trim()?.lowercase() ?: ""
+        val last = lastPart(id)
+        return d == "end call" || d == "hang up" || d == "end" || last.contains("end_call") || last.contains("endcall")
+    }
+
     /** The dialer's Call button (an icon; its description or text is "Dial" or "Call"). Never "Call history" or a contact's call button. */
     fun isCallButton(label: String?): Boolean {
         val d = label?.trim()?.lowercase() ?: return false
