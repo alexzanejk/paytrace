@@ -183,6 +183,31 @@ object UssdLabels {
         val last = id?.substringAfterLast('/')?.substringAfterLast(':')?.lowercase() ?: return false
         return last.isNotEmpty() && CALL_IDS.any { last.contains(it) }
     }
+
+    private val POSITIVE_IDS = setOf("button1", "button_positive", "positive_button", "ok", "send", "btn_ok", "btn_send", "confirm_button")
+    private val NEGATIVE_IDS = setOf("button2", "button_negative", "negative_button", "cancel", "btn_cancel", "button3")
+
+    /** The dialog's "Send" / "OK" button found by its view id, used when its word is in a language PayTrace does not know. */
+    fun isPositiveId(id: String?): Boolean = lastPart(id) in POSITIVE_IDS
+
+    /** The dialog's "Cancel" button, used only to close the menu when a run is over. */
+    fun isNegativeId(id: String?): Boolean = lastPart(id) in NEGATIVE_IDS
+
+    private fun lastPart(id: String?): String =
+        id?.substringAfterLast('/')?.substringAfterLast(':')?.lowercase() ?: ""
+}
+
+/** The words of a screen, cut short and with every long run of digits hidden, so a failed run can say what it saw without
+ *  ever putting a PIN, a wallet number or a balance into the log that is sent for help. */
+object UssdRedact {
+    private val DIGITS = Regex("[0-9][0-9.,]{2,}")
+
+    fun snippet(text: String?, max: Int = 90): String {
+        val one = (text ?: "").replace(Regex("\\s+"), " ").trim()
+        if (one.isEmpty()) return "(nothing readable)"
+        val hidden = DIGITS.replace(one) { "***" }
+        return if (hidden.length <= max) hidden else hidden.take(max) + "..."
+    }
 }
 
 /** When a failed run may be tried once more by itself. Never after the PIN was really submitted (a repeated PIN can lock the

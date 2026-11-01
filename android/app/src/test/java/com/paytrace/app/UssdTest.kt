@@ -253,4 +253,28 @@ class UssdTest {
         assertTrue(UssdProviders.flow("bkash") { "0000" }.recognises(bkMain))
         assertTrue(!UssdProviders.flow("bkash") { "0000" }.recognises(mainMenu))
     }
+
+    @Test fun aScreenCanBeDescribedWithoutShowingAnyNumber() {
+        // What a failed run writes into its log: the words, but never a PIN, a wallet number or a balance.
+        assertEquals("Enter PIN:", UssdRedact.snippet("Enter PIN:"))
+        assertEquals("Balance: Tk ***", UssdRedact.snippet("Balance: Tk 17200.42"))
+        assertEquals("Cash In to ***", UssdRedact.snippet("Cash In to 01706630756"))
+        assertEquals("(nothing readable)", UssdRedact.snippet(""))
+        assertEquals("(nothing readable)", UssdRedact.snippet(null))
+        // Several lines become one, and a long screen is cut short.
+        assertEquals("a b c", UssdRedact.snippet("a\n  b \t c "))
+        assertEquals("abcde...", UssdRedact.snippet("abcdefghij", 5))
+        // A single digit is a menu number, not a secret, so it stays readable.
+        assertEquals("1. Cash In 2. B2B", UssdRedact.snippet("1. Cash In 2. B2B"))
+    }
+
+    @Test fun theDialogsOwnButtonsAreFoundByTheirViewId() {
+        // For phones whose Send button carries a word in another language.
+        assertTrue(UssdLabels.isPositiveId("android:id/button1"))
+        assertTrue(UssdLabels.isPositiveId("com.android.phone:id/send"))
+        assertTrue(UssdLabels.isNegativeId("android:id/button2"))
+        assertTrue(!UssdLabels.isPositiveId("android:id/button2"))
+        assertTrue(!UssdLabels.isPositiveId("com.android.phone:id/message"))
+        assertTrue(!UssdLabels.isPositiveId(null) && !UssdLabels.isNegativeId(null))
+    }
 }

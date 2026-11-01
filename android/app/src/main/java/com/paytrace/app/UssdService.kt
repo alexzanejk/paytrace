@@ -56,6 +56,8 @@ class UssdWindow(
     val buttons: List<AccessibilityNodeInfo>,
     val callButton: AccessibilityNodeInfo?,
     val simRows: List<AccessibilityNodeInfo>,
+    val positive: AccessibilityNodeInfo? = null,
+    val negative: AccessibilityNodeInfo? = null,
 )
 
 private class Collector {
@@ -64,8 +66,12 @@ private class Collector {
     val buttons = ArrayList<AccessibilityNodeInfo>()
     var callButton: AccessibilityNodeInfo? = null
     val simRows = ArrayList<AccessibilityNodeInfo>()
+    /** The dialog's own positive and negative buttons, found by their view id, for phones whose buttons carry a word
+     *  PayTrace does not know (another language) or are not of class Button. */
+    var positive: AccessibilityNodeInfo? = null
+    var negative: AccessibilityNodeInfo? = null
 
-    fun window() = UssdWindow(texts.joinToString("\n"), edit, buttons, callButton, simRows)
+    fun window() = UssdWindow(texts.joinToString("\n"), edit, buttons, callButton, simRows, positive, negative)
 }
 
 private val SIM_ROW = Regex("^\\s*SIM\\s*[12]\\b", RegexOption.IGNORE_CASE)
@@ -74,11 +80,17 @@ private fun walk(n: AccessibilityNodeInfo?, c: Collector, depth: Int) {
     if (n == null || depth > 25) return
     val cls = n.className?.toString() ?: ""
     val text = n.text?.toString()
+    val id = n.viewIdResourceName
+    if (id != null) {
+        if (c.positive == null && UssdLabels.isPositiveId(id)) c.positive = n
+        if (c.negative == null && UssdLabels.isNegativeId(id)) c.negative = n
+    }
     if (cls.endsWith("EditText") || n.isEditable) {
         if (c.edit == null) c.edit = n
     } else {
-        if (cls.endsWith("Button")) c.buttons.add(n)
-        else if (cls.endsWith("TextView") && !text.isNullOrBlank()) c.texts.add(text)
+        // Any clickable thing with a word on it counts as a button: on some phones the dialog's Send is not of class Button.
+        if (cls.endsWith("Button") || (n.isClickable && !text.isNullOrBlank())) c.buttons.add(n)
+        if (cls.endsWith("TextView") && !text.isNullOrBlank()) c.texts.add(text)
         // The dialer's Call button is an icon: found by its description, its own text or its view id (any of the three).
         if (c.callButton == null &&
             (UssdLabels.isCallButton(n.contentDescription?.toString()) || UssdLabels.isCallButton(text) || UssdLabels.isCallButtonId(n.viewIdResourceName)) &&
@@ -101,8 +113,15 @@ private fun clickUp(node: AccessibilityNodeInfo?): Boolean {
 }
 
 private fun clickButton(w: UssdWindow, vararg labels: String): Boolean {
-    val b = w.buttons.firstOrNull { btn -> labels.any { it.equals(btn.text?.toString()?.trim(), ignoreCase = true) } } ?: return false
-    return b.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+    val b = w.buttons.firstOrNull { btn -> labels.any { it.equals(btn.text?.toString()?.trim(), ignoreCase = true) } }
+    if (b != null && clickUp(b)) return true
+    // No button with a word PayTrace knows: use the dialog's own positive (Send) or negative (Cancel) button, found by its view id.
+    val byId = when {
+        labels.any { it == "send" } -> w.positive
+        labels.any { it == "cancel" } -> w.negative
+        else -> null
+    }
+    return byId != null && clickUp(byId)
 }
 
 /** One run at a time, driven by a slow clock instead of by window events: every 0.4 s it looks at the screen as it is NOW,
@@ -116,6 +135,8 @@ object UssdSession {
     private const val STUCK_MS = 7_000L
     private const val MAX_TRIES = 4
     private const val MAX_SIM_TRIES = 6
+    /** How long a screen PayTrace does not know is given to finish drawing before the run gives up on it. */
+    private const val UNKNOWN_WAIT_MS = 5_000L
 
     private class Act(val text: String, val secret: Boolean, val sig: String) {
         var typed = false
@@ -144,6 +165,9 @@ object UssdSession {
     private var simTries = 0
     private var pinSubmitted = false
     private var startedAt = 0L
+    private var unknownSig = ""
+    private var unknownSince = 0L
+    private var lastText = ""
     private val trace = ArrayList<String>()
     private val noted = HashSet<String>()
 
@@ -162,6 +186,9 @@ object UssdSession {
         this.simTries = 0
         this.pinSubmitted = false
         this.startedAt = SystemClock.elapsedRealtime()
+        this.unknownSig = ""
+        this.unknownSince = 0L
+        this.lastText = ""
         trace.clear()
         noted.clear()
         if (earlier.isNotBlank()) trace.addAll(earlier.lines().take(40))
@@ -201,20 +228,59 @@ object UssdSession {
         }
     }
 
+    /** Every window on the screen that belongs to the phone's own call or menu apps, not only the one Android calls "active":
+     *  on many phones the USSD dialog is drawn over the dialer and is not the active window, which is why a run could sit
+     *  there doing nothing. Of the windows found, the menu is picked: the one the flow recognises, else the one with a box
+     *  to type in, else the wordiest. */
+    private fun readScreen(svc: AccessibilityService): UssdWindow? {
+        val roots = ArrayList<AccessibilityNodeInfo>()
+        try {
+            for (win in svc.windows) {
+                val r = try { win.root } catch (e: Exception) { null }
+                if (r != null) roots.add(r)
+            }
+        } catch (e: Exception) {
+            // Some phones refuse the window list; the active window alone has to do.
+        }
+        svc.rootInActiveWindow?.let { roots.add(it) }
+        val f = flow
+        var best: UssdWindow? = null
+        var bestScore = -1
+        for (r in roots) {
+            val pkg = r.packageName?.toString() ?: continue
+            if (!allowedPackage(pkg)) continue
+            val c = Collector()
+            walk(r, c, 0)
+            val w = c.window()
+            if (w.text.isBlank() && w.edit == null && w.callButton == null) continue
+            val lower = w.text.lowercase()
+            val score = (if (f != null && f.recognises(w.text)) 9000 else 0) +
+                (if (lower.contains("choose sim") || lower.contains("select sim")) 9000 else 0) +
+                (if (w.edit != null) 1000 else 0) + w.text.length.coerceAtMost(900)
+            if (score > bestScore) { bestScore = score; best = w }
+        }
+        return best
+    }
+
     private fun step() {
         val svc = service ?: return
-        val root = svc.rootInActiveWindow ?: return
-        val pkg = root.packageName?.toString() ?: return
-        if (!allowedPackage(pkg)) return
-        val c = Collector()
-        walk(root, c, 0)
-        val w = c.window()
+        val w = readScreen(svc) ?: return
         val sig = w.text + "|" + (if (w.callButton != null) "C" else "") + (if (w.edit != null) "E" else "") + (if (w.simRows.isNotEmpty()) "S" else "")
         if (sig.length <= 3) return
+        if (w.text.isNotBlank()) lastText = w.text
         // Wait until the screen has stopped changing before touching it.
         if (sig != lastSig) { lastSig = sig; return }
         if (SystemClock.elapsedRealtime() - lastActionAt < GAP_MS) return
         evaluate(w, sig)
+    }
+
+    /** A screen whose words PayTrace does not know yet. While a dialog is still being drawn it reads like this, so it is given
+     *  [UNKNOWN_WAIT_MS] to settle before the run gives up on it. Returns true when the run should wait and look again. */
+    private fun waitForUnknown(sig: String, text: String, now: Long): Boolean {
+        if (unknownSig != sig) { unknownSig = sig; unknownSince = now; return true }
+        if (now - unknownSince < UNKNOWN_WAIT_MS) return true
+        noteOnce("unknown" + sig.hashCode(), "screen not recognised: " + UssdRedact.snippet(text))
+        return false
     }
 
     private fun evaluate(w: UssdWindow, sig: String) {
@@ -227,7 +293,7 @@ object UssdSession {
         if (phase == 0) {
             if (!chooser && !ussdScreen) {
                 val btn = w.callButton
-                if (btn == null) { noteOnce("nocall", "dialer open, looking for the Call button"); return }
+                if (btn == null) { noteOnce("nocall", "dialer open, looking for the Call button [" + UssdRedact.snippet(w.text, 60) + "]"); return }
                 if (clickUp(btn)) { note("Call pressed"); phase = 1; lastActionAt = now }
                 return
             }
@@ -246,8 +312,15 @@ object UssdSession {
         if (lower.contains("connection problem") || lower.contains("invalid mmi")) { note("phone refused the code"); finish(UssdOutcome(false, null, "dial_failed")); return }
         // The provider's own refusal ("service is not available at the moment, please try again later").
         if (lower.contains("not available") || lower.contains("try again later")) { note("provider said the service is not available"); finish(UssdOutcome(false, null, "network_refused")); return }
-        // Until the first Nagad screen appears, what is on the screen is only the dialer's keypad: wait for the menu.
-        if (ussdScreen) { seenUssd = true } else if (!seenUssd) return
+        // Until the first menu appears, what is on the screen is only the dialer's keypad: wait for the menu.
+        if (ussdScreen) {
+            seenUssd = true
+            unknownSince = 0L
+            unknownSig = ""
+        } else {
+            if (!seenUssd) return
+            if (waitForUnknown(sig, w.text, now)) return
+        }
         // An answer already under way for this very screen: keep going with it (type, press Send, wait).
         val under = act
         if (under != null) {
@@ -263,7 +336,7 @@ object UssdSession {
                 continueAct(fresh, w)
             }
             is UssdAction.Done -> { note("balance read"); finish(UssdOutcome(true, a.balance, null)) }
-            is UssdAction.Fail -> { note("stopped: " + a.reason); finish(UssdOutcome(false, null, a.reason)) }
+            is UssdAction.Fail -> { note("stopped: " + a.reason + " [" + UssdRedact.snippet(w.text) + "]"); finish(UssdOutcome(false, null, a.reason)) }
         }
     }
 
@@ -289,7 +362,7 @@ object UssdSession {
         }
         // A short pause so the dialog accepts the typed text before Send is pressed.
         if (now - a.typedAt < TYPE_TO_SEND_MS) return
-        if (clickButton(w, "send", "ok", "reply")) {
+        if (clickButton(w, "send", "ok", "reply", "submit", "continue")) {
             a.sent = true; a.sentAt = now; lastActionAt = now
             if (a.secret) pinSubmitted = true
             note("sent")
@@ -301,6 +374,8 @@ object UssdSession {
     fun abort(error: String) = finish(UssdOutcome(false, null, error))
 
     private fun finish(outcome0: UssdOutcome) {
+        // So a failed run can be read later: what was last on the screen, with every long number hidden.
+        if (!outcome0.ok && lastText.isNotBlank()) noteOnce("last", "last screen: " + UssdRedact.snippet(lastText))
         val cb: ((UssdOutcome) -> Unit)?
         val sent: Boolean
         synchronized(this) {
