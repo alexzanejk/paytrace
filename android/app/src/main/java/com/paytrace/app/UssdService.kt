@@ -90,6 +90,9 @@ private class Collector {
  *  adds one more. Pressing one of those redials that old number: the owner's video shows the dialer holding "*247#" while
  *  the call goes out to "*247*", an earlier broken attempt. The keypad's own Call button is always the lowest one. */
 private fun lowestOnScreen(nodes: List<AccessibilityNodeInfo>): AccessibilityNodeInfo? {
+    // First choice, and the certain one: the button the dialer itself calls its keypad Call button. Only that button
+    // calls what is typed in; the icons beside recent calls redial their own old numbers.
+    nodes.firstOrNull { UssdLabels.isDialpadCallId(it.viewIdResourceName) }?.let { return it }
     var best: AccessibilityNodeInfo? = null
     var bestY = Int.MIN_VALUE
     val box = android.graphics.Rect()
@@ -447,6 +450,10 @@ object UssdSession {
         // The code went out as an ordinary call with its hash lost, so no menu will ever come: say so at once.
         if (!seenUssd && UssdLabels.looksLikeACall(w.text)) {
             note("the code went out as a call, not a menu: " + UssdRedact.snippet(w.text, 40))
+            // Do not leave a call running on the owner's phone.
+            val end = w.buttons.firstOrNull { UssdLabels.isEndCall(it.text?.toString(), it.viewIdResourceName) }
+                ?: w.buttons.firstOrNull { UssdLabels.isEndCall(it.contentDescription?.toString(), it.viewIdResourceName) }
+            if (end != null && clickUp(end)) note("call ended") else service?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
             finish(UssdOutcome(false, null, "dialled_as_call"))
             return
         }
