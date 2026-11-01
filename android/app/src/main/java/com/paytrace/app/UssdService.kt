@@ -221,6 +221,7 @@ object UssdSetup {
 object UssdRunner {
     private const val RUN_MS = 90_000L
 
+    @Suppress("DEPRECATION")
     fun run(ctx: Context, onFinish: (UssdOutcome) -> Unit) {
         val app = ctx.applicationContext
         val s = AppSettings(app)
@@ -235,7 +236,6 @@ object UssdRunner {
         try {
             // The phone's screen may be off: wake it so the menu can be shown.
             val pm = app.getSystemService(Context.POWER_SERVICE) as PowerManager
-            @Suppress("DEPRECATION")
             pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "paytrace:ussd").acquire(RUN_MS + 5_000)
         } catch (e: Exception) {
             // The call may still work with the screen on.
