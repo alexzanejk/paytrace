@@ -21,6 +21,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  *  is tried again. The dialer way is only used when the phone could not start the request at all. The code is never logged. */
 object UssdApi {
     private const val ANSWER_MS = 45_000L
+    /** How long the phone needs to write the answer into its radio log before PayTrace looks there. */
+    private const val LOG_PAUSE_MS = 1_500L
     private val main = Handler(Looper.getMainLooper())
     private val running = AtomicBoolean(false)
     @Volatile private var lastFinishAt = 0L
@@ -65,6 +67,21 @@ object UssdApi {
             running.set(false)
             onDone(o.copy(pinSent = true, trace = trace.joinToString("\n")))
         }
+        // The wallet's answer keeps its menu open, so Android will not pass it to an app (see UssdLog). On a phone that was
+        // given READ_LOGS, the words are still in the radio log: empty it first, then look there when Android says no.
+        val readsLog = UssdLogs.allowed(ctx)
+        if (readsLog) { UssdLogs.clear(); note("the phone log will be read if Android refuses the answer") }
+        fun fromLog(fallback: String) {
+            if (finished.get()) return
+            if (!readsLog) { finish(UssdOutcome(false, null, fallback)); return }
+            // The log is written a moment after the answer arrives.
+            main.postDelayed({
+                if (finished.get()) return@postDelayed
+                val b = try { UssdLogRead.balanceIn(UssdLogs.lines(), NagadUssd::balanceOnly) } catch (e: Exception) { null }
+                if (b != null) { note("balance read from the phone log"); finish(UssdOutcome(true, b, null)) }
+                else { note("the phone log had no balance either"); finish(UssdOutcome(false, null, fallback)) }
+            }, LOG_PAUSE_MS)
+        }
         fun notSent(why: String) {
             if (!finished.compareAndSet(false, true)) return
             running.set(false)
@@ -90,7 +107,8 @@ object UssdApi {
 
                 override fun onReceiveUssdResponseFailed(telephonyManager: TelephonyManager, request: String, failureCode: Int) {
                     note("phone reported failure code $failureCode")
-                    if (UssdDirect.nothingWasSent(failureCode)) notSent("service unavailable") else finish(UssdOutcome(false, null, UssdDirect.failureError(failureCode)))
+                    if (UssdDirect.nothingWasSent(failureCode)) notSent("service unavailable")
+                    else fromLog(UssdDirect.failureError(failureCode))
                 }
             }, main)
             note("request handed to the phone")
@@ -102,7 +120,7 @@ object UssdApi {
             return
         }
         // If the network never answers, say so; the PIN was already sent, so it is not tried again.
-        main.postDelayed({ note("network never answered"); finish(UssdOutcome(false, null, "no_answer_after_pin")) }, ANSWER_MS)
+        main.postDelayed({ note("network never answered"); fromLog("no_answer_after_pin") }, ANSWER_MS)
     }
 
     /** The same direct way for a wallet that cannot take one long code (bKash): send the first code, read the menu the network sends

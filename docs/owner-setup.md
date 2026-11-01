@@ -324,3 +324,70 @@ The PIN will not be retried after a wrong PIN, so a mistake cannot lock the wall
 Turn Wireless debugging off afterwards and keep 2-step verification on the Tailscale account (it can reach every phone you add).
 
 **bKash (agent menu) works the same way, but one menu at a time.** In the card choose **bKash** at the top, then do the same steps for it (its own SIM choice and its own PIN). PayTrace asks bKash for `*247#`, answers `4` then `1`, gives the PIN once, and reads "Current balance". On the dashboard each phone now has **Check Nagad balance** and **Check bKash balance**. bKash does not accept the whole check as one code; if this phone's network does not let PayTrace answer the menus directly, it falls back to the dialer way (which needs Accessibility, see above).
+
+### Setting up a phone for the balance check (2026-11-01, tested on the owner's Redmi)
+
+Android switches PayTrace off in Accessibility settings **every time the app is updated**, because the app is installed
+from a file and not from a store. On a phone that needs the dialer way, the balance check then stops working until
+someone notices. One command per phone, **once ever**, lets PayTrace put itself back. Do this on every phone.
+
+**1. On the phone, first install the newest PayTrace** (Settings, Check for updates). The command below only works on
+build 92 or newer, because older builds do not ask for that permission at all.
+
+**2. On the phone, switch on:**
+- **Developer options:** Settings, About phone, tap the version seven times.
+- **Wireless debugging:** Settings, Developer options, Wireless debugging (also fine over Wi-Fi at home, but for a phone
+  somewhere else it needs **Tailscale** on the phone and on the computer, signed in with the same account).
+- **Xiaomi, Redmi and POCO only:** also **"USB debugging (Security settings)"** — "Allow granting permissions and
+  simulating input via USB debugging", a few rows below the ordinary USB debugging. It needs a Mi account and the
+  phone's **mobile data** on (Wi-Fi is not enough). Without it the command below is refused, whatever else you try.
+  After switching it on, turn Wireless debugging off and on again, or the computer keeps the old, refused session.
+
+**3. On the computer** (the port is on the phone's Wireless debugging screen and changes every time; the address is the
+phone's Tailscale address for a phone somewhere else, or its Wi-Fi address at home):
+
+```
+adb pair <address>:<pairing port>          # only the first time, type the 6-digit code from the phone
+adb connect <address>:<port>
+adb -s <address>:<port> shell pm grant com.paytrace.app android.permission.WRITE_SECURE_SETTINGS
+adb -s <address>:<port> shell dumpsys package com.paytrace.app | grep -i write_secure
+```
+
+The last line must say `granted=true`. (A second line saying `granted=false, userId=10` is the phone's separate second
+space and does not matter.) If it says `granted=false`, the Xiaomi switch above is not really on, or the phone needs to
+be restarted and Wireless debugging switched on again.
+
+**4. Switch Accessibility on by hand this one time** (Settings, Accessibility, Downloaded apps, PayTrace balance check).
+If the name is grey, run `adb -s <address>:<port> shell appops set com.paytrace.app ACCESS_RESTRICTED_SETTINGS allow`
+first. From the next app update on, PayTrace switches it back on by itself and no computer is needed again.
+
+**5. Turn Wireless debugging off** on the phone when you are done.
+
+What that permission is used for: PayTrace adds **its own** balance-check service back to the Accessibility list, and
+writes no other setting. Without the permission nothing happens and the switch is flipped by hand as before.
+
+### Reading the balance straight from the phone (2026-11-02)
+
+What the owner's Redmi proved: Nagad **does** answer the direct request with the balance ("Balance: Tk ...", then
+"0. Main Menu"), but because that answer offers a next step the network keeps the menu open, and **Android passes an app
+only the answers that close it**. PayTrace is told "failure code -1" and never sees the words. That is an Android rule, it
+cannot be changed, and it is why the direct way failed on every phone and every try while the same code dialled by hand
+worked.
+
+The words are in the phone's own radio log all the same. A phone given one more permission, the same way as the other one,
+reads them itself. Then no menu has to be opened, no screen has to be awake and Accessibility is not needed at all:
+
+```
+adb -s <address>:<port> shell pm grant com.paytrace.app android.permission.READ_LOGS
+```
+
+Only the balance is taken out of those lines. Nothing else is kept, written into the step log or sent anywhere, because the
+dialled code — PIN included — is on them too. Without the permission nothing changes and the dialer way is used as before.
+
+**Not known yet:** whether every phone writes the answer where PayTrace can read it. The Redmi (MediaTek) does. The Vivo and
+the OnePlus have another kind of chip and may not, and Android 13 may ask the person once before an app may read the log. If
+a phone does not, it moves itself to the dialer way as before. Try the check once per phone and look at "Show what happened":
+"balance read from the phone log" means it worked.
+
+**Change the wallet PINs after testing.** The dialled code, with the PIN in it, is written into the phone's log by the phone
+itself, and the recordings made during the tests show it too.

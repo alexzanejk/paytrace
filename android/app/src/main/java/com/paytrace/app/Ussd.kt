@@ -34,6 +34,10 @@ object NagadUssd {
      *  the network answers with the balance directly). Null unless the PIN is 4 to 8 digits, so nothing else (a "*", a "#")
      *  can ever be slipped into a code the phone sends. */
     fun balanceCode(pin: String): String? = if (PIN.matches(pin)) "*167*6*1*$pin#" else null
+
+    /** The balance ONLY when the words are a plain balance answer. Used where text is read in bulk (the phone log), so a
+     *  cash-in receipt, which also prints a balance, can never be taken for the answer to a balance enquiry. */
+    fun balanceOnly(text: String): Double? = if (classify(text) == UssdScreen.BALANCE) balanceOf(text) else null
     private val PIN = Regex("^[0-9]{4,8}$")
 
     /** Anything that moves or confirms money. The balance flow must never be on such a screen. */
@@ -110,6 +114,9 @@ object BkashUssd {
 
     fun balanceOf(text: String): Double? =
         BALANCE.find(text)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
+
+    /** As NagadUssd.balanceOnly: only a plain balance answer counts. */
+    fun balanceOnly(text: String): Double? = if (classify(text) == UssdScreen.BALANCE) balanceOf(text) else null
 
     /** Anything that moves or confirms money. The balance flow must never be on such a screen. */
     private fun mentionsMoneyMove(t: String): Boolean =
@@ -251,6 +258,13 @@ object UssdDirect {
 object UssdDirectHealth {
     const val ENOUGH = 2
 
+    /** PROVED on the owner's Redmi (phone log, 2026-11-02): Nagad DOES answer the direct request with the balance
+     *  ("Balance: Tk 818.35 / 0. Main Menu"), but because the answer offers a next step the network keeps the menu open,
+     *  and Android hands an app only the answers that close it. The app is told "failure code -1" and never sees the words.
+     *  Nothing in PayTrace can change that, and it will happen on every phone and every try, so one such failure is enough
+     *  to move that phone to the dialer way (where the phone's own menu is read instead). */
+    fun cannotWorkHere(trace: String): Boolean = trace.contains("failure code -1")
+
     /** Judged from a finished run's own log. Only the direct way's own failures count, never a wrong PIN or a stopped menu. */
     fun directFailed(trace: String): Boolean {
         val t = trace.lowercase()
@@ -263,8 +277,14 @@ object UssdDirectHealth {
     fun shouldSwitch(failsInARow: Int, accessibilityOn: Boolean): Boolean = accessibilityOn && failsInARow >= ENOUGH
 
     /** The new count after a run: back to nothing when the direct way did its job, one more when it failed. */
-    fun count(before: Int, trace: String): Int =
-        if (directFailed(trace)) (before + 1).coerceAtMost(ENOUGH) else 0
+    fun count(before: Int, trace: String, ok: Boolean = false): Int = when {
+        // A run that ended with a balance proves the direct way works on this phone, whatever the phone said along the way
+        // (with READ_LOGS it answers "failure code -1" and PayTrace still reads the balance out of the phone's log).
+        ok -> 0
+        cannotWorkHere(trace) -> ENOUGH
+        directFailed(trace) -> (before + 1).coerceAtMost(ENOUGH)
+        else -> 0
+    }
 }
 
 /** The wallets a balance check can be run for. */

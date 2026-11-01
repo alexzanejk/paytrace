@@ -27,6 +27,13 @@
     <uses-permission
         android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
+    <!-- Also given once per phone over adb ("adb shell pm grant com.paytrace.app android.permission.READ_LOGS"). It lets
+         PayTrace read the wallet's balance out of the phone's own radio log, which is the only place Android leaves it when
+         the answer keeps the wallet's menu open (see UssdLog.kt). Without it nothing changes. The lines are read, the balance
+         is taken out and nothing else is kept, logged or sent: the dialled code, PIN included, is on those lines too. -->
+    <uses-permission
+        android:name="android.permission.READ_LOGS"
+        tools:ignore="ProtectedPermissions" />
 
     <uses-feature
         android:name="android.hardware.telephony"
