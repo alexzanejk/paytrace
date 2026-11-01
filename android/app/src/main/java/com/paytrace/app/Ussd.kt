@@ -229,6 +229,33 @@ object UssdLabels {
         id?.substringAfterLast('/')?.substringAfterLast(':')?.lowercase() ?: ""
 }
 
+/** One row of the phone's "Choose SIM for this call" dialog: what it says, and whether the phone lets it be tapped.
+ *  A SIM that is in the phone but has no network is drawn grey, and tapping it does nothing at all. */
+data class SimRow(val text: String?, val enabled: Boolean)
+
+/** Which row of that dialog to tap. Pure, so the rules are unit tested.
+ *
+ *  A row that names the wanted SIM wins. Failing that, with exactly two rows, the phone draws SIM 1 first and SIM 2 second
+ *  (every chooser seen so far), so the row at that position is taken. A row that is grey is never tapped: PayTrace stops
+ *  and says so, because tapping it would do nothing and the run would simply run out of time. */
+object UssdSimPick {
+    sealed class Pick {
+        /** Tap the row at this place in the list. */
+        data class Tap(val index: Int) : Pick()
+        /** Nothing can be decided from this screen yet: look again. */
+        object Wait : Pick()
+        /** Give up with this reason. */
+        data class Stop(val reason: String) : Pick()
+    }
+
+    fun choose(rows: List<SimRow>, slot: Int): Pick {
+        val named = rows.indexOfFirst { UssdLabels.namesSim(it.text, slot) }
+        if (named >= 0) return if (rows[named].enabled) Pick.Tap(named) else Pick.Stop("sim_no_service")
+        if (rows.size == 2 && slot in 0..1) return if (rows[slot].enabled) Pick.Tap(slot) else Pick.Stop("sim_no_service")
+        return Pick.Wait
+    }
+}
+
 /** The words of a screen, cut short and with every long run of digits hidden, so a failed run can say what it saw without
  *  ever putting a PIN, a wallet number or a balance into the log that is sent for help. */
 object UssdRedact {

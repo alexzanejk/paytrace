@@ -42,6 +42,7 @@ object UssdText {
         "too_many_steps" -> "The menu took too many steps, so it stopped."
         "no_input_box", "no_send_button" -> "PayTrace could not use the phone's menu box."
         "sim_not_found" -> "Could not pick the SIM. Check the SIM number in settings."
+        "sim_no_service" -> "The SIM chosen here is grey on the phone's own screen, so it has no network and cannot be used. Choose the other SIM above, or put a working SIM in that slot."
         "dial_failed" -> "The phone could not start the code."
         "unsupported" -> "This phone's app does not know that command yet. Update the app."
         else -> "It did not work."
@@ -310,12 +311,22 @@ object UssdSession {
             // First a row that names the SIM ("SIM 2", "SIM2 +880 ..."). Failing that, the rows of the dialog in the order
             // the phone drew them, which is SIM 1 then SIM 2 on every chooser seen so far; only when there are exactly two,
             // so a one-off dialog can never be tapped by position.
-            val named = w.simRows.firstOrNull { UssdLabels.namesSim(it.text?.toString(), slot) }
-            val row = named ?: if (w.simRows.size == 2) w.simRows[slot] else if (w.choices.size == 2) w.choices[slot] else null
-            if (row != null && clickUp(row)) {
-                note("SIM " + (slot + 1) + " tapped" + if (named == null) " (by position)" else "")
-                lastActionAt = now
-                return
+            val nodes = if (w.simRows.isNotEmpty()) w.simRows else w.choices
+            val rows = nodes.map { SimRow(it.text?.toString(), it.isEnabled) }
+            when (val pick = UssdSimPick.choose(rows, slot)) {
+                is UssdSimPick.Pick.Tap -> {
+                    if (clickUp(nodes[pick.index])) {
+                        note("SIM " + (slot + 1) + " tapped")
+                        lastActionAt = now
+                        return
+                    }
+                }
+                is UssdSimPick.Pick.Stop -> {
+                    note("SIM " + (slot + 1) + " is grey on this screen: " + UssdRedact.snippet(w.text))
+                    finish(UssdOutcome(false, null, pick.reason))
+                    return
+                }
+                is UssdSimPick.Pick.Wait -> Unit
             }
             if (simTries >= MAX_SIM_TRIES) {
                 note("could not pick the SIM on this screen: " + UssdRedact.snippet(w.text))

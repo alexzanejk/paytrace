@@ -353,4 +353,27 @@ class UssdTest {
         assertTrue(!UssdLabels.isChoice(" "))
         assertTrue(!UssdLabels.isChoice(null))
     }
+
+    @Test fun aGreySimIsNeverTappedAndTheRunSaysWhy() {
+        // The owner's Redmi: both phones show the Google dialer's "Choose SIM for this call", but one SIM is in the phone
+        // without a network, so the phone draws it grey. Tapping it does nothing, and the run used to run out of time.
+        val grey2 = listOf(SimRow("SIM1 +880 1706-630756", true), SimRow("SIM2", false))
+        assertEquals(UssdSimPick.Pick.Tap(0), UssdSimPick.choose(grey2, 0))
+        assertEquals(UssdSimPick.Pick.Stop("sim_no_service"), UssdSimPick.choose(grey2, 1))
+
+        // Both working: the row that names the wanted SIM wins, wherever it sits.
+        val both = listOf(SimRow("SIM 2  Robi", true), SimRow("SIM 1  Grameenphone", true))
+        assertEquals(UssdSimPick.Pick.Tap(1), UssdSimPick.choose(both, 0))
+        assertEquals(UssdSimPick.Pick.Tap(0), UssdSimPick.choose(both, 1))
+
+        // No row names a SIM (some phones show only the networks): first row is SIM 1, second is SIM 2.
+        val networks = listOf(SimRow("Grameenphone", true), SimRow("Robi", false))
+        assertEquals(UssdSimPick.Pick.Tap(0), UssdSimPick.choose(networks, 0))
+        assertEquals(UssdSimPick.Pick.Stop("sim_no_service"), UssdSimPick.choose(networks, 1))
+
+        // Anything else is left alone rather than guessed at.
+        assertEquals(UssdSimPick.Pick.Wait, UssdSimPick.choose(listOf(SimRow("Grameenphone", true)), 0))
+        assertEquals(UssdSimPick.Pick.Wait, UssdSimPick.choose(emptyList(), 0))
+        assertEquals(UssdSimPick.Pick.Wait, UssdSimPick.choose(listOf(SimRow("a", true), SimRow("b", true), SimRow("c", true)), 1))
+    }
 }
