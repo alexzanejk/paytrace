@@ -33,6 +33,9 @@ object UssdText {
         "no_call_permission" -> "The phone-call permission is missing."
         "no_pin" -> "No Nagad PIN is saved on this phone."
         "busy" -> "Another check is still running."
+        "network_refused" -> "The provider answered that the service is not available right now. Try again a little later."
+        "too_soon" -> "A check just finished. Wait about a minute and try again."
+        "ussd_failed" -> "The network did not answer the code. PayTrace did not try again. Check the Nagad SMS, then try again later."
         "timeout" -> "The phone did not answer in time. Try again."
         "no_answer_after_pin" -> "The PIN was entered but no balance came back. PayTrace did not try the PIN again. Check the Nagad SMS, then try again later."
         "unexpected_screen" -> "The Nagad menu looked different from what PayTrace expects, so it stopped. Nothing was sent."
@@ -125,7 +128,7 @@ object UssdSession {
 
     private val main = Handler(Looper.getMainLooper())
     private val tickRunnable = Runnable { tick() }
-    private var flow: NagadBalanceFlow? = null
+    private var flow: BalanceFlow? = null
     private var onFinish: ((UssdOutcome) -> Unit)? = null
     private var slot = 0
     private var timeout: Runnable? = null
@@ -146,7 +149,7 @@ object UssdSession {
 
     @Synchronized fun active(): Boolean = flow != null
 
-    @Synchronized fun start(slot: Int, flow: NagadBalanceFlow, timeoutMs: Long, dialer: String?, earlier: String, onFinish: (UssdOutcome) -> Unit) {
+    @Synchronized fun start(slot: Int, flow: BalanceFlow, timeoutMs: Long, dialer: String?, earlier: String, onFinish: (UssdOutcome) -> Unit) {
         this.slot = slot
         this.flow = flow
         this.onFinish = onFinish
@@ -219,7 +222,7 @@ object UssdSession {
         val now = SystemClock.elapsedRealtime()
         val lower = w.text.lowercase()
         val chooser = lower.contains("choose sim") || lower.contains("select sim")
-        val ussdScreen = NagadUssd.classify(w.text) != UssdScreen.OTHER
+        val ussdScreen = f.recognises(w.text)
         // The dialer is open with *167# typed in: press its Call button, as a person does. Looked for again on every tick.
         if (phase == 0) {
             if (!chooser && !ussdScreen) {
@@ -241,6 +244,8 @@ object UssdSession {
         }
         // The phone's own refusal of the code.
         if (lower.contains("connection problem") || lower.contains("invalid mmi")) { note("phone refused the code"); finish(UssdOutcome(false, null, "dial_failed")); return }
+        // The provider's own refusal ("service is not available at the moment, please try again later").
+        if (lower.contains("not available") || lower.contains("try again later")) { note("provider said the service is not available"); finish(UssdOutcome(false, null, "network_refused")); return }
         // Until the first Nagad screen appears, what is on the screen is only the dialer's keypad: wait for the menu.
         if (ussdScreen) { seenUssd = true } else if (!seenUssd) return
         // An answer already under way for this very screen: keep going with it (type, press Send, wait).
@@ -359,40 +364,70 @@ object UssdSetup {
     fun callPermission(ctx: Context): Boolean =
         ContextCompat.checkSelfPermission(ctx, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
 
-    fun pinSaved(ctx: Context): Boolean = SecretStore(ctx.applicationContext, "ussd_pin").get().isNotEmpty()
+    /** Where each wallet's PIN is kept: encrypted, on this phone only. */
+    fun pinStore(ctx: Context, provider: String): SecretStore =
+        SecretStore(ctx.applicationContext, if (provider == UssdProviders.BKASH) "ussd_pin_bkash" else "ussd_pin")
+
+    fun pinSaved(ctx: Context, provider: String = UssdProviders.NAGAD): Boolean = pinStore(ctx, provider).get().isNotEmpty()
 }
 
-/** Opens the phone's dialer with *167# typed in and lets [UssdSession] press Call, pick the SIM and walk the menus.
- *  Everything is checked first; the PIN is read from the encrypted store only now, and only kept in memory for this run.
- *  If a try fails before the PIN was really submitted, it is tried once more after a short pause; after the PIN, never. */
+/** Runs a balance check for one wallet (Nagad or bKash). First choice is the direct way ([UssdApi]: no dialer, no buttons, the answer
+ *  comes back as text): Nagad as one code, bKash one menu at a time. If the phone cannot do that, the dialer way is used: open the
+ *  dialer with the provider's code typed in and let [UssdSession] press Call, pick the SIM and walk the menus. Everything is checked
+ *  first; the PIN is read from the encrypted store only now and kept in memory for this run. A failed dialer try before the PIN was
+ *  really submitted is tried once more; after the PIN, never. */
 object UssdRunner {
     private const val RUN_MS = 90_000L
     private const val DIAL_FALLBACK_MS = 3_500L
     private const val RETRY_PAUSE_MS = 4_000L
+    /** After a bKash session was opened by the direct way and could not go on, let the network drop it before the dialer way starts. */
+    private const val SWITCH_PAUSE_MS = 4_000L
 
-    fun run(ctx: Context, onFinish: (UssdOutcome) -> Unit) = attempt(ctx.applicationContext, 1, "", onFinish)
+    fun run(ctx: Context, provider: String, onFinish: (UssdOutcome) -> Unit) = attempt(ctx.applicationContext, provider, 1, "", onFinish)
 
-    @Suppress("DEPRECATION")
-    private fun attempt(app: Context, n: Int, earlier: String, onFinish: (UssdOutcome) -> Unit) {
+    private fun attempt(app: Context, provider: String, n: Int, earlier: String, onFinish: (UssdOutcome) -> Unit) {
         val s = AppSettings(app)
         fun fail(e: String) = onFinish(UssdOutcome(false, null, e, trace = earlier))
+        if (!UssdProviders.isKnown(provider)) return fail("unsupported")
         if (!s.ussdAllowed) return fail("not_allowed")
-        if (!UssdSetup.accessibilityOn(app)) return fail("no_accessibility")
         if (!UssdSetup.callPermission(app)) return fail("no_call_permission")
-        val pin = SecretStore(app, "ussd_pin").get()
+        val pin = UssdSetup.pinStore(app, provider).get()
         if (pin.isEmpty()) return fail("no_pin")
+        if (UssdSession.active() || UssdApi.active()) return fail("busy")
+        val slot = s.ussdSlotOf(provider)
+        if (n == 1) {
+            if (UssdApi.tooSoon()) return fail("too_soon")
+            if (UssdApi.available(app)) {
+                if (UssdProviders.oneCode(provider)) {
+                    UssdApi.run(app, slot, pin, onFinish) { viaDialer(app, provider, 1, "", onFinish, s, pin) }
+                } else {
+                    UssdApi.runSteps(app, slot, UssdProviders.flow(provider) { pin }, UssdProviders.dialCode(provider), onFinish) { trace ->
+                        Handler(Looper.getMainLooper()).postDelayed({ viaDialer(app, provider, 1, trace, onFinish, s, pin) }, SWITCH_PAUSE_MS)
+                    }
+                }
+                return
+            }
+        }
+        viaDialer(app, provider, n, earlier, onFinish, s, pin)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun viaDialer(app: Context, provider: String, n: Int, earlier: String, onFinish: (UssdOutcome) -> Unit, s: AppSettings, pin: String) {
+        fun fail(e: String) = onFinish(UssdOutcome(false, null, e, trace = earlier))
+        if (!UssdSetup.accessibilityOn(app)) return fail("no_accessibility")
         if (UssdSession.active()) return fail("busy")
+        val code = UssdProviders.dialCode(provider)
         // The phone's own dialer, so the right app opens whatever the brand or the home screen looks like.
         val dialer = try { (app.getSystemService(Context.TELECOM_SERVICE) as TelecomManager).defaultDialerPackage } catch (e: Exception) { null }
         val head = if (n > 1) earlier + "\n-- second try --" else earlier
-        UssdSession.start(s.ussdSlot, NagadBalanceFlow { pin }, RUN_MS, dialer, head) { outcome ->
+        UssdSession.start(s.ussdSlotOf(provider), UssdProviders.flow(provider) { pin }, RUN_MS, dialer, head) { outcome ->
             if (UssdRetry.shouldRetry(outcome.error, outcome.ok, outcome.pinSent, n)) {
-                Handler(Looper.getMainLooper()).postDelayed({ attempt(app, n + 1, outcome.trace, onFinish) }, RETRY_PAUSE_MS)
+                Handler(Looper.getMainLooper()).postDelayed({ attempt(app, provider, n + 1, outcome.trace, onFinish) }, RETRY_PAUSE_MS)
             } else {
                 onFinish(outcome)
             }
         }
-        UssdSession.note("start, try " + n + (if (dialer != null) ", dialer " + dialer else ""))
+        UssdSession.note("start, dialer way, " + UssdProviders.label(provider) + ", try " + n + (if (dialer != null) ", dialer " + dialer else ""))
         try {
             // The phone's screen may be off: wake it so the menu can be shown.
             val pm = app.getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -401,7 +436,7 @@ object UssdRunner {
             // The call may still work with the screen on.
         }
         val opener = UssdSession.launchContext() ?: app
-        val dial = Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", NagadUssd.CODE, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val dial = Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", code, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             if (dialer != null) dial.setPackage(dialer)
             opener.startActivity(dial)
@@ -422,7 +457,7 @@ object UssdRunner {
                 UssdSession.note("no Call button found, placing the call directly")
                 try {
                     (UssdSession.launchContext() ?: app).startActivity(
-                        Intent(Intent.ACTION_CALL, Uri.fromParts("tel", NagadUssd.CODE, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        Intent(Intent.ACTION_CALL, Uri.fromParts("tel", code, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                     )
                 } catch (e: SecurityException) {
                     UssdSession.abort("no_call_permission")
@@ -441,23 +476,24 @@ object UssdCommands {
         val cmd = try { JSONObject(body).optJSONObject("command") } catch (e: Exception) { null } ?: return
         val id = cmd.optString("id")
         if (id.isBlank()) return
-        if (cmd.optString("kind") != "balance" || cmd.optString("provider") != "nagad") {
+        val provider = cmd.optString("provider")
+        if (cmd.optString("kind") != "balance" || !UssdProviders.isKnown(provider)) {
             report(ctx, id, UssdOutcome(false, null, "unsupported"))
             return
         }
-        UssdRunner.run(ctx) { outcome ->
-            remember(ctx, outcome)
+        UssdRunner.run(ctx, provider) { outcome ->
+            remember(ctx, provider, outcome)
             report(ctx, id, outcome)
         }
     }
 
-    /** Kept on the phone so the Settings card can show the last result. */
-    fun remember(ctx: Context, o: UssdOutcome) {
+    /** Kept on the phone so the Settings card can show the last result of each wallet. */
+    fun remember(ctx: Context, provider: String, o: UssdOutcome) {
         val j = JSONObject().put("at", System.currentTimeMillis()).put("ok", o.ok)
         if (o.balance != null) j.put("balance", o.balance)
         if (o.error != null) j.put("error", o.error)
         if (o.trace.isNotBlank()) j.put("trace", o.trace.take(2500))
-        AppSettings(ctx).ussdLast = j.toString()
+        AppSettings(ctx).setUssdLastOf(provider, j.toString())
     }
 
     private fun report(ctx: Context, id: String, o: UssdOutcome) {

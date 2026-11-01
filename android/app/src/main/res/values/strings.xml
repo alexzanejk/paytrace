@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="ussd_service_label">PayTrace Nagad balance check</string>
-    <string name="ussd_service_desc">Lets PayTrace type into the phone\'s own Nagad menu (*167#) to read the wallet balance when the owner asks for it from the dashboard. It does nothing at any other time and never reads other apps.</string>
+    <string name="ussd_service_label">PayTrace balance check</string>
+    <string name="ussd_service_desc">Lets PayTrace type into the USSD menu of a wallet (Nagad or bKash) on this phone to read its balance when the owner asks for it from the dashboard. It does nothing at any other time and never reads other apps.</string>
 </resources>
