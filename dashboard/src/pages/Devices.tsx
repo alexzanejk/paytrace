@@ -17,6 +17,7 @@ import { ProviderChip } from "@/components/ProviderChip";
 import { DeviceHealthBadge } from "@/components/DeviceHealthBadge";
 import { DeviceDetails } from "@/components/DeviceDetails";
 import { WalletsCard } from "@/components/WalletsCard";
+import { BalanceCheck } from "@/components/BalanceCheck";
 import { AppVersionCard, VersionChip } from "@/components/AppVersionCard";
 import { GROUP_CODE, GroupChoice } from "@/components/GroupChoice";
 import { CommissionCard } from "@/components/CommissionCard";
@@ -407,6 +408,7 @@ function DeviceCard({
         {error ? <span className="text-xs text-destructive">{error}</span> : null}
       </div>
       {wakeNote ? <p role="status" className="text-sm text-muted-foreground">{wakeNote}</p> : null}
+      {d.status === "approved" ? <BalanceCheck deviceId={d.id} /> : null}
       {showHealth ? <DeviceDetails info={d.info} /> : null}
     </Card>
   );

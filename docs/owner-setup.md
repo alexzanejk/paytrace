@@ -297,3 +297,21 @@ The first phones need the new app installed by hand once (this build); after tha
 
 **Check it works:** the build's summary page in GitHub says "Download bucket: published version 1.0.N". Open `https://app.xn--bnq875cj52amsb.click/latest.json` in a browser; you should see the version number.
 The Phones page then shows which phones are behind, using the **Newest phone app** number (type the new build number there after each build; automatic filling comes later).
+
+## Step 10: Nagad balance check from the dashboard (test version)
+
+The dashboard can ask a phone to read its Nagad balance by itself. The phone opens the Nagad menu (`*167#`), types the PIN and reads the balance. **It never sends money.** Nothing is run until you press the button.
+This is the first test version: it has not been tried on a real phone yet, so try it on **one** phone first, with the screen on.
+
+**On the phone (once), in the PayTrace app, Settings, "Nagad balance check from the dashboard":**
+1. **Accessibility:** tap "Open Accessibility settings", find "PayTrace Nagad balance check" and switch it on. If Android says the setting is restricted: Settings, Apps, PayTrace, the three dots at the top right, **Allow restricted settings**, then try again.
+2. **Phone calls:** tap Allow (the app needs it to open `*167#`).
+3. **SIM:** choose which SIM has Nagad (SIM 1 or SIM 2).
+4. **PIN:** type the Nagad PIN on the phone and tap Save PIN. It stays encrypted on that phone only. It is never sent to the dashboard, and never type it anywhere else.
+5. **Switch:** turn on "Let the dashboard check the balance".
+6. Press **Check Nagad balance now** on the phone first. Keep the screen on and watch. You should see the menu open and close, then "Last check ... Nagad balance Tk ...".
+
+**On the dashboard:** open Phones, find that phone and press **Check Nagad balance**. The phone picks it up within about 30 seconds and the answer appears next to the button.
+
+If it stops, the message says why (for example "The Nagad menu looked different from what PayTrace expects, so it stopped. Nothing was sent."). Send me that message.
+The PIN will not be retried after a wrong PIN, so a mistake cannot lock the wallet by repetition. Change the PIN after testing, because it was visible in your recordings.

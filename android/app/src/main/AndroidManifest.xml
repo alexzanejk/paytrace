@@ -15,6 +15,8 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Lets the app open Android's installer for its own updates (the person still taps Install). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Dials the Nagad menu code (*167#) when the owner asks for a balance check from the dashboard. -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
 
     <uses-feature
         android:name="android.hardware.telephony"
@@ -126,6 +128,20 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/update_paths" />
         </provider>
+
+        <!-- Reads and answers the phone's own USSD menu, only while a dashboard command is running. Switched on by hand in Accessibility settings. -->
+        <service
+            android:name=".UssdAccessibilityService"
+            android:exported="true"
+            android:label="@string/ussd_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/ussd_accessibility" />
+        </service>
 
         <service
             android:name=".MonitorService"
