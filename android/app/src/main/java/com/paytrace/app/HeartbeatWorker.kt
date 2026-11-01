@@ -42,6 +42,8 @@ class HeartbeatWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
         /** One heartbeat to the server. Does nothing until this phone has asked to join; a failure is fine, the next one is soon. */
         fun beat(ctx: Context) {
             val s = AppSettings(ctx)
+            // An app update switches PayTrace off in Accessibility settings; where this phone allows it, put it back.
+            try { AccessibilityHeal.heal(ctx) } catch (e: Exception) { }
             // Not asked to join yet (or removed): the app's own screen handles pairing.
             val waiting = s.deviceStatus == "pending" || s.deviceStatus == "approved"
             if (s.serverUrl.isBlank() || !(waiting || s.secret.isNotBlank())) return
