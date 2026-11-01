@@ -248,10 +248,17 @@ object UssdSimPick {
         data class Stop(val reason: String) : Pick()
     }
 
+    /** A row the phone will not let a call go out on: drawn grey, or saying so in words (the owner's Redmi writes
+     *  "No signal" on the SIM that has none). */
+    fun usable(row: SimRow): Boolean {
+        val t = row.text?.lowercase() ?: ""
+        return row.enabled && !t.contains("no signal") && !t.contains("no service") && !t.contains("not available")
+    }
+
     fun choose(rows: List<SimRow>, slot: Int): Pick {
         val named = rows.indexOfFirst { UssdLabels.namesSim(it.text, slot) }
-        if (named >= 0) return if (rows[named].enabled) Pick.Tap(named) else Pick.Stop("sim_no_service")
-        if (rows.size == 2 && slot in 0..1) return if (rows[slot].enabled) Pick.Tap(slot) else Pick.Stop("sim_no_service")
+        if (named >= 0) return if (usable(rows[named])) Pick.Tap(named) else Pick.Stop("sim_no_service")
+        if (rows.size == 2 && slot in 0..1) return if (usable(rows[slot])) Pick.Tap(slot) else Pick.Stop("sim_no_service")
         return Pick.Wait
     }
 }

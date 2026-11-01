@@ -376,4 +376,24 @@ class UssdTest {
         assertEquals(UssdSimPick.Pick.Wait, UssdSimPick.choose(emptyList(), 0))
         assertEquals(UssdSimPick.Pick.Wait, UssdSimPick.choose(listOf(SimRow("a", true), SimRow("b", true), SimRow("c", true)), 1))
     }
+
+    @Test fun theOwnersTwoRealSimChoosersBothWork() {
+        // Photographed side by side, 2026-11-02. Same dialog title on both phones, different rows.
+        // The Vivo names the SIMs.
+        val vivo = listOf(SimRow("1 SIM1 +880 1706-630756", true), SimRow("2 SIM2 +880 1345-567224", true))
+        assertEquals(UssdSimPick.Pick.Tap(0), UssdSimPick.choose(vivo, 0))
+        assertEquals(UssdSimPick.Pick.Tap(1), UssdSimPick.choose(vivo, 1))
+
+        // The Redmi names the network on both rows, and the SIM with no network says so in words.
+        val redmi = listOf(
+            SimRow("1 Grameenphone +880 1721-627183 No signal", true),
+            SimRow("2 Grameenphone +880 1732-533847", true),
+        )
+        // Nagad is on SIM 2 there, which is the row PayTrace must tap.
+        assertEquals(UssdSimPick.Pick.Tap(1), UssdSimPick.choose(redmi, 1))
+        // Choosing the other one is refused rather than tapped: "No signal" means no call can go out on it.
+        assertEquals(UssdSimPick.Pick.Stop("sim_no_service"), UssdSimPick.choose(redmi, 0))
+        assertTrue(!UssdSimPick.usable(redmi[0]))
+        assertTrue(UssdSimPick.usable(redmi[1]))
+    }
 }
