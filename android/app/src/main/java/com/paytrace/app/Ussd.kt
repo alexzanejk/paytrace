@@ -81,3 +81,12 @@ class NagadBalanceFlow(private val pin: () -> String) {
 
     companion object { const val MAX_SCREENS = 6 }
 }
+
+/** Labels of buttons the dialer shows, judged from their accessibility description. Pure, unit tested. */
+object UssdLabels {
+    /** The green Call button of the dialer (an icon; the description is "Dial" or "Call"). Never "Call history" or a contact's call button. */
+    fun isCallButton(description: String?): Boolean {
+        val d = description?.trim()?.lowercase() ?: return false
+        return d == "dial" || d == "call" || d == "make a call" || d == "voice call"
+    }
+}

@@ -4,6 +4,7 @@ import android.Manifest
 import android.accessibilityservice.AccessibilityService
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -11,7 +12,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
-import android.telecom.TelecomManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.content.ContextCompat
@@ -75,6 +75,14 @@ private fun clickUp(node: AccessibilityNodeInfo?): Boolean {
     return false
 }
 
+/** The dialer's green Call button: a clickable view labelled "Dial" or "Call" (an icon, so it is found by its description). */
+private fun findCallButton(n: AccessibilityNodeInfo?, depth: Int = 0): AccessibilityNodeInfo? {
+    if (n == null || depth > 25) return null
+    if (UssdLabels.isCallButton(n.contentDescription?.toString()) && (n.isClickable || n.parent?.isClickable == true)) return n
+    for (i in 0 until n.childCount) findCallButton(n.getChild(i), depth + 1)?.let { return it }
+    return null
+}
+
 private fun clickButton(w: UssdWindow, vararg labels: String): Boolean {
     val b = w.buttons.firstOrNull { btn -> labels.any { it.equals(btn.text?.toString()?.trim(), ignoreCase = true) } } ?: return false
     return b.performAction(AccessibilityNodeInfo.ACTION_CLICK)
@@ -89,6 +97,10 @@ object UssdSession {
     private var slot = 0
     private var timeout: Runnable? = null
     private var service: AccessibilityService? = null
+    // 0 = the dialer is open with *167# typed and its Call button has not been pressed yet; 1 = Call was pressed.
+    private var phase = 0
+    // Becomes true when the first Nagad menu (or the SIM question) shows up; screens before that are just the dialer keypad.
+    private var seenUssd = false
 
     @Synchronized fun active(): Boolean = flow != null
 
@@ -96,6 +108,8 @@ object UssdSession {
         this.slot = slot
         this.flow = flow
         this.onFinish = onFinish
+        this.phase = 0
+        this.seenUssd = false
         val t = Runnable { finish(UssdOutcome(false, null, "timeout")) }
         timeout = t
         main.postDelayed(t, timeoutMs)
@@ -103,20 +117,42 @@ object UssdSession {
 
     fun attach(s: AccessibilityService?) { service = s }
 
+    /** True while the dialer is waiting for its Call button to be pressed. */
+    @Synchronized fun stillDialing(): Boolean = flow != null && phase == 0
+
+    /** The accessibility service's own context, which Android lets open screens more freely than a background service. */
+    fun launchContext(): Context? = service
+
     /** Only the phone's own call and menu windows may be read. */
     fun allowedPackage(pkg: String): Boolean =
-        pkg == "com.android.phone" || pkg == "com.android.server.telecom" || pkg.contains("incallui") || pkg.contains("dialer") || pkg.contains("telecom")
+        pkg == "com.android.phone" || pkg == "com.android.server.telecom" || pkg == "com.android.contacts" ||
+            pkg.contains("incallui") || pkg.contains("dialer") || pkg.contains("telecom")
 
     fun onWindow(w: UssdWindow) {
         val f = synchronized(this) { flow } ?: return
         val lower = w.text.lowercase()
+        val chooser = lower.contains("choose sim") || lower.contains("select sim")
+        val ussdScreen = NagadUssd.classify(w.text) != UssdScreen.OTHER
+        // The dialer is open with *167# typed in: press its green Call button, exactly as a person does.
+        if (phase == 0) {
+            if (!chooser && !ussdScreen) {
+                val btn = findCallButton(w.roots)
+                if (btn != null && clickUp(btn)) phase = 1
+                return
+            }
+            phase = 1
+        }
         // "Choose SIM for this call": tap the SIM the owner picked in settings.
-        if (lower.contains("choose sim") || lower.contains("select sim")) {
+        if (chooser) {
             val label = "SIM" + (slot + 1)
             val row = findRow(w.roots, label)
             if (row == null || !clickUp(row)) finish(UssdOutcome(false, null, "sim_not_found"))
             return
         }
+        // The phone's own refusal of the code.
+        if (lower.contains("connection problem") || lower.contains("invalid mmi")) { finish(UssdOutcome(false, null, "dial_failed")); return }
+        // Until the first Nagad screen appears, what is on the screen is only the dialer's keypad: wait for the menu.
+        if (ussdScreen) seenUssd = true else if (!seenUssd) return
         when (val a = f.onScreen(w.text)) {
             is UssdAction.Wait -> Unit
             is UssdAction.Reply -> reply(w, a.text)
@@ -220,6 +256,7 @@ object UssdSetup {
  *  store only now, and only kept in memory for this run. */
 object UssdRunner {
     private const val RUN_MS = 90_000L
+    private const val DIAL_FALLBACK_MS = 8_000L
 
     @Suppress("DEPRECATION")
     fun run(ctx: Context, onFinish: (UssdOutcome) -> Unit) {
@@ -240,14 +277,28 @@ object UssdRunner {
         } catch (e: Exception) {
             // The call may still work with the screen on.
         }
+        // Open the phone's dialer with *167# typed in, the way a person starts it. The service then presses Call and picks the SIM.
+        val opener = UssdSession.launchContext() ?: app
         try {
-            val telecom = app.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-            telecom.placeCall(Uri.fromParts("tel", NagadUssd.CODE, null), Bundle())
-        } catch (e: SecurityException) {
-            UssdSession.abort("no_call_permission")
+            opener.startActivity(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", NagadUssd.CODE, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (e: Exception) {
             UssdSession.abort("dial_failed")
+            return
         }
+        // If the Call button was not found or pressed in a few seconds, place the call directly instead (same result, no keypad).
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (UssdSession.stillDialing()) {
+                try {
+                    (UssdSession.launchContext() ?: app).startActivity(
+                        Intent(Intent.ACTION_CALL, Uri.fromParts("tel", NagadUssd.CODE, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                } catch (e: SecurityException) {
+                    UssdSession.abort("no_call_permission")
+                } catch (e: Exception) {
+                    UssdSession.abort("dial_failed")
+                }
+            }
+        }, DIAL_FALLBACK_MS)
     }
 }
 

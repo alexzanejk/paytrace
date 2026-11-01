@@ -103,4 +103,16 @@ class UssdTest {
     @Test fun blankScreensAreIgnored() {
         assertEquals(UssdAction.Wait, NagadBalanceFlow { "0000" }.onScreen("   "))
     }
+
+    @Test fun findsTheDialersCallButtonByItsLabel() {
+        assertTrue(UssdLabels.isCallButton("Dial"))
+        assertTrue(UssdLabels.isCallButton(" call "))
+        assertTrue(UssdLabels.isCallButton("Make a call"))
+        // Other buttons on the dialer or in the call log must not be pressed.
+        assertTrue(!UssdLabels.isCallButton("Call history"))
+        assertTrue(!UssdLabels.isCallButton("Delete"))
+        assertTrue(!UssdLabels.isCallButton("Voicemail"))
+        assertTrue(!UssdLabels.isCallButton(null))
+        assertTrue(!UssdLabels.isCallButton(""))
+    }
 }
