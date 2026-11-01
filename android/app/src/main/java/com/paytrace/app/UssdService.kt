@@ -63,6 +63,8 @@ class UssdWindow(
      *  chooser names the networks ("Grameenphone ... No signal") instead of "SIM 1" and "SIM 2". The words usually sit on
      *  the row's children, not the row itself, so each one's text is gathered from everything inside it. */
     val choices: List<AccessibilityNodeInfo> = emptyList(),
+    /** The window's own top node, for finding rows by the shape of the screen when nothing on them can be clicked. */
+    val root: AccessibilityNodeInfo? = null,
 )
 
 private class Collector {
@@ -76,8 +78,9 @@ private class Collector {
     var positive: AccessibilityNodeInfo? = null
     var negative: AccessibilityNodeInfo? = null
     val choices = ArrayList<AccessibilityNodeInfo>()
+    var root: AccessibilityNodeInfo? = null
 
-    fun window() = UssdWindow(texts.joinToString("\n"), edit, buttons, callButton, simRows, positive, negative, choices)
+    fun window() = UssdWindow(texts.joinToString("\n"), edit, buttons, callButton, simRows, positive, negative, choices, root)
 }
 
 private fun walk(n: AccessibilityNodeInfo?, c: Collector, depth: Int) {
@@ -116,6 +119,56 @@ private fun allWords(n: AccessibilityNodeInfo?, depth: Int = 0): String {
         if (k.isNotBlank()) { if (kids.isNotEmpty()) kids.append(' '); kids.append(k) }
     }
     return listOf(mine, kids.toString()).filter { it.isNotBlank() }.joinToString(" ")
+}
+
+/** Tapping a row that cannot be clicked the ordinary way: the phone is asked to touch the middle of it, as a finger would.
+ *  Some SIM choosers draw rows that report no click of their own. */
+private fun tapOnScreen(svc: AccessibilityService?, node: AccessibilityNodeInfo?): Boolean {
+    if (svc == null || node == null) return false
+    return try {
+        val box = android.graphics.Rect()
+        node.getBoundsInScreen(box)
+        if (box.width() <= 0 || box.height() <= 0) return false
+        val path = android.graphics.Path().apply { moveTo(box.exactCenterX(), box.exactCenterY()) }
+        val stroke = android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 60)
+        svc.dispatchGesture(android.accessibilityservice.GestureDescription.Builder().addStroke(stroke).build(), null, null)
+    } catch (e: Exception) {
+        false
+    }
+}
+
+/** The two rows of a SIM chooser, found by the shape of the screen instead of by any word on it.
+ *
+ *  WHY: on the owner's Redmi (run log, 2026-11-02) the chooser is read perfectly — "Choose SIM for this call",
+ *  "Grameenphone ... No signal", "Grameenphone ..." — but no row could be picked, because the rows of a list report no
+ *  click of their own (the list itself takes the tap), and nothing on them says "SIM". So the rows are looked for as what
+ *  they are: the deepest place on the screen that holds exactly two things, both with words on them, neither of them the
+ *  question itself. */
+private fun twoRows(root: AccessibilityNodeInfo?): List<AccessibilityNodeInfo>? {
+    var best: List<AccessibilityNodeInfo>? = null
+    var bestLength = 0
+
+    fun look(n: AccessibilityNodeInfo?, depth: Int) {
+        if (n == null || depth > 20) return
+        if (n.childCount == 2) {
+            val a = n.getChild(0)
+            val b = n.getChild(1)
+            val ta = allWords(a)
+            val tb = allWords(b)
+            // Both sides must carry words, and neither may be the question itself (that would be title beside list).
+            if (a != null && b != null && ta.isNotBlank() && tb.isNotBlank() &&
+                !UssdLabels.asksWhichSim(ta) && !UssdLabels.asksWhichSim(tb)
+            ) {
+                // The list of SIMs holds more words than any single row inside it, so the wordiest pair is the list.
+                val length = ta.length + tb.length
+                if (length > bestLength) { bestLength = length; best = listOf(a, b) }
+            }
+        }
+        for (i in 0 until n.childCount) look(n.getChild(i), depth + 1)
+    }
+
+    look(root, 0)
+    return best
 }
 
 private fun clickUp(node: AccessibilityNodeInfo?): Boolean {
@@ -265,14 +318,19 @@ object UssdSession {
         var bestScore = -1
         for (r in roots) {
             val pkg = r.packageName?.toString() ?: continue
-            if (!allowedPackage(pkg)) continue
             val c = Collector()
+            c.root = r
             walk(r, c, 0)
             val w = c.window()
             if (w.text.isBlank() && w.edit == null && w.callButton == null) continue
-            val lower = w.text.lowercase()
+            val asksSim = UssdLabels.asksWhichSim(w.text)
+            // Normally only the phone's own call and menu windows are read. The dialog that asks which SIM to call with can
+            // come from another part of the phone on some brands, so a window that IS that question is read as well: it is
+            // the one thing a run cannot get past on its own, and nothing is done with it but tapping the chosen SIM.
+            if (!allowedPackage(pkg) && !asksSim) continue
+            if (!allowedPackage(pkg)) noteOnce("simpkg", "the SIM question belongs to " + pkg)
             val score = (if (f != null && f.recognises(w.text)) 9000 else 0) +
-                (if (lower.contains("choose sim") || lower.contains("select sim")) 9000 else 0) +
+                (if (asksSim) 9000 else 0) +
                 (if (w.edit != null) 1000 else 0) + w.text.length.coerceAtMost(900)
             if (score > bestScore) { bestScore = score; best = w }
         }
@@ -326,12 +384,27 @@ object UssdSession {
             // so a one-off dialog can never be tapped by position.
             // The Vivo writes "SIM1 +880 ..." on the row itself; the Redmi writes "Grameenphone", the number and "No signal"
             // on the row's children, so each row's words are gathered from everything inside it.
-            val nodes = if (w.simRows.isNotEmpty()) w.simRows else w.choices.filter { UssdLabels.isChoice(allWords(it)) }
+            val nodes = when {
+                w.simRows.isNotEmpty() -> w.simRows
+                else -> {
+                    val tappable = w.choices.filter { UssdLabels.isChoice(allWords(it)) }
+                    // A row of a list reports no click of its own, so when nothing tappable is found the two rows are
+                    // looked for by the shape of the screen and touched in the middle instead.
+                    if (tappable.size == 2) tappable else twoRows(w.root) ?: tappable
+                }
+            }
             val rows = nodes.map { SimRow(allWords(it), it.isEnabled) }
             when (val pick = UssdSimPick.choose(rows, slot)) {
                 is UssdSimPick.Pick.Tap -> {
-                    if (clickUp(nodes[pick.index])) {
+                    val row = nodes[pick.index]
+                    // The ordinary way first; if the row reports no click of its own, touch the middle of it instead.
+                    if (clickUp(row)) {
                         note("SIM " + (slot + 1) + " tapped")
+                        lastActionAt = now
+                        return
+                    }
+                    if (tapOnScreen(service, row)) {
+                        note("SIM " + (slot + 1) + " touched on screen")
                         lastActionAt = now
                         return
                     }
@@ -493,6 +566,35 @@ object UssdSetup {
  *  first; the PIN is read from the encrypted store only now and kept in memory for this run. A failed dialer try before the PIN was
  *  really submitted is tried once more; after the PIN, never. */
 object UssdRunner {
+    /** The phone's own name for the SIM in [slot]. Putting it on the call means the phone does NOT ask which SIM to use:
+     *  the chooser never appears, which is the step every brand words differently. Null when it cannot be worked out, and
+     *  then the chooser is answered as before. */
+    @Suppress("DEPRECATION")
+    private fun simAccount(app: Context, slot: Int): android.telecom.PhoneAccountHandle? {
+        return try {
+            if (ContextCompat.checkSelfPermission(app, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) return null
+            val sm = app.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as android.telephony.SubscriptionManager
+            val info = sm.getActiveSubscriptionInfoForSimSlotIndex(slot) ?: return null
+            val tm = app.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+            val mine = tm.callCapablePhoneAccounts
+            // Most phones name the handle after the subscription; otherwise the handles come in SIM order.
+            mine.firstOrNull { it.id == info.subscriptionId.toString() }
+                ?: (if (mine.size == 2) mine.getOrNull(slot) else null)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** Puts the chosen SIM on an intent, where the phone allows it. */
+    private fun withSim(intent: Intent, app: Context, slot: Int): Intent {
+        val account = simAccount(app, slot)
+        if (account != null) {
+            intent.putExtra(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, account)
+            UssdSession.note("call set to SIM " + (slot + 1) + ", so the phone should not ask")
+        }
+        return intent
+    }
+
     private const val RUN_MS = 90_000L
     private const val DIAL_FALLBACK_MS = 3_500L
     private const val RETRY_PAUSE_MS = 4_000L
@@ -575,7 +677,7 @@ object UssdRunner {
             // The call may still work with the screen on.
         }
         val opener = UssdSession.launchContext() ?: app
-        val dial = Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(code))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val dial = withSim(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(code))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), app, s.ussdSlotOf(provider))
         try {
             if (dialer != null) dial.setPackage(dialer)
             opener.startActivity(dial)
@@ -590,13 +692,14 @@ object UssdRunner {
                 return
             }
         }
+        val slotNow = s.ussdSlotOf(provider)
         // If the Call button was not found and pressed in a few seconds, place the call directly instead (same result, no keypad).
         Handler(Looper.getMainLooper()).postDelayed({
             if (UssdSession.stillDialing()) {
                 UssdSession.note("no Call button found, placing the call directly")
                 try {
                     (UssdSession.launchContext() ?: app).startActivity(
-                        Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(code))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        withSim(Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(code))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), app, slotNow),
                     )
                 } catch (e: SecurityException) {
                     UssdSession.abort("no_call_permission")
