@@ -17,7 +17,8 @@ interface BalanceFlow {
 sealed class UssdAction {
     /** Type [text] into the dialog and press Send. [secret] marks the PIN: it is never logged or kept by the flow. */
     data class Reply(val text: String, val secret: Boolean = false) : UssdAction()
-    data class Done(val balance: Double) : UssdAction()
+    /** Finished: [balance] is what the wallet printed; [trx] is the wallet's own receipt number, for a cash-in. */
+    data class Done(val balance: Double, val trx: String? = null) : UssdAction()
     data class Fail(val reason: String) : UssdAction()
     /** Nothing to do yet (the dialog has not changed, or the phone is still working). */
     object Wait : UssdAction()
@@ -391,4 +392,13 @@ object UssdProviders {
 
     /** Only Nagad takes the whole check as one code; bKash has to be walked one menu at a time. */
     fun oneCode(p: String): Boolean = p == NAGAD
+
+    /** What one screen of this wallet's menu is. */
+    fun classify(p: String, text: String): UssdScreen = if (p == BKASH) BkashUssd.classify(text) else NagadUssd.classify(text)
+
+    /** The balance printed on a screen of this wallet, whatever else is on it. */
+    fun balanceOn(p: String, text: String): Double? = if (p == BKASH) BkashUssd.balanceOf(text) else NagadUssd.balanceOf(text)
+
+    /** A cash-in through this wallet's menu. */
+    fun cashIn(order: CashInOrder, pin: () -> String): BalanceFlow = CashInFlow(order, pin)
 }

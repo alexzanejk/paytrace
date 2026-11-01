@@ -95,7 +95,7 @@ object UssdApi {
                 override fun onReceiveUssdResponse(telephonyManager: TelephonyManager, request: String, response: CharSequence) {
                     val text = response.toString()
                     when (val a = UssdDirect.readReply(text)) {
-                        is UssdAction.Done -> { note("balance read"); finish(UssdOutcome(true, a.balance, null)) }
+                        is UssdAction.Done -> { note("balance read"); finish(UssdOutcome(true, a.balance, null, trx = a.trx)) }
                         is UssdAction.Fail -> {
                             // The answer is not a balance. Show its first words (never the code) so the cause can be seen.
                             note("answer was not a balance: " + text.replace(Regex("\\s+"), " ").take(100))
@@ -172,7 +172,7 @@ object UssdApi {
                             return
                         }
                         when (val a = flow.onScreen(reply)) {
-                            is UssdAction.Done -> { note("balance read"); finish(UssdOutcome(true, a.balance, null)) }
+                            is UssdAction.Done -> { note("balance read"); finish(UssdOutcome(true, a.balance, null, trx = a.trx)) }
                             is UssdAction.Reply -> {
                                 note(if (a.secret) "got the PIN prompt, answering it" else "got a menu, answering " + a.text)
                                 send(a.text, a.secret)
