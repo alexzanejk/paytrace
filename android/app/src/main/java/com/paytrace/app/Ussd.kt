@@ -191,6 +191,31 @@ object UssdLabels {
         return last.isNotEmpty() && CALL_IDS.any { last.contains(it) }
     }
 
+    /** The words a phone puts on the dialog that asks which SIM to call with. Brands word it differently: the Vivo says
+     *  "Choose SIM for this call", MIUI says "Select SIM card" or just "SIM card". Lower case. */
+    private val SIM_ASK = listOf("choose sim", "select sim", "sim card", "which sim", "call with", "choose a sim", "select a sim")
+
+    fun asksWhichSim(text: String?): Boolean {
+        val t = text?.lowercase() ?: return false
+        if (SIM_ASK.any { t.contains(it) }) return true
+        // No words PayTrace knows, but both SIMs are named on one screen: that is the question too.
+        return t.contains("sim 1") && t.contains("sim 2") || t.contains("sim1") && t.contains("sim2")
+    }
+
+    /** A row of that dialog that names a SIM, whatever else is written on it ("SIM1 +880 1706-...", "SIM 2 Robi"). */
+    fun namesSim(text: String?, slot: Int): Boolean {
+        val t = text?.lowercase()?.replace(" ", "") ?: return false
+        return t.contains("sim" + (slot + 1))
+    }
+
+    /** Words that are a button, not a choice, so a positional pick can never land on Cancel. */
+    private val NOT_A_CHOICE = setOf("cancel", "ok", "dismiss", "close", "send", "reply", "submit", "continue", "বাতিল", "ঠিক আছে")
+
+    fun isChoice(text: String?): Boolean {
+        val t = text?.trim()?.lowercase() ?: return false
+        return t.isNotEmpty() && t !in NOT_A_CHOICE
+    }
+
     private val POSITIVE_IDS = setOf("button1", "button_positive", "positive_button", "ok", "send", "btn_ok", "btn_send", "confirm_button")
     private val NEGATIVE_IDS = setOf("button2", "button_negative", "negative_button", "cancel", "btn_cancel", "button3")
 

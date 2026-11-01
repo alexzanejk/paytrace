@@ -319,4 +319,38 @@ class UssdTest {
         assertEquals(1, UssdDirectHealth.count(0, refused))
         assertEquals(0, UssdDirectHealth.count(1, "0.0s direct USSD request, SIM 1\n2.0s balance read"))
     }
+
+    @Test fun theSimQuestionIsRecognisedHoweverThePhoneWordsIt() {
+        // The owner's Vivo, word for word.
+        assertTrue(UssdLabels.asksWhichSim("Choose SIM for this call\nSIM1 +880 1706-630756\nSIM2 +880 1345-567224"))
+        // MIUI and other brands.
+        assertTrue(UssdLabels.asksWhichSim("Select SIM card"))
+        assertTrue(UssdLabels.asksWhichSim("SIM card"))
+        assertTrue(UssdLabels.asksWhichSim("Call with"))
+        // No words PayTrace knows, but both SIMs are named: still the question.
+        assertTrue(UssdLabels.asksWhichSim("Grameenphone SIM 1\nRobi SIM 2"))
+        // Not the question.
+        assertTrue(!UssdLabels.asksWhichSim("Enter PIN:"))
+        assertTrue(!UssdLabels.asksWhichSim("1. Cash In 2. Register Customer"))
+        assertTrue(!UssdLabels.asksWhichSim(null))
+    }
+
+    @Test fun aRowThatNamesASimIsFoundWhateverElseIsOnIt() {
+        assertTrue(UssdLabels.namesSim("SIM1 +880 1706-630756", 0))
+        assertTrue(UssdLabels.namesSim("SIM 2  Robi", 1))
+        assertTrue(!UssdLabels.namesSim("SIM 2  Robi", 0))
+        assertTrue(!UssdLabels.namesSim("Grameenphone", 0))
+        assertTrue(!UssdLabels.namesSim(null, 0))
+    }
+
+    @Test fun aButtonIsNeverTakenForAChoice() {
+        // So picking a SIM by its position can never land on Cancel.
+        assertTrue(UssdLabels.isChoice("Grameenphone"))
+        assertTrue(UssdLabels.isChoice("SIM 1"))
+        assertTrue(!UssdLabels.isChoice("Cancel"))
+        assertTrue(!UssdLabels.isChoice("CANCEL"))
+        assertTrue(!UssdLabels.isChoice("OK"))
+        assertTrue(!UssdLabels.isChoice(" "))
+        assertTrue(!UssdLabels.isChoice(null))
+    }
 }
