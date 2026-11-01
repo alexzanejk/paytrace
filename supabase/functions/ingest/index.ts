@@ -276,7 +276,32 @@ async function handle(req: Request): Promise<Response> {
       : (((jobData as { jobs?: Array<Record<string, unknown>> } | null)?.jobs) ?? []).map((j) => ({
           kind: j.kind ?? "send", provider: j.provider, agent: j.agent, urgency: j.urgency, balance: j.balance, balance_at: j.balance_at,
         }));
-    return json({ success: true, message: "heartbeat ok", device_status: "approved", ...(brief ? { jobs: brief } : {}) });
+    // A command the owner queued for this phone (for now: read the Nagad balance). Taking it marks it running; a lookup
+    // failure just means "none this time". Only the id, kind and wallet travel: nothing secret.
+    const { data: cmdData, error: cmdError } = await db.rpc("device_next_command", { p_device: device.id });
+    const cmd = cmdError ? null : (cmdData as { id?: string; kind?: string; provider?: string } | null);
+    return json({
+      success: true, message: "heartbeat ok", device_status: "approved",
+      ...(brief ? { jobs: brief } : {}),
+      ...(cmd && cmd.id ? { command: { id: cmd.id, kind: cmd.kind, provider: cmd.provider } } : {}),
+    });
+  }
+
+  // ---- command_result: what the phone found when it ran a dashboard command ----
+  if (body.action === "command_result") {
+    if (!device) return json({ success: false, message: "not a phone" }, 400);
+    const id = typeof body.id === "string" ? body.id : "";
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return json({ success: false, message: "bad id" }, 400);
+    const ok = body.ok === true;
+    const balance = typeof body.balance === "number" && Number.isFinite(body.balance) && body.balance >= 0 && body.balance < 1e9 ? Math.round(body.balance * 100) / 100 : null;
+    if (ok && balance === null) return json({ success: false, message: "a successful balance check needs the balance" }, 400);
+    const error = typeof body.error === "string" && /^[a-z_]{1,40}$/.test(body.error) ? body.error : "failed";
+    const { error: rpcError } = await db.rpc("device_command_result", { p_device: device.id, p_id: id, p_ok: ok, p_balance: balance, p_error: ok ? null : error });
+    if (rpcError) {
+      console.error("device_command_result failed", rpcError.code);
+      return json({ success: false, message: "could not save the result" }, 500);
+    }
+    return json({ success: true });
   }
 
   // ---- earnings: what this phone's own app shows. Empty unless the owner switched it on for this phone. ----
@@ -385,11 +410,13 @@ async function handle(req: Request): Promise<Response> {
   }
 
   // ---- balance chain: a forged SMS cannot know the live account balance ----
+  // Money the agent SENT OUT (B2B to the distributor) lowers the balance: judge it as a negative amount.
+  const outgoing = d.txnType === "transfer_out";
   const { data: chain } = await db.rpc("balance_chain_check", {
     p_provider: d.provider,
     p_at: d.occurredAt ?? new Date().toISOString(),
     p_balance: d.balance,
-    p_amount: d.amount,
+    p_amount: outgoing ? -d.amount : d.amount,
     p_fee: d.fee,
     p_commission: d.commission,
   });
@@ -401,7 +428,10 @@ async function handle(req: Request): Promise<Response> {
   // ---- status rules ----
   let status = "unmatched";
   let reviewReason: string | null = null;
-  if (d.txnType === "cash_out") status = "tracked_only"; // receipts only, never credit an order
+  // An outgoing B2B transfer is kept (its balance keeps the chain and the phone's balance right) but is never
+  // money received: stored as type unknown, status ignored, so no total, commission, job check or lookup counts it.
+  if (outgoing) { status = "ignored"; reviewReason = "b2b_transfer_out"; }
+  else if (d.txnType === "cash_out") status = "tracked_only"; // receipts only, never credit an order
   else if (d.txnType === "unknown") { status = "review"; reviewReason = "unrecognized_type"; }
   else if (d.confidence === "generic") { status = "review"; reviewReason = "unverified_format"; }
 
@@ -415,7 +445,7 @@ async function handle(req: Request): Promise<Response> {
       observed_change: chain?.delta ?? null, expected_change: chain?.expected ?? null,
       held: status !== "tracked_only",
     });
-    if (status !== "tracked_only") {
+    if (status !== "tracked_only" && !outgoing) {
       status = "review";
       reviewReason = "balance_chain_mismatch";
     }
@@ -425,7 +455,7 @@ async function handle(req: Request): Promise<Response> {
   const { data: inserted, error } = await db
     .from("payments")
     .insert({
-      provider: d.provider, txn_type: d.txnType, trx_id: d.trxId,
+      provider: d.provider, txn_type: outgoing ? "unknown" : d.txnType, trx_id: d.trxId,
       amount: d.amount, fee: d.fee, commission, balance: d.balance,
       counterparty: d.counterparty, occurred_at: d.occurredAt,
       raw_message: raw, status, review_reason: reviewReason,

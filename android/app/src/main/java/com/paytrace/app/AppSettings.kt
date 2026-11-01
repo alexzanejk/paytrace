@@ -283,6 +283,18 @@ class AppSettings(ctx: Context) {
         get() = p.getInt("update_notified_code", 0)
         set(v) { p.edit().putInt("update_notified_code", v).apply() }
 
+    /** Dashboard-driven Nagad balance check (see UssdService.kt). Off until someone switches it on, on this phone. The PIN is
+     *  not here: it is kept encrypted by SecretStore(ctx, "ussd_pin"). [ussdSlot] is which SIM menu entry to tap (0 = SIM 1, 1 = SIM 2). */
+    var ussdAllowed: Boolean
+        get() = p.getBoolean("ussd_allowed", false)
+        set(v) { p.edit().putBoolean("ussd_allowed", v).apply() }
+    var ussdSlot: Int
+        get() = p.getInt("ussd_slot", 0).coerceIn(0, 1)
+        set(v) { p.edit().putInt("ussd_slot", v.coerceIn(0, 1)).apply() }
+    var ussdLast: String
+        get() = p.getString("ussd_last", "") ?: ""
+        set(v) { p.edit().putString("ussd_last", v).apply() }
+
     fun providerEnabled(provider: String): Boolean = p.getBoolean("prov_$provider", true)
     fun setProviderEnabled(provider: String, on: Boolean) {
         p.edit().putBoolean("prov_$provider", on).apply()

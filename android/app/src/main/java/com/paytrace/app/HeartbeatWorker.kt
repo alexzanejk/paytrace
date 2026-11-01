@@ -49,6 +49,8 @@ class HeartbeatWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
             val reply = Sender.send(s, Sender.heartbeat(ctx, s))
             // The reply lists this phone's open jobs: ring and show a notification for a new one, even with the app closed.
             try { JobAlertPolicy.parseBrief(reply.body)?.let { JobAlarm.onJobs(ctx, it) } } catch (e: Exception) { }
+            // A command from the dashboard (for now: read the Nagad balance) rides on the same reply.
+            try { UssdCommands.onReply(ctx, reply.body) } catch (e: Exception) { }
             // The moment the owner approves this phone, send whatever was waiting. Not on every heartbeat:
             // that would queue the same messages again and again.
             if (before != "approved" && s.deviceStatus == "approved") SendWorker.resumePending(ctx)
