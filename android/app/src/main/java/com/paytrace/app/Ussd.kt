@@ -183,6 +183,31 @@ object UssdLabels {
         val last = id?.substringAfterLast('/')?.substringAfterLast(':')?.lowercase() ?: return false
         return last.isNotEmpty() && CALL_IDS.any { last.contains(it) }
     }
+
+    private val POSITIVE_IDS = setOf("button1", "button_positive", "positive_button", "ok", "send", "btn_ok", "btn_send", "confirm_button")
+    private val NEGATIVE_IDS = setOf("button2", "button_negative", "negative_button", "cancel", "btn_cancel", "button3")
+
+    /** The dialog's "Send" / "OK" button found by its view id, used when its word is in a language PayTrace does not know. */
+    fun isPositiveId(id: String?): Boolean = lastPart(id) in POSITIVE_IDS
+
+    /** The dialog's "Cancel" button, used only to close the menu when a run is over. */
+    fun isNegativeId(id: String?): Boolean = lastPart(id) in NEGATIVE_IDS
+
+    private fun lastPart(id: String?): String =
+        id?.substringAfterLast('/')?.substringAfterLast(':')?.lowercase() ?: ""
+}
+
+/** The words of a screen, cut short and with every long run of digits hidden, so a failed run can say what it saw without
+ *  ever putting a PIN, a wallet number or a balance into the log that is sent for help. */
+object UssdRedact {
+    private val DIGITS = Regex("[0-9][0-9.,]{2,}")
+
+    fun snippet(text: String?, max: Int = 90): String {
+        val one = (text ?: "").replace(Regex("\\s+"), " ").trim()
+        if (one.isEmpty()) return "(nothing readable)"
+        val hidden = DIGITS.replace(one) { "***" }
+        return if (hidden.length <= max) hidden else hidden.take(max) + "..."
+    }
 }
 
 /** When a failed run may be tried once more by itself. Never after the PIN was really submitted (a repeated PIN can lock the
@@ -217,6 +242,29 @@ object UssdDirect {
     const val COOLDOWN_MS = 45_000L
 
     fun tooSoon(lastFinishMs: Long, nowMs: Long): Boolean = lastFinishMs > 0 && nowMs >= lastFinishMs && nowMs - lastFinishMs < COOLDOWN_MS
+}
+
+/** Some phones will not send a balance code from an app at all: the owner's Vivo V2120 answers "failure code -1" or the network
+ *  says "try again later", while the very same code dialed by hand works. Nothing in PayTrace can change that, so instead the
+ *  phone notices it: after [ENOUGH] runs in a row where the direct way failed, that phone moves itself to the dialer way for good
+ *  (it can be moved back by hand in Settings). Pure, so it is tested. */
+object UssdDirectHealth {
+    const val ENOUGH = 2
+
+    /** Judged from a finished run's own log. Only the direct way's own failures count, never a wrong PIN or a stopped menu. */
+    fun directFailed(trace: String): Boolean {
+        val t = trace.lowercase()
+        if (!t.contains("direct ussd request") && !t.contains("direct menu walk")) return false
+        return t.contains("failure code") || t.contains("direct way could not go on") ||
+            t.contains("answer was not a balance") || t.contains("network never answered")
+    }
+
+    /** True when this phone should stop trying the direct way. [accessibilityOn] because the dialer way cannot work without it. */
+    fun shouldSwitch(failsInARow: Int, accessibilityOn: Boolean): Boolean = accessibilityOn && failsInARow >= ENOUGH
+
+    /** The new count after a run: back to nothing when the direct way did its job, one more when it failed. */
+    fun count(before: Int, trace: String): Int =
+        if (directFailed(trace)) (before + 1).coerceAtMost(ENOUGH) else 0
 }
 
 /** The wallets a balance check can be run for. */

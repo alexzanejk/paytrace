@@ -312,6 +312,11 @@ class AppSettings(ctx: Context) {
         get() = p.getBoolean("ussd_dialer_way", false)
         set(v) { p.edit().putBoolean("ussd_dialer_way", v).apply() }
 
+    /** How many runs in a row the direct way failed on this phone (see UssdDirectHealth). Reset whenever it works. */
+    var ussdDirectFails: Int
+        get() = p.getInt("ussd_direct_fails", 0)
+        set(v) { p.edit().putInt("ussd_direct_fails", v).apply() }
+
     fun providerEnabled(provider: String): Boolean = p.getBoolean("prov_$provider", true)
     fun setProviderEnabled(provider: String, on: Boolean) {
         p.edit().putBoolean("prov_$provider", on).apply()
