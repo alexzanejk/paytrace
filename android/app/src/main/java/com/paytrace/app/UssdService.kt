@@ -11,14 +11,18 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
+import android.telecom.TelecomManager
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
+import java.util.Locale
 
-/** How a run ended. [error] is a short code (see [UssdText.error]); [balance] is set when [ok]. */
-data class UssdOutcome(val ok: Boolean, val balance: Double?, val error: String?)
+/** How a run ended. [error] is a short code (see [UssdText.error]); [balance] is set when [ok]. [pinSent] is true only if the PIN was
+ *  really submitted (then nothing is ever retried by itself). [trace] is a short log of the steps, never containing the PIN. */
+data class UssdOutcome(val ok: Boolean, val balance: Double?, val error: String?, val pinSent: Boolean = false, val trace: String = "")
 
 /** Plain wording for the codes above, for the screen on the phone. */
 object UssdText {
@@ -30,6 +34,7 @@ object UssdText {
         "no_pin" -> "No Nagad PIN is saved on this phone."
         "busy" -> "Another check is still running."
         "timeout" -> "The phone did not answer in time. Try again."
+        "no_answer_after_pin" -> "The PIN was entered but no balance came back. PayTrace did not try the PIN again. Check the Nagad SMS, then try again later."
         "unexpected_screen" -> "The Nagad menu looked different from what PayTrace expects, so it stopped. Nothing was sent."
         "too_many_steps" -> "The menu took too many steps, so it stopped."
         "no_input_box", "no_send_button" -> "PayTrace could not use the phone's menu box."
@@ -40,26 +45,43 @@ object UssdText {
     }
 }
 
-/** What the phone's accessibility tree shows for one dialog: the message words, the input box and the buttons.
- *  The box's own text (where the PIN is typed) is never read. */
-class UssdWindow(val text: String, val edit: AccessibilityNodeInfo?, val buttons: List<AccessibilityNodeInfo>, val roots: AccessibilityNodeInfo)
+/** What the phone's accessibility tree shows for one dialog: the message words, the input box, the buttons, the dialer's
+ *  Call button and any "SIM 1 / SIM 2" rows. The input box's own text (where the PIN is typed) is never read. */
+class UssdWindow(
+    val text: String,
+    val edit: AccessibilityNodeInfo?,
+    val buttons: List<AccessibilityNodeInfo>,
+    val callButton: AccessibilityNodeInfo?,
+    val simRows: List<AccessibilityNodeInfo>,
+)
 
 private class Collector {
     val texts = ArrayList<String>()
     var edit: AccessibilityNodeInfo? = null
     val buttons = ArrayList<AccessibilityNodeInfo>()
+    var callButton: AccessibilityNodeInfo? = null
+    val simRows = ArrayList<AccessibilityNodeInfo>()
+
+    fun window() = UssdWindow(texts.joinToString("\n"), edit, buttons, callButton, simRows)
 }
+
+private val SIM_ROW = Regex("^\\s*SIM\\s*[12]\\b", RegexOption.IGNORE_CASE)
 
 private fun walk(n: AccessibilityNodeInfo?, c: Collector, depth: Int) {
     if (n == null || depth > 25) return
     val cls = n.className?.toString() ?: ""
+    val text = n.text?.toString()
     if (cls.endsWith("EditText") || n.isEditable) {
         if (c.edit == null) c.edit = n
-    } else if (cls.endsWith("Button")) {
-        c.buttons.add(n)
-    } else if (cls.endsWith("TextView")) {
-        val t = n.text?.toString()
-        if (!t.isNullOrBlank()) c.texts.add(t)
+    } else {
+        if (cls.endsWith("Button")) c.buttons.add(n)
+        else if (cls.endsWith("TextView") && !text.isNullOrBlank()) c.texts.add(text)
+        // The dialer's Call button is an icon: found by its description, its own text or its view id (any of the three).
+        if (c.callButton == null &&
+            (UssdLabels.isCallButton(n.contentDescription?.toString()) || UssdLabels.isCallButton(text) || UssdLabels.isCallButtonId(n.viewIdResourceName)) &&
+            (n.isClickable || n.parent?.isClickable == true)
+        ) c.callButton = n
+        if (text != null && SIM_ROW.containsMatchIn(text)) c.simRows.add(n)
     }
     for (i in 0 until n.childCount) walk(n.getChild(i), c, depth + 1)
 }
@@ -75,44 +97,75 @@ private fun clickUp(node: AccessibilityNodeInfo?): Boolean {
     return false
 }
 
-/** The dialer's green Call button: a clickable view labelled "Dial" or "Call" (an icon, so it is found by its description). */
-private fun findCallButton(n: AccessibilityNodeInfo?, depth: Int = 0): AccessibilityNodeInfo? {
-    if (n == null || depth > 25) return null
-    if (UssdLabels.isCallButton(n.contentDescription?.toString()) && (n.isClickable || n.parent?.isClickable == true)) return n
-    for (i in 0 until n.childCount) findCallButton(n.getChild(i), depth + 1)?.let { return it }
-    return null
-}
-
 private fun clickButton(w: UssdWindow, vararg labels: String): Boolean {
     val b = w.buttons.firstOrNull { btn -> labels.any { it.equals(btn.text?.toString()?.trim(), ignoreCase = true) } } ?: return false
     return b.performAction(AccessibilityNodeInfo.ACTION_CLICK)
 }
 
-/** One run at a time. Only while a run is active does the service look at any window, and then only the phone's own
- *  call/USSD dialogs; it never reads or touches anything else. All of it happens on the main thread. */
+/** One run at a time, driven by a slow clock instead of by window events: every 0.4 s it looks at the screen as it is NOW,
+ *  and only acts once the screen has stopped changing, with a pause between actions. A typed reply is checked and pressed
+ *  with retries; a plain reply that was ignored is said once more; the PIN is typed once and never again.
+ *  Only while a run is active does it look at any window, and then only the phone's own call/USSD windows. Main thread only. */
 object UssdSession {
+    private const val TICK_MS = 400L
+    private const val GAP_MS = 800L
+    private const val TYPE_TO_SEND_MS = 500L
+    private const val STUCK_MS = 7_000L
+    private const val MAX_TRIES = 4
+    private const val MAX_SIM_TRIES = 6
+
+    private class Act(val text: String, val secret: Boolean, val sig: String) {
+        var typed = false
+        var typedAt = 0L
+        var sent = false
+        var sentAt = 0L
+        var tries = 0
+        var retried = false
+    }
+
     private val main = Handler(Looper.getMainLooper())
+    private val tickRunnable = Runnable { tick() }
     private var flow: NagadBalanceFlow? = null
     private var onFinish: ((UssdOutcome) -> Unit)? = null
     private var slot = 0
     private var timeout: Runnable? = null
     private var service: AccessibilityService? = null
-    // 0 = the dialer is open with *167# typed and its Call button has not been pressed yet; 1 = Call was pressed.
+    private var dialerPackage: String? = null
+    // 0 = waiting for the dialer's Call button to be pressed; 1 = Call was pressed (or the SIM question / a menu is already showing).
     private var phase = 0
-    // Becomes true when the first Nagad menu (or the SIM question) shows up; screens before that are just the dialer keypad.
+    // True once the first Nagad menu (or the SIM question) shows up; screens before that are just the dialer keypad.
     private var seenUssd = false
+    private var lastSig = ""
+    private var lastActionAt = 0L
+    private var act: Act? = null
+    private var simTries = 0
+    private var pinSubmitted = false
+    private var startedAt = 0L
+    private val trace = ArrayList<String>()
+    private val noted = HashSet<String>()
 
     @Synchronized fun active(): Boolean = flow != null
 
-    @Synchronized fun start(slot: Int, flow: NagadBalanceFlow, timeoutMs: Long, onFinish: (UssdOutcome) -> Unit) {
+    @Synchronized fun start(slot: Int, flow: NagadBalanceFlow, timeoutMs: Long, dialer: String?, earlier: String, onFinish: (UssdOutcome) -> Unit) {
         this.slot = slot
         this.flow = flow
         this.onFinish = onFinish
+        this.dialerPackage = dialer
         this.phase = 0
         this.seenUssd = false
+        this.lastSig = ""
+        this.lastActionAt = 0L
+        this.act = null
+        this.simTries = 0
+        this.pinSubmitted = false
+        this.startedAt = SystemClock.elapsedRealtime()
+        trace.clear()
+        noted.clear()
+        if (earlier.isNotBlank()) trace.addAll(earlier.lines().take(40))
         val t = Runnable { finish(UssdOutcome(false, null, "timeout")) }
         timeout = t
         main.postDelayed(t, timeoutMs)
+        main.postDelayed(tickRunnable, TICK_MS)
     }
 
     fun attach(s: AccessibilityService?) { service = s }
@@ -123,76 +176,141 @@ object UssdSession {
     /** The accessibility service's own context, which Android lets open screens more freely than a background service. */
     fun launchContext(): Context? = service
 
-    /** Only the phone's own call and menu windows may be read. */
+    /** Only the phone's own call and menu windows may be read: the system ones, plus the phone's chosen dialer app. */
     fun allowedPackage(pkg: String): Boolean =
         pkg == "com.android.phone" || pkg == "com.android.server.telecom" || pkg == "com.android.contacts" ||
-            pkg.contains("incallui") || pkg.contains("dialer") || pkg.contains("telecom")
+            pkg.contains("incallui") || pkg.contains("dialer") || pkg.contains("telecom") ||
+            (dialerPackage != null && pkg == dialerPackage)
 
-    fun onWindow(w: UssdWindow) {
+    fun note(msg: String) {
+        if (trace.size < 60) trace.add(String.format(Locale.US, "%4.1fs %s", (SystemClock.elapsedRealtime() - startedAt) / 1000.0, msg))
+    }
+
+    private fun noteOnce(key: String, msg: String) { if (noted.add(key)) note(msg) }
+
+    private fun tick() {
+        if (!active()) return
+        main.postDelayed(tickRunnable, TICK_MS)
+        try {
+            step()
+        } catch (e: Exception) {
+            noteOnce("err" + e.javaClass.simpleName, "problem: " + e.javaClass.simpleName)
+        }
+    }
+
+    private fun step() {
+        val svc = service ?: return
+        val root = svc.rootInActiveWindow ?: return
+        val pkg = root.packageName?.toString() ?: return
+        if (!allowedPackage(pkg)) return
+        val c = Collector()
+        walk(root, c, 0)
+        val w = c.window()
+        val sig = w.text + "|" + (if (w.callButton != null) "C" else "") + (if (w.edit != null) "E" else "") + (if (w.simRows.isNotEmpty()) "S" else "")
+        if (sig.length <= 3) return
+        // Wait until the screen has stopped changing before touching it.
+        if (sig != lastSig) { lastSig = sig; return }
+        if (SystemClock.elapsedRealtime() - lastActionAt < GAP_MS) return
+        evaluate(w, sig)
+    }
+
+    private fun evaluate(w: UssdWindow, sig: String) {
         val f = synchronized(this) { flow } ?: return
+        val now = SystemClock.elapsedRealtime()
         val lower = w.text.lowercase()
         val chooser = lower.contains("choose sim") || lower.contains("select sim")
         val ussdScreen = NagadUssd.classify(w.text) != UssdScreen.OTHER
-        // The dialer is open with *167# typed in: press its green Call button, exactly as a person does.
+        // The dialer is open with *167# typed in: press its Call button, as a person does. Looked for again on every tick.
         if (phase == 0) {
             if (!chooser && !ussdScreen) {
-                val btn = findCallButton(w.roots)
-                if (btn != null && clickUp(btn)) phase = 1
+                val btn = w.callButton
+                if (btn == null) { noteOnce("nocall", "dialer open, looking for the Call button"); return }
+                if (clickUp(btn)) { note("Call pressed"); phase = 1; lastActionAt = now }
                 return
             }
             phase = 1
         }
-        // "Choose SIM for this call": tap the SIM the owner picked in settings.
+        // "Choose SIM for this call": tap the SIM picked in settings.
         if (chooser) {
-            val label = "SIM" + (slot + 1)
-            val row = findRow(w.roots, label)
-            if (row == null || !clickUp(row)) finish(UssdOutcome(false, null, "sim_not_found"))
+            simTries++
+            val want = "sim" + (slot + 1)
+            val row = w.simRows.firstOrNull { it.text?.toString()?.lowercase()?.replace(" ", "")?.startsWith(want) == true } ?: w.simRows.getOrNull(slot)
+            if (row != null && clickUp(row)) { note("SIM " + (slot + 1) + " tapped"); lastActionAt = now; return }
+            if (simTries >= MAX_SIM_TRIES) finish(UssdOutcome(false, null, "sim_not_found"))
             return
         }
         // The phone's own refusal of the code.
-        if (lower.contains("connection problem") || lower.contains("invalid mmi")) { finish(UssdOutcome(false, null, "dial_failed")); return }
+        if (lower.contains("connection problem") || lower.contains("invalid mmi")) { note("phone refused the code"); finish(UssdOutcome(false, null, "dial_failed")); return }
         // Until the first Nagad screen appears, what is on the screen is only the dialer's keypad: wait for the menu.
-        if (ussdScreen) seenUssd = true else if (!seenUssd) return
+        if (ussdScreen) { seenUssd = true } else if (!seenUssd) return
+        // An answer already under way for this very screen: keep going with it (type, press Send, wait).
+        val under = act
+        if (under != null) {
+            if (under.sig == sig) { continueAct(under, w); return }
+            act = null // the screen changed, so the answer was taken
+        }
         when (val a = f.onScreen(w.text)) {
             is UssdAction.Wait -> Unit
-            is UssdAction.Reply -> reply(w, a.text)
-            is UssdAction.Done -> finish(UssdOutcome(true, a.balance, null))
-            is UssdAction.Fail -> finish(UssdOutcome(false, null, a.reason))
+            is UssdAction.Reply -> {
+                val fresh = Act(a.text, a.secret, sig)
+                act = fresh
+                note(if (a.secret) "menu: typing the PIN" else "menu: typing " + a.text)
+                continueAct(fresh, w)
+            }
+            is UssdAction.Done -> { note("balance read"); finish(UssdOutcome(true, a.balance, null)) }
+            is UssdAction.Fail -> { note("stopped: " + a.reason); finish(UssdOutcome(false, null, a.reason)) }
         }
     }
 
-    private fun findRow(n: AccessibilityNodeInfo?, label: String, depth: Int = 0): AccessibilityNodeInfo? {
-        if (n == null || depth > 25) return null
-        val t = n.text?.toString()
-        if (t != null && t.replace(" ", "").startsWith(label, ignoreCase = true)) return n
-        for (i in 0 until n.childCount) findRow(n.getChild(i), label, depth + 1)?.let { return it }
-        return null
-    }
-
-    private fun reply(w: UssdWindow, text: String) {
-        val edit = w.edit
-        if (edit == null) { finish(UssdOutcome(false, null, "no_input_box")); return }
-        val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
-        if (!edit.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) { finish(UssdOutcome(false, null, "no_input_box")); return }
+    private fun continueAct(a: Act, w: UssdWindow) {
+        val now = SystemClock.elapsedRealtime()
+        if (a.sent) {
+            // Waiting for the phone's answer. A plain reply that was ignored for a while is said once more; the PIN never is.
+            if (!a.secret && !a.retried && now - a.sentAt > STUCK_MS) {
+                a.retried = true; a.typed = false; a.sent = false; a.tries = 0
+                note("no answer, saying it again")
+            }
+            return
+        }
+        if (!a.typed) {
+            val edit = w.edit
+            val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, a.text) }
+            if (edit != null && edit.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                a.typed = true; a.typedAt = now; lastActionAt = now
+            } else if (++a.tries >= MAX_TRIES) {
+                note("could not type"); finish(UssdOutcome(false, null, "no_input_box"))
+            }
+            return
+        }
         // A short pause so the dialog accepts the typed text before Send is pressed.
-        main.postDelayed({
-            if (!active()) return@postDelayed
-            if (!clickButton(w, "send", "ok", "reply")) finish(UssdOutcome(false, null, "no_send_button"))
-        }, 300)
+        if (now - a.typedAt < TYPE_TO_SEND_MS) return
+        if (clickButton(w, "send", "ok", "reply")) {
+            a.sent = true; a.sentAt = now; lastActionAt = now
+            if (a.secret) pinSubmitted = true
+            note("sent")
+        } else if (++a.tries >= MAX_TRIES) {
+            note("could not press Send"); finish(UssdOutcome(false, null, "no_send_button"))
+        }
     }
 
     fun abort(error: String) = finish(UssdOutcome(false, null, error))
 
-    private fun finish(outcome: UssdOutcome) {
+    private fun finish(outcome0: UssdOutcome) {
         val cb: ((UssdOutcome) -> Unit)?
+        val sent: Boolean
         synchronized(this) {
             if (flow == null) return
             flow = null
             cb = onFinish
             onFinish = null
+            sent = pinSubmitted
             timeout?.let { main.removeCallbacks(it) }
             timeout = null
+            main.removeCallbacks(tickRunnable)
         }
+        // A timeout after the PIN went in is a different, more careful message: nothing is retried by itself.
+        val error = if (outcome0.error == "timeout" && sent) "no_answer_after_pin" else outcome0.error
+        val outcome = outcome0.copy(error = error, pinSent = sent, trace = trace.joinToString("\n"))
         // Close the menu the phone left open, then go back to the home screen.
         main.post {
             try {
@@ -200,7 +318,7 @@ object UssdSession {
                 if (root != null && allowedPackage(root.packageName?.toString() ?: "")) {
                     val c = Collector()
                     walk(root, c, 0)
-                    clickButton(UssdWindow("", null, c.buttons, root), "cancel", "dismiss", "ok", "close")
+                    clickButton(c.window(), "cancel", "dismiss", "ok", "close")
                 }
             } catch (e: Exception) {
                 // Best effort: the run is over either way.
@@ -211,7 +329,8 @@ object UssdSession {
     }
 }
 
-/** The service the owner switches on once per phone in Accessibility settings. It does nothing unless a run is active. */
+/** The service the owner switches on once per phone in Accessibility settings. All the work is done by [UssdSession]'s own
+ *  clock while a run is active; this class only has to be switched on and bound. */
 class UssdAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -224,16 +343,7 @@ class UssdAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        val ev = event ?: return
-        if (!UssdSession.active()) return
-        if (ev.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && ev.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return
-        val root = rootInActiveWindow ?: return
-        val pkg = root.packageName?.toString() ?: return
-        if (!UssdSession.allowedPackage(pkg)) return
-        val c = Collector()
-        walk(root, c, 0)
-        if (c.texts.isEmpty()) return
-        UssdSession.onWindow(UssdWindow(c.texts.joinToString("\n"), c.edit, c.buttons, root))
+        // Nothing to do per event: the session reads the screen itself, on its own clock.
     }
 
     override fun onInterrupt() {}
@@ -252,24 +362,37 @@ object UssdSetup {
     fun pinSaved(ctx: Context): Boolean = SecretStore(ctx.applicationContext, "ussd_pin").get().isNotEmpty()
 }
 
-/** Dials *167# and lets [UssdSession] walk the menus. Everything is checked first; the PIN is read from the encrypted
- *  store only now, and only kept in memory for this run. */
+/** Opens the phone's dialer with *167# typed in and lets [UssdSession] press Call, pick the SIM and walk the menus.
+ *  Everything is checked first; the PIN is read from the encrypted store only now, and only kept in memory for this run.
+ *  If a try fails before the PIN was really submitted, it is tried once more after a short pause; after the PIN, never. */
 object UssdRunner {
     private const val RUN_MS = 90_000L
-    private const val DIAL_FALLBACK_MS = 8_000L
+    private const val DIAL_FALLBACK_MS = 3_500L
+    private const val RETRY_PAUSE_MS = 4_000L
+
+    fun run(ctx: Context, onFinish: (UssdOutcome) -> Unit) = attempt(ctx.applicationContext, 1, "", onFinish)
 
     @Suppress("DEPRECATION")
-    fun run(ctx: Context, onFinish: (UssdOutcome) -> Unit) {
-        val app = ctx.applicationContext
+    private fun attempt(app: Context, n: Int, earlier: String, onFinish: (UssdOutcome) -> Unit) {
         val s = AppSettings(app)
-        fun fail(e: String) = onFinish(UssdOutcome(false, null, e))
+        fun fail(e: String) = onFinish(UssdOutcome(false, null, e, trace = earlier))
         if (!s.ussdAllowed) return fail("not_allowed")
         if (!UssdSetup.accessibilityOn(app)) return fail("no_accessibility")
         if (!UssdSetup.callPermission(app)) return fail("no_call_permission")
         val pin = SecretStore(app, "ussd_pin").get()
         if (pin.isEmpty()) return fail("no_pin")
         if (UssdSession.active()) return fail("busy")
-        UssdSession.start(s.ussdSlot, NagadBalanceFlow { pin }, RUN_MS, onFinish)
+        // The phone's own dialer, so the right app opens whatever the brand or the home screen looks like.
+        val dialer = try { (app.getSystemService(Context.TELECOM_SERVICE) as TelecomManager).defaultDialerPackage } catch (e: Exception) { null }
+        val head = if (n > 1) earlier + "\n-- second try --" else earlier
+        UssdSession.start(s.ussdSlot, NagadBalanceFlow { pin }, RUN_MS, dialer, head) { outcome ->
+            if (UssdRetry.shouldRetry(outcome.error, outcome.ok, outcome.pinSent, n)) {
+                Handler(Looper.getMainLooper()).postDelayed({ attempt(app, n + 1, outcome.trace, onFinish) }, RETRY_PAUSE_MS)
+            } else {
+                onFinish(outcome)
+            }
+        }
+        UssdSession.note("start, try " + n + (if (dialer != null) ", dialer " + dialer else ""))
         try {
             // The phone's screen may be off: wake it so the menu can be shown.
             val pm = app.getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -277,17 +400,26 @@ object UssdRunner {
         } catch (e: Exception) {
             // The call may still work with the screen on.
         }
-        // Open the phone's dialer with *167# typed in, the way a person starts it. The service then presses Call and picks the SIM.
         val opener = UssdSession.launchContext() ?: app
+        val dial = Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", NagadUssd.CODE, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
-            opener.startActivity(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", NagadUssd.CODE, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            if (dialer != null) dial.setPackage(dialer)
+            opener.startActivity(dial)
+            UssdSession.note("dialer opened")
         } catch (e: Exception) {
-            UssdSession.abort("dial_failed")
-            return
+            try {
+                dial.setPackage(null)
+                opener.startActivity(dial)
+                UssdSession.note("dialer opened (any dialer)")
+            } catch (e2: Exception) {
+                UssdSession.abort("dial_failed")
+                return
+            }
         }
-        // If the Call button was not found or pressed in a few seconds, place the call directly instead (same result, no keypad).
+        // If the Call button was not found and pressed in a few seconds, place the call directly instead (same result, no keypad).
         Handler(Looper.getMainLooper()).postDelayed({
             if (UssdSession.stillDialing()) {
+                UssdSession.note("no Call button found, placing the call directly")
                 try {
                     (UssdSession.launchContext() ?: app).startActivity(
                         Intent(Intent.ACTION_CALL, Uri.fromParts("tel", NagadUssd.CODE, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
@@ -324,6 +456,7 @@ object UssdCommands {
         val j = JSONObject().put("at", System.currentTimeMillis()).put("ok", o.ok)
         if (o.balance != null) j.put("balance", o.balance)
         if (o.error != null) j.put("error", o.error)
+        if (o.trace.isNotBlank()) j.put("trace", o.trace.take(2500))
         AppSettings(ctx).ussdLast = j.toString()
     }
 

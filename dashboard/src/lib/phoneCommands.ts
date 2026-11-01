@@ -24,6 +24,7 @@ const ERROR_TEXT: Record<string, string> = {
   no_pin: "No Nagad PIN is saved on that phone.",
   busy: "That phone was already busy with a check. Try again in a minute.",
   timeout: "The phone did not answer in time.",
+  no_answer_after_pin: "The PIN was entered but no balance came back. The phone did not try the PIN again. Check the Nagad SMS, then try again later.",
   unexpected_screen: "The Nagad menu looked different from what PayTrace expects, so it stopped. Nothing was sent.",
   too_many_steps: "The Nagad menu took too many steps, so it stopped.",
   no_input_box: "PayTrace could not use the phone's menu box.",
