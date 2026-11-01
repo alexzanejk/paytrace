@@ -365,3 +365,29 @@ first. From the next app update on, PayTrace switches it back on by itself and n
 
 What that permission is used for: PayTrace adds **its own** balance-check service back to the Accessibility list, and
 writes no other setting. Without the permission nothing happens and the switch is flipped by hand as before.
+
+### Reading the balance straight from the phone (2026-11-02)
+
+What the owner's Redmi proved: Nagad **does** answer the direct request with the balance ("Balance: Tk ...", then
+"0. Main Menu"), but because that answer offers a next step the network keeps the menu open, and **Android passes an app
+only the answers that close it**. PayTrace is told "failure code -1" and never sees the words. That is an Android rule, it
+cannot be changed, and it is why the direct way failed on every phone and every try while the same code dialled by hand
+worked.
+
+The words are in the phone's own radio log all the same. A phone given one more permission, the same way as the other one,
+reads them itself. Then no menu has to be opened, no screen has to be awake and Accessibility is not needed at all:
+
+```
+adb -s <address>:<port> shell pm grant com.paytrace.app android.permission.READ_LOGS
+```
+
+Only the balance is taken out of those lines. Nothing else is kept, written into the step log or sent anywhere, because the
+dialled code — PIN included — is on them too. Without the permission nothing changes and the dialer way is used as before.
+
+**Not known yet:** whether every phone writes the answer where PayTrace can read it. The Redmi (MediaTek) does. The Vivo and
+the OnePlus have another kind of chip and may not, and Android 13 may ask the person once before an app may read the log. If
+a phone does not, it moves itself to the dialer way as before. Try the check once per phone and look at "Show what happened":
+"balance read from the phone log" means it worked.
+
+**Change the wallet PINs after testing.** The dialled code, with the PIN in it, is written into the phone's log by the phone
+itself, and the recordings made during the tests show it too.

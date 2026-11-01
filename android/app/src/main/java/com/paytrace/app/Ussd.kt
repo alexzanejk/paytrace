@@ -270,7 +270,10 @@ object UssdDirectHealth {
     fun shouldSwitch(failsInARow: Int, accessibilityOn: Boolean): Boolean = accessibilityOn && failsInARow >= ENOUGH
 
     /** The new count after a run: back to nothing when the direct way did its job, one more when it failed. */
-    fun count(before: Int, trace: String): Int = when {
+    fun count(before: Int, trace: String, ok: Boolean = false): Int = when {
+        // A run that ended with a balance proves the direct way works on this phone, whatever the phone said along the way
+        // (with READ_LOGS it answers "failure code -1" and PayTrace still reads the balance out of the phone's log).
+        ok -> 0
         cannotWorkHere(trace) -> ENOUGH
         directFailed(trace) -> (before + 1).coerceAtMost(ENOUGH)
         else -> 0

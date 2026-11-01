@@ -73,6 +73,11 @@ fun UssdCard(settings: AppSettings, tick: Int) {
                 }
             }
 
+            if (UssdLogs.allowed(ctx)) Text(
+                "✓ This phone lets PayTrace read the wallet's answer straight from the phone, so no menu has to be opened.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Text((if (accessibility) "✓ " else "") + "Backup way (optional): PayTrace in Accessibility", style = MaterialTheme.typography.bodyMedium)
             if (AccessibilityHeal.allowed(ctx)) Text(
                 "This phone can switch it back on by itself after an app update.",

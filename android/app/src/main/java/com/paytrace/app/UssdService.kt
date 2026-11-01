@@ -474,7 +474,7 @@ object UssdRunner {
     private fun afterRun(app: Context, outcome: UssdOutcome): UssdOutcome {
         val s = AppSettings(app)
         if (s.ussdDialerWay) return outcome
-        val fails = UssdDirectHealth.count(s.ussdDirectFails, outcome.trace)
+        val fails = UssdDirectHealth.count(s.ussdDirectFails, outcome.trace, outcome.ok)
         s.ussdDirectFails = fails
         if (!UssdDirectHealth.shouldSwitch(fails, UssdSetup.accessibilityOn(app))) return outcome
         s.ussdDialerWay = true
