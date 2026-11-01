@@ -306,6 +306,12 @@ class AppSettings(ctx: Context) {
         if (provider == "bkash") p.edit().putString("ussd_last_bkash", v).apply() else ussdLast = v
     }
 
+    /** Use the dialer way (Accessibility presses the dialer) instead of Android's direct USSD request. For phones where the direct
+     *  request fails (the Vivo V2120 answers failure code -1 or "try later" while the same code dialed by hand works). */
+    var ussdDialerWay: Boolean
+        get() = p.getBoolean("ussd_dialer_way", false)
+        set(v) { p.edit().putBoolean("ussd_dialer_way", v).apply() }
+
     fun providerEnabled(provider: String): Boolean = p.getBoolean("prov_$provider", true)
     fun setProviderEnabled(provider: String, on: Boolean) {
         p.edit().putBoolean("prov_$provider", on).apply()
