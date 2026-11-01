@@ -21,6 +21,8 @@ check("failed shows the reason", commandLine({ ...base, status: "failed", error:
 check("expired is explained", errorText("expired").includes("offline"));
 check("no answer after the PIN is explained and not retried", errorText("no_answer_after_pin").includes("did not try the PIN again"));
 check("too soon and network failure are explained", errorText("too_soon").includes("Wait about a minute") && errorText("ussd_failed").includes("did not try again"));
+check("done line carries the wallet name", commandLine({ ...base, status: "done", balance: 1570.78, provider: "bkash", finished_at: "2026-11-01T10:01:00Z" }, money, when, "bKash") === "bKash balance Tk 1570.78 as of @2026-11-01T10:01:00Z");
+check("provider refusal is explained", errorText("network_refused").includes("not available"));
 check("unknown error code falls back", errorText("zzz") === errorText("failed"));
 check("missing error code falls back", errorText(null) === errorText("failed"));
 check("no command gives an empty line", commandLine(null, money, when) === "");

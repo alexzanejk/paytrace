@@ -408,7 +408,12 @@ function DeviceCard({
         {error ? <span className="text-xs text-destructive">{error}</span> : null}
       </div>
       {wakeNote ? <p role="status" className="text-sm text-muted-foreground">{wakeNote}</p> : null}
-      {d.status === "approved" ? <BalanceCheck deviceId={d.id} /> : null}
+      {d.status === "approved" ? (
+        <div className="flex flex-col gap-2">
+          <BalanceCheck deviceId={d.id} provider="nagad" />
+          <BalanceCheck deviceId={d.id} provider="bkash" />
+        </div>
+      ) : null}
       {showHealth ? <DeviceDetails info={d.info} /> : null}
     </Card>
   );

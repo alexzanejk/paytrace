@@ -104,4 +104,83 @@ object UssdApi {
         // If the network never answers, say so; the PIN was already sent, so it is not tried again.
         main.postDelayed({ finish(UssdOutcome(false, null, "no_answer_after_pin")) }, ANSWER_MS)
     }
+
+    /** The same direct way for a wallet that cannot take one long code (bKash): send the first code, read the menu the network sends
+     *  back, answer with the next menu number, and so on until the PIN prompt, then the PIN once, then the balance. Each answer is
+     *  decided by [flow], which only ever answers a screen it expects.
+     *
+     *  Whether Android lets a second request continue the open menu session depends on the phone and the network. If any request
+     *  fails BEFORE the PIN was handed over, nothing secret was sent and [onNotSent] is called (with the step log) so the caller can
+     *  use the dialer way. Once the PIN was handed over nothing is ever tried again. */
+    fun runSteps(
+        ctx: Context, slot: Int, flow: BalanceFlow, firstCode: String,
+        onDone: (UssdOutcome) -> Unit, onNotSent: (String) -> Unit,
+    ) {
+        if (!running.compareAndSet(false, true)) { onDone(UssdOutcome(false, null, "busy")); return }
+        val started = SystemClock.elapsedRealtime()
+        val trace = ArrayList<String>()
+        fun note(msg: String) {
+            if (trace.size < 30) trace.add(String.format(java.util.Locale.US, "%4.1fs %s", (SystemClock.elapsedRealtime() - started) / 1000.0, msg))
+        }
+        fun preview(text: String): String = text.replace(Regex("\\s+"), " ").take(100)
+        val finished = AtomicBoolean(false)
+        val pinHandedOver = AtomicBoolean(false)
+        fun finish(o: UssdOutcome) {
+            if (!finished.compareAndSet(false, true)) return
+            lastFinishAt = SystemClock.elapsedRealtime()
+            running.set(false)
+            onDone(o.copy(pinSent = pinHandedOver.get(), trace = trace.joinToString("\n")))
+        }
+        fun fallBack(why: String) {
+            if (!finished.compareAndSet(false, true)) return
+            running.set(false)
+            note("direct way could not go on: $why")
+            onNotSent(trace.joinToString("\n"))
+        }
+        val tm = try { telephonyFor(ctx, slot) } catch (e: Exception) { running.set(false); onNotSent("direct way unavailable: no telephony service"); return }
+        note("direct menu walk, SIM " + (slot + 1))
+
+        fun send(text: String, secret: Boolean) {
+            if (finished.get()) return
+            if (secret) pinHandedOver.set(true)
+            try {
+                tm.sendUssdRequest(text, object : TelephonyManager.UssdResponseCallback() {
+                    override fun onReceiveUssdResponse(telephonyManager: TelephonyManager, request: String, response: CharSequence) {
+                        val reply = response.toString()
+                        val lower = reply.lowercase()
+                        if (lower.contains("not available") || lower.contains("try again later")) {
+                            note("provider said the service is not available")
+                            finish(UssdOutcome(false, null, "network_refused"))
+                            return
+                        }
+                        when (val a = flow.onScreen(reply)) {
+                            is UssdAction.Done -> { note("balance read"); finish(UssdOutcome(true, a.balance, null)) }
+                            is UssdAction.Reply -> {
+                                note(if (a.secret) "got the PIN prompt, answering it" else "got a menu, answering " + a.text)
+                                send(a.text, a.secret)
+                            }
+                            is UssdAction.Fail -> { note("unexpected answer: " + preview(reply)); finish(UssdOutcome(false, null, a.reason)) }
+                            is UssdAction.Wait -> { note("unexpected answer: " + preview(reply)); finish(UssdOutcome(false, null, "unexpected_screen")) }
+                        }
+                    }
+
+                    override fun onReceiveUssdResponseFailed(telephonyManager: TelephonyManager, request: String, failureCode: Int) {
+                        note("phone reported failure code $failureCode")
+                        if (pinHandedOver.get()) finish(UssdOutcome(false, null, UssdDirect.failureError(failureCode))) else fallBack("failure code $failureCode")
+                    }
+                }, main)
+            } catch (e: Exception) {
+                // The request was not accepted by the phone, so nothing was sent (not even the PIN).
+                if (secret) pinHandedOver.set(false)
+                fallBack(e.javaClass.simpleName)
+            }
+        }
+
+        send(firstCode, false)
+        main.postDelayed({
+            if (pinHandedOver.get()) finish(UssdOutcome(false, null, "no_answer_after_pin")) else fallBack("no answer from the network")
+        }, STEPS_ANSWER_MS)
+    }
+
+    private const val STEPS_ANSWER_MS = 60_000L
 }

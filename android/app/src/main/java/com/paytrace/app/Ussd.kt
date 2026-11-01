@@ -2,7 +2,16 @@ package com.paytrace.app
 
 /** What one USSD dialog on the screen is, judged only from its own words. Pure, so it is unit tested with the real
  *  screens of the owner's Nagad recordings (2026-11-01). */
-enum class UssdScreen { MAIN_MENU, MY_NAGAD_MENU, ENTER_PIN, BALANCE, PROGRESS, OTHER }
+enum class UssdScreen { MAIN_MENU, MY_NAGAD_MENU, ACCOUNT_MENU, ENTER_PIN, BALANCE, PROGRESS, OTHER }
+
+/** One balance check as a walk through a provider's USSD menus (Nagad and bKash each have their own). It is fed the text of each
+ *  screen the phone shows or the network sends back, and says what to answer. */
+interface BalanceFlow {
+    fun onScreen(text: String): UssdAction
+
+    /** True if [text] is one of the provider's own USSD screens (a menu, the PIN prompt, the balance, "running..."). */
+    fun recognises(text: String): Boolean
+}
 
 /** What the runner should do next. */
 sealed class UssdAction {
@@ -53,12 +62,14 @@ object NagadUssd {
  *  - the PIN is typed once, only on a screen that is a plain "Enter PIN" with no amount or account on it;
  *  - a wrong-PIN or any other unexpected answer is never retried (repeated wrong PINs can lock the wallet);
  *  - at most [MAX_SCREENS] screens, so it can never loop. */
-class NagadBalanceFlow(private val pin: () -> String) {
+class NagadBalanceFlow(private val pin: () -> String) : BalanceFlow {
     private var stage = 0 // 0 expect main menu, 1 expect My Nagad menu, 2 expect PIN, 3 expect balance
     private var screens = 0
     private var lastAnswered: String? = null
 
-    fun onScreen(text: String): UssdAction {
+    override fun recognises(text: String): Boolean = NagadUssd.classify(text) != UssdScreen.OTHER
+
+    override fun onScreen(text: String): UssdAction {
         val clean = text.trim()
         if (clean.isEmpty()) return UssdAction.Wait
         // The same dialog reported again (several accessibility events for one change): do nothing.
@@ -84,6 +95,74 @@ class NagadBalanceFlow(private val pin: () -> String) {
     }
 
     private fun answered(text: String) { lastAnswered = text }
+
+    companion object { const val MAX_SCREENS = 6 }
+}
+
+/** bKash (agent menu), from the owner's recording 2026-11-01. bKash does NOT take one long code: `*247*4*1*PIN#` answers
+ *  "service is not available". It has to be walked step by step:
+ *  `*247#` -> menu "1 Cash In, 2 B2B Transfer, 3 Pay Bill, 4 My bKash, 5 Helpline" -> `4` -> menu "1 Check Balance, 2 Request Statement,
+ *  3 Change Mobile Menu PIN, 4 Update MNP Info, 0 Main Menu" -> `1` -> "Enter PIN:" -> PIN ->
+ *  "Current balance Tk 1,570.78. Available balance Tk 1,570.78. 0. Main Menu". */
+object BkashUssd {
+    const val CODE = "*247#"
+    private val BALANCE = Regex("""Current\s+balance\s*:?\s*Tk\.?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)""", RegexOption.IGNORE_CASE)
+
+    fun balanceOf(text: String): Double? =
+        BALANCE.find(text)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
+
+    /** Anything that moves or confirms money. The balance flow must never be on such a screen. */
+    private fun mentionsMoneyMove(t: String): Boolean =
+        t.contains("amount") || t.contains("to:") || t.contains("successful") || t.contains("trxid") ||
+            t.contains("account number") || t.contains("mobile number") || t.contains("enter number")
+
+    fun classify(text: String): UssdScreen {
+        val t = text.lowercase()
+        if (t.contains("code running") || t.contains("please wait")) return UssdScreen.PROGRESS
+        return when {
+            // The menus come first: the main menu lists "Cash In" but is only a menu.
+            t.contains("check balance") && t.contains("request statement") -> UssdScreen.ACCOUNT_MENU
+            t.contains("my bkash") && t.contains("cash in") -> UssdScreen.MAIN_MENU
+            t.contains("enter pin") && !mentionsMoneyMove(t) -> UssdScreen.ENTER_PIN
+            BALANCE.containsMatchIn(text) && !mentionsMoneyMove(t) -> UssdScreen.BALANCE
+            else -> UssdScreen.OTHER
+        }
+    }
+}
+
+/** bKash balance check, one screen at a time: main menu -> "4" (My bKash) -> "1" (Check Balance) -> PIN -> balance.
+ *  The same safety rules as the Nagad flow (each step must be the expected screen, the PIN is given once and only on a plain
+ *  "Enter PIN" screen, nothing is retried after the PIN, at most [MAX_SCREENS] screens). */
+class BkashBalanceFlow(private val pin: () -> String) : BalanceFlow {
+    private var stage = 0 // 0 expect main menu, 1 expect the My bKash menu, 2 expect PIN, 3 expect balance
+    private var screens = 0
+    private var lastAnswered: String? = null
+
+    override fun recognises(text: String): Boolean = BkashUssd.classify(text) != UssdScreen.OTHER
+
+    override fun onScreen(text: String): UssdAction {
+        val clean = text.trim()
+        if (clean.isEmpty()) return UssdAction.Wait
+        if (clean == lastAnswered) return UssdAction.Wait
+        val kind = BkashUssd.classify(clean)
+        if (kind == UssdScreen.PROGRESS) return UssdAction.Wait
+        screens++
+        if (screens > MAX_SCREENS) return UssdAction.Fail("too_many_steps")
+        return when {
+            kind == UssdScreen.MAIN_MENU && stage == 0 -> { stage = 1; lastAnswered = clean; UssdAction.Reply("4") }
+            kind == UssdScreen.ACCOUNT_MENU && stage == 1 -> { stage = 2; lastAnswered = clean; UssdAction.Reply("1") }
+            kind == UssdScreen.ENTER_PIN && stage == 2 -> {
+                val p = pin()
+                if (p.isEmpty()) UssdAction.Fail("no_pin")
+                else { stage = 3; lastAnswered = clean; UssdAction.Reply(p, secret = true) }
+            }
+            kind == UssdScreen.BALANCE && stage == 3 -> {
+                val b = BkashUssd.balanceOf(clean)
+                if (b == null) UssdAction.Fail("unexpected_screen") else UssdAction.Done(b)
+            }
+            else -> UssdAction.Fail("unexpected_screen")
+        }
+    }
 
     companion object { const val MAX_SCREENS = 6 }
 }
@@ -138,4 +217,22 @@ object UssdDirect {
     const val COOLDOWN_MS = 45_000L
 
     fun tooSoon(lastFinishMs: Long, nowMs: Long): Boolean = lastFinishMs > 0 && nowMs >= lastFinishMs && nowMs - lastFinishMs < COOLDOWN_MS
+}
+
+/** The wallets a balance check can be run for. */
+object UssdProviders {
+    const val NAGAD = "nagad"
+    const val BKASH = "bkash"
+    val all = listOf(NAGAD, BKASH)
+
+    fun isKnown(p: String): Boolean = p == NAGAD || p == BKASH
+    fun label(p: String): String = if (p == BKASH) "bKash" else "Nagad"
+
+    /** The code a person dials to open the provider's menu. */
+    fun dialCode(p: String): String = if (p == BKASH) BkashUssd.CODE else NagadUssd.CODE
+
+    fun flow(p: String, pin: () -> String): BalanceFlow = if (p == BKASH) BkashBalanceFlow(pin) else NagadBalanceFlow(pin)
+
+    /** Only Nagad takes the whole check as one code; bKash has to be walked one menu at a time. */
+    fun oneCode(p: String): Boolean = p == NAGAD
 }

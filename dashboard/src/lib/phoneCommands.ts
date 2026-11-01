@@ -23,6 +23,7 @@ const ERROR_TEXT: Record<string, string> = {
   no_call_permission: "That phone has not allowed phone calls for PayTrace.",
   no_pin: "No Nagad PIN is saved on that phone.",
   busy: "That phone was already busy with a check. Try again in a minute.",
+  network_refused: "The wallet answered that its service is not available right now. Try again a little later.",
   too_soon: "That phone had just finished a check. Wait about a minute and try again.",
   ussd_failed: "The network did not answer the code. The phone did not try again. Check the Nagad SMS, then try again later.",
   timeout: "The phone did not answer in time.",
@@ -41,12 +42,12 @@ const ERROR_TEXT: Record<string, string> = {
 export const errorText = (code: string | null): string => (code ? ERROR_TEXT[code] ?? ERROR_TEXT.failed : ERROR_TEXT.failed);
 
 /** One line for the phone card. [money] formats a number as taka. */
-export function commandLine(c: PhoneCommand | null, money: (n: number) => string, when: (t: string) => string): string {
+export function commandLine(c: PhoneCommand | null, money: (n: number) => string, when: (t: string) => string, label = "Nagad"): string {
   if (!c) return "";
   switch (c.status) {
     case "queued": return "Waiting for the phone to pick it up (it checks every 30 seconds)…";
     case "running": return "The phone is reading the balance…";
-    case "done": return `Nagad balance ${c.balance == null ? "–" : money(c.balance)} as of ${when(c.finished_at ?? c.created_at)}`;
+    case "done": return `${label} balance ${c.balance == null ? "–" : money(c.balance)} as of ${when(c.finished_at ?? c.created_at)}`;
     case "cancelled":
     case "failed": return `Last check ${when(c.finished_at ?? c.created_at)} did not work. ${errorText(c.error)}`;
   }

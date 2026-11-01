@@ -294,6 +294,17 @@ class AppSettings(ctx: Context) {
     var ussdLast: String
         get() = p.getString("ussd_last", "") ?: ""
         set(v) { p.edit().putString("ussd_last", v).apply() }
+    /** The same settings for each wallet ("nagad" uses the ones above; "bkash" has its own SIM choice and last result). */
+    fun ussdSlotOf(provider: String): Int =
+        if (provider == "bkash") p.getInt("ussd_slot_bkash", 0).coerceIn(0, 1) else ussdSlot
+    fun setUssdSlotOf(provider: String, v: Int) {
+        if (provider == "bkash") p.edit().putInt("ussd_slot_bkash", v.coerceIn(0, 1)).apply() else ussdSlot = v
+    }
+    fun ussdLastOf(provider: String): String =
+        if (provider == "bkash") p.getString("ussd_last_bkash", "") ?: "" else ussdLast
+    fun setUssdLastOf(provider: String, v: String) {
+        if (provider == "bkash") p.edit().putString("ussd_last_bkash", v).apply() else ussdLast = v
+    }
 
     fun providerEnabled(provider: String): Boolean = p.getBoolean("prov_$provider", true)
     fun setProviderEnabled(provider: String, on: Boolean) {

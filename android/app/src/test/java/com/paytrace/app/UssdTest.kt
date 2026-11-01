@@ -184,4 +184,73 @@ class UssdTest {
         // A clock that went backwards must not block for ever.
         assertTrue(!UssdDirect.tooSoon(100_000L, 50_000L))
     }
+
+    // ---- bKash (agent menu), the real screens of the owner's recording 2026-11-01 ----
+    private val bkMain = "bKash\n1 Cash In\n2 B2B Transfer\n3 Pay Bill\n4 My bKash\n5 Helpline"
+    private val bkAccount = "bKash\n1 Check Balance\n2 Request Statement\n3 Change Mobile Menu PIN\n4 Update MNP Info\n0 Main Menu"
+    private val bkBalance = "bKash\nCurrent balance Tk 1,570.78. Available balance Tk 1,570.78.\n0. Main Menu"
+
+    @Test fun recognisesEveryScreenOfTheBkashBalanceCheck() {
+        assertEquals(UssdScreen.MAIN_MENU, BkashUssd.classify(bkMain))
+        assertEquals(UssdScreen.ACCOUNT_MENU, BkashUssd.classify(bkAccount))
+        assertEquals(UssdScreen.ENTER_PIN, BkashUssd.classify("Enter PIN:"))
+        assertEquals(UssdScreen.BALANCE, BkashUssd.classify(bkBalance))
+        assertEquals(UssdScreen.PROGRESS, BkashUssd.classify("USSD code running..."))
+        assertEquals(UssdScreen.OTHER, BkashUssd.classify("Service not available please try again later"))
+        // A PIN prompt that also names an amount or a number is a money screen, never the plain PIN prompt.
+        assertEquals(UssdScreen.OTHER, BkashUssd.classify("Send Money\nTo: 01700000000\nAmount: Tk 100\nEnter PIN:"))
+    }
+
+    @Test fun readsTheBkashBalance() {
+        assertEquals(1570.78, BkashUssd.balanceOf(bkBalance)!!, 0.001)
+        assertEquals(12.5, BkashUssd.balanceOf("Current balance Tk 12.50")!!, 0.001)
+        assertNull(BkashUssd.balanceOf("Enter PIN:"))
+    }
+
+    @Test fun walksTheWholeBkashCheckAndGivesThePinOnce() {
+        var pinReads = 0
+        val flow = BkashBalanceFlow { pinReads++; "0000" }
+        assertEquals(UssdAction.Wait, flow.onScreen("USSD code running..."))
+        assertEquals(UssdAction.Reply("4"), flow.onScreen(bkMain))
+        assertEquals(UssdAction.Wait, flow.onScreen(bkMain))
+        assertEquals(UssdAction.Reply("1"), flow.onScreen(bkAccount))
+        assertEquals(UssdAction.Reply("0000", secret = true), flow.onScreen("Enter PIN:"))
+        assertEquals(1, pinReads)
+        assertEquals(UssdAction.Done(1570.78), flow.onScreen(bkBalance))
+        assertEquals(1, pinReads)
+    }
+
+    @Test fun theBkashFlowNeverGivesThePinOutOfOrderOrTwice() {
+        // The PIN prompt straight away (no menus first) is not what is expected.
+        assertEquals(UssdAction.Fail("unexpected_screen"), BkashBalanceFlow { "0000" }.onScreen("Enter PIN:"))
+        // A refusal where a menu should be stops the run.
+        assertEquals(UssdAction.Fail("unexpected_screen"), BkashBalanceFlow { "0000" }.onScreen("Service is not available at the moment"))
+        // A second PIN prompt after the PIN went in is not answered.
+        var pinReads = 0
+        val flow = BkashBalanceFlow { pinReads++; "0000" }
+        flow.onScreen(bkMain)
+        flow.onScreen(bkAccount)
+        flow.onScreen("Enter PIN:")
+        assertEquals(UssdAction.Fail("unexpected_screen"), flow.onScreen("Wrong PIN, try again.\nEnter PIN:"))
+        assertEquals(1, pinReads)
+        // No saved PIN means nothing is typed.
+        val noPin = BkashBalanceFlow { "" }
+        noPin.onScreen(bkMain)
+        noPin.onScreen(bkAccount)
+        assertEquals(UssdAction.Fail("no_pin"), noPin.onScreen("Enter PIN:"))
+    }
+
+    @Test fun eachWalletHasItsOwnCodeAndFlow() {
+        assertEquals("*167#", UssdProviders.dialCode(UssdProviders.NAGAD))
+        assertEquals("*247#", UssdProviders.dialCode(UssdProviders.BKASH))
+        assertEquals("Nagad", UssdProviders.label("nagad"))
+        assertEquals("bKash", UssdProviders.label("bkash"))
+        assertTrue(UssdProviders.isKnown("nagad") && UssdProviders.isKnown("bkash") && !UssdProviders.isKnown("rocket") && !UssdProviders.isKnown(""))
+        // Nagad takes the whole check as one code; bKash has to be walked.
+        assertTrue(UssdProviders.oneCode("nagad") && !UssdProviders.oneCode("bkash"))
+        assertTrue(UssdProviders.flow("nagad") { "0000" }.recognises(mainMenu))
+        assertTrue(!UssdProviders.flow("nagad") { "0000" }.recognises(bkMain))
+        assertTrue(UssdProviders.flow("bkash") { "0000" }.recognises(bkMain))
+        assertTrue(!UssdProviders.flow("bkash") { "0000" }.recognises(mainMenu))
+    }
 }

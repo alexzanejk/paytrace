@@ -37,40 +37,47 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** Settings card for the dashboard-driven Nagad balance check. Everything is set up here, once per phone:
- *  Accessibility on, phone permission, which SIM, the PIN (kept encrypted on this phone only), and a switch.
+/** Settings card for the dashboard-driven balance check (Nagad and bKash). Everything is set up here, once per phone:
+ *  phone permission, which SIM and which PIN for the chosen wallet (kept encrypted on this phone only), and a switch.
  *  [tick] makes the ticks below refresh when the person comes back from Android's settings. */
 @Composable
 fun UssdCard(settings: AppSettings, tick: Int) {
     val ctx = LocalContext.current
+    var provider by remember { mutableStateOf(UssdProviders.NAGAD) }
+    val label = UssdProviders.label(provider)
     var allowed by remember { mutableStateOf(settings.ussdAllowed) }
-    var slot by remember { mutableStateOf(settings.ussdSlot) }
-    var pin by remember { mutableStateOf("") }
-    var pinSaved by remember { mutableStateOf(UssdSetup.pinSaved(ctx)) }
+    var slot by remember(provider) { mutableStateOf(settings.ussdSlotOf(provider)) }
+    var pin by remember(provider) { mutableStateOf("") }
+    var pinSaved by remember(provider) { mutableStateOf(UssdSetup.pinSaved(ctx, provider)) }
     var running by remember { mutableStateOf(false) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
 
     // Read again every time the screen refreshes (tick changes), so the ticks follow what Android says.
     val accessibility = UssdSetup.accessibilityOn(ctx)
     val call = UssdSetup.callPermission(ctx)
-    val last = remember(tick, running) { parseLast(settings.ussdLast) }
-    val steps = remember(tick, running) { lastTrace(settings.ussdLast) }
+    val last = remember(tick, running, provider) { parseLast(settings.ussdLastOf(provider), label) }
+    val steps = remember(tick, running, provider) { lastTrace(settings.ussdLastOf(provider)) }
     var details by remember { mutableStateOf(false) }
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Nagad balance check from the dashboard", style = MaterialTheme.typography.titleSmall)
+            Text("Balance check from the dashboard", style = MaterialTheme.typography.titleSmall)
             Text(
-                "When the owner asks, this phone opens the Nagad menu (*167#), types the PIN and reads the balance. It never sends money. Set it up once, in this order:",
+                "When the owner asks, this phone asks the wallet for its balance and reads the answer. It never sends money. Choose the wallet, then set it up once, in this order:",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                UssdProviders.all.forEach { p ->
+                    FilterChip(selected = provider == p, onClick = { provider = p }, label = { Text(UssdProviders.label(p)) })
+                }
+            }
 
             Text((if (accessibility) "✓ " else "") + "Backup way (optional): PayTrace in Accessibility", style = MaterialTheme.typography.bodyMedium)
             if (!accessibility) Text("Normally not needed: PayTrace sends the check straight to the phone network. Switch this on only if the check does not work without it on this phone.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (!accessibility) {
                 Text(
-                    "Tap the button, find \"PayTrace Nagad balance check\" and switch it on.",
+                    "Tap the button, find \"PayTrace balance check\" and switch it on.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 OutlinedButton(onClick = { ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }) { Text("Open Accessibility settings") }
@@ -93,10 +100,10 @@ fun UssdCard(settings: AppSettings, tick: Int) {
             Text((if (call) "✓ " else "1. ") + "Allow phone and SIM access (to send the check and pick the SIM)", style = MaterialTheme.typography.bodyMedium)
             if (!call) OutlinedButton(onClick = { permission.launch(arrayOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE)) }) { Text("Allow") }
 
-            Text("2. Which SIM has Nagad?", style = MaterialTheme.typography.bodyMedium)
+            Text("2. Which SIM has $label?", style = MaterialTheme.typography.bodyMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = slot == 0, onClick = { slot = 0; settings.ussdSlot = 0 }, label = { Text("SIM 1") })
-                FilterChip(selected = slot == 1, onClick = { slot = 1; settings.ussdSlot = 1 }, label = { Text("SIM 2") })
+                FilterChip(selected = slot == 0, onClick = { slot = 0; settings.setUssdSlotOf(provider, 0) }, label = { Text("SIM 1") })
+                FilterChip(selected = slot == 1, onClick = { slot = 1; settings.setUssdSlotOf(provider, 1) }, label = { Text("SIM 2") })
             }
             Text(
                 "PayTrace uses the SIM you choose here.",
@@ -104,7 +111,7 @@ fun UssdCard(settings: AppSettings, tick: Int) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            Text((if (pinSaved) "✓ " else "3. ") + "Nagad PIN" + if (pinSaved) " saved on this phone" else "", style = MaterialTheme.typography.bodyMedium)
+            Text((if (pinSaved) "✓ " else "3. ") + "$label PIN" + if (pinSaved) " saved on this phone" else "", style = MaterialTheme.typography.bodyMedium)
             OutlinedTextField(
                 value = pin,
                 onValueChange = { v -> pin = v.filter { it.isDigit() }.take(8) },
@@ -117,9 +124,9 @@ fun UssdCard(settings: AppSettings, tick: Int) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     enabled = pin.length >= 4,
-                    onClick = { SecretStore(ctx.applicationContext, "ussd_pin").set(pin); pin = ""; pinSaved = true },
+                    onClick = { UssdSetup.pinStore(ctx, provider).set(pin); pin = ""; pinSaved = true },
                 ) { Text("Save PIN") }
-                if (pinSaved) OutlinedButton(onClick = { SecretStore(ctx.applicationContext, "ussd_pin").set(""); pinSaved = false }) { Text("Remove PIN") }
+                if (pinSaved) OutlinedButton(onClick = { UssdSetup.pinStore(ctx, provider).set(""); pinSaved = false }) { Text("Remove PIN") }
             }
             Text(
                 "The PIN stays encrypted on this phone. It is never sent to the dashboard or anywhere else.",
@@ -140,12 +147,12 @@ fun UssdCard(settings: AppSettings, tick: Int) {
                 enabled = !running,
                 onClick = {
                     running = true
-                    UssdRunner.run(ctx) { outcome ->
-                        UssdCommands.remember(ctx, outcome)
+                    UssdRunner.run(ctx, provider) { outcome ->
+                        UssdCommands.remember(ctx, provider, outcome)
                         running = false
                     }
                 },
-            ) { Text(if (running) "Checking… keep the screen on" else "Check Nagad balance now") }
+            ) { Text(if (running) "Checking… keep the screen on" else "Check $label balance now") }
             if (last != null) Text(last, style = MaterialTheme.typography.bodyMedium)
             if (steps.isNotBlank()) {
                 TextButton(onClick = { details = !details }) { Text(if (details) "Hide what happened" else "Show what happened (send this if it fails)") }
@@ -155,12 +162,12 @@ fun UssdCard(settings: AppSettings, tick: Int) {
     }
 }
 
-private fun parseLast(json: String): String? {
+private fun parseLast(json: String, label: String): String? {
     if (json.isBlank()) return null
     return try {
         val o = JSONObject(json)
         val at = SimpleDateFormat("dd MMM HH:mm", Locale.getDefault()).format(Date(o.optLong("at")))
-        if (o.optBoolean("ok")) "Last check $at: Nagad balance Tk " + String.format(Locale.US, "%,.2f", o.optDouble("balance"))
+        if (o.optBoolean("ok")) "Last check $at: $label balance Tk " + String.format(Locale.US, "%,.2f", o.optDouble("balance"))
         else "Last check $at did not work. " + UssdText.error(o.optString("error"))
     } catch (e: Exception) {
         null
