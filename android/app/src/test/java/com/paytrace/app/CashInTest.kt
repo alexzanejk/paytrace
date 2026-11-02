@@ -97,7 +97,7 @@ class CashInTest {
         // It can never become a loop.
         val h = CashInFlow(bkash, pin)
         assertEquals(UssdAction.Reply("2"), h.onScreen(ask))
-        assertEquals(UssdAction.Fail("unexpected_screen"), h.onScreen(ask + " "))
+        assertEquals(UssdAction.Fail("unexpected_screen"), h.onScreen(ask + "\n(choose one)"))
     }
 
     @Test fun theWalletsOwnRefusalStopsTheRunWithItsOwnReason() {

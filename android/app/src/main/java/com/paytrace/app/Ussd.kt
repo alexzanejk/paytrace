@@ -20,9 +20,12 @@ object UssdAsk {
 
     /** The wallet refused, in its own words. A run that sees this stops at once and is never retried.
      *  Seen for real: "Amount too low to transact." (bKash agent Cash In of Tk 150, owner 2026-11-02). */
+    // Only words the WALLET uses to say no. Deliberately not the bare word "invalid": "Connection problem or invalid
+    // MMI code" is the phone failing to send the code, which is a different problem and keeps its own reason.
     private val REFUSALS = listOf(
-        "too low", "too high", "not available", "insufficient", "invalid", "wrong pin", "incorrect pin",
-        "limit exceed", "not allowed", "unsuccessful", "cannot be processed", "try again later", "no longer available",
+        "too low", "too high", "not available", "insufficient", "wrong pin", "incorrect pin", "invalid pin",
+        "invalid amount", "invalid account", "invalid number", "limit exceed", "not allowed", "unsuccessful",
+        "cannot be processed", "try again later", "no longer available",
     )
 
     fun refused(text: String): Boolean {

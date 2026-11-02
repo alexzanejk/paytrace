@@ -70,7 +70,7 @@ class UssdTest {
         flow.onScreen(myNagad)
         flow.onScreen(pinScreen)
         // Any answer that is not the balance stops the run, and the PIN is not asked for again.
-        assertEquals(UssdAction.Fail("unexpected_screen"), flow.onScreen("Invalid PIN. You have 2 attempts left."))
+        assertEquals(UssdAction.Fail("wallet_refused"), flow.onScreen("Invalid PIN. You have 2 attempts left."))
         assertEquals(1, pinReads)
     }
 
@@ -90,6 +90,7 @@ class UssdTest {
     @Test fun stopsIfTheScreensAreOutOfOrder() {
         assertEquals(UssdAction.Fail("unexpected_screen"), NagadBalanceFlow { "0000" }.onScreen(pinScreen))
         assertEquals(UssdAction.Fail("unexpected_screen"), NagadBalanceFlow { "0000" }.onScreen(myNagad))
+        // The phone failing to send the code is not the wallet refusing, so it keeps its own reason.
         assertEquals(UssdAction.Fail("unexpected_screen"), NagadBalanceFlow { "0000" }.onScreen("Connection problem or invalid MMI code."))
     }
 
@@ -231,7 +232,7 @@ class UssdTest {
         flow.onScreen(bkMain)
         flow.onScreen(bkAccount)
         flow.onScreen("Enter PIN:")
-        assertEquals(UssdAction.Fail("unexpected_screen"), flow.onScreen("Wrong PIN, try again.\nEnter PIN:"))
+        assertEquals(UssdAction.Fail("wallet_refused"), flow.onScreen("Wrong PIN, try again.\nEnter PIN:"))
         assertEquals(1, pinReads)
         // No saved PIN means nothing is typed.
         val noPin = BkashBalanceFlow { "" }
@@ -256,7 +257,7 @@ class UssdTest {
         // Asked a second time it is not answered again, so it can never become a loop.
         val twice = NagadBalanceFlow { "0000" }
         assertEquals(UssdAction.Reply("2"), twice.onScreen(ask))
-        assertEquals(UssdAction.Fail("unexpected_screen"), twice.onScreen(ask + " "))
+        assertEquals(UssdAction.Fail("unexpected_screen"), twice.onScreen(ask + "\n(choose one)"))
     }
 
     @Test fun eachWalletHasItsOwnCodeAndFlow() {
