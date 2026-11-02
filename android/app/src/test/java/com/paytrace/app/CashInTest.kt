@@ -63,7 +63,55 @@ class CashInTest {
         // A refusal after the PIN is never retried, it just stops.
         val g = CashInFlow(order, pin)
         walk(g, mainMenu, askNumber, askAmount, confirm)
-        assertEquals(UssdAction.Fail("unexpected_screen"), g.onScreen("Wrong PIN. Please try again."))
+        assertEquals(UssdAction.Fail("wallet_refused"), g.onScreen("Wrong PIN. Please try again."))
+    }
+
+    // ---- bKash agent Cash In, the owner's real recording (2026-11-02) ----
+    // *247# -> "Do you want to continue? 1 - Yes 2 - No" -> the bKash menu -> 1 -> the customer's number ->
+    // the amount -> "Cash In. / To: ... / Amount: Tk 150 / Enter Menu PIN to confirm:" -> "Amount too low to transact."
+
+    private val bkash = CashInOrder("bkash", "01846632612", 5000.0)
+    private val bkashMenu = "bKash\n1 Cash In\n2 B2B Transfer\n3 Pay Bill\n4 My bKash\n5 Helpline"
+    private val bkashAskNumber = "Enter Customer bKash Account No:"
+    private val bkashConfirm = "Cash In.\nTo: 01846632612\nAmount: Tk 5000\nEnter Menu PIN to confirm:"
+
+    @Test fun theOwnersRealBkashCashInWalksThrough() {
+        val f = CashInFlow(bkash, pin)
+        val steps = walk(f, bkashMenu, bkashAskNumber, "Enter Amount:", bkashConfirm)
+        assertEquals(UssdAction.Reply("1"), steps[0])
+        assertEquals(UssdAction.Reply("01846632612"), steps[1])
+        assertEquals(UssdAction.Reply("5000"), steps[2])
+        assertEquals(UssdAction.Reply("0000", secret = true), steps[3])
+    }
+
+    @Test fun theContinueQuestionIsAnsweredNoOnceAndOnlyBeforeTheMenu() {
+        val ask = "Do you want to continue?\n1 - Yes\n2 - No"
+        val f = CashInFlow(bkash, pin)
+        // No, never Yes: Yes would carry on somebody else's half-finished transaction.
+        assertEquals(UssdAction.Reply("2"), f.onScreen(ask))
+        assertEquals(UssdAction.Reply("1"), f.onScreen(bkashMenu))
+        // Asked again later in the walk, it is not an expected screen and the run stops.
+        val g = CashInFlow(bkash, pin)
+        g.onScreen(bkashMenu)
+        assertEquals(UssdAction.Fail("unexpected_screen"), g.onScreen(ask))
+        // It can never become a loop.
+        val h = CashInFlow(bkash, pin)
+        assertEquals(UssdAction.Reply("2"), h.onScreen(ask))
+        assertEquals(UssdAction.Fail("unexpected_screen"), h.onScreen(ask + " "))
+    }
+
+    @Test fun theWalletsOwnRefusalStopsTheRunWithItsOwnReason() {
+        // The real one: Tk 150 is under bKash's agent minimum.
+        val f = CashInFlow(bkash, pin)
+        walk(f, bkashMenu, bkashAskNumber, "Enter Amount:", bkashConfirm)
+        assertEquals(UssdAction.Fail("wallet_refused"), f.onScreen("Amount too low to transact."))
+        assertTrue(UssdAsk.refused("Amount too low to transact."))
+        assertTrue(UssdAsk.refused("Insufficient balance"))
+        assertTrue(!UssdAsk.refused("Cash In Tk 5000.00 to 01846632612 is successful. TrxID: AB12CD34"))
+        // A refusal cannot be mistaken for the confirmation, so it can never lead to the PIN.
+        val g = CashInFlow(bkash, pin)
+        g.onScreen(bkashMenu); g.onScreen(bkashAskNumber); g.onScreen("Enter Amount:")
+        assertEquals(UssdAction.Fail("confirm_does_not_match"), g.onScreen("Amount too low to transact. Enter PIN:"))
     }
 
     @Test fun aCommandThePhoneWillNotActOnIsRefusedBeforeAnything() {

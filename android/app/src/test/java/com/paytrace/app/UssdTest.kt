@@ -83,7 +83,7 @@ class UssdTest {
         // The exact same prompt again: treated as the same dialog, nothing is typed.
         assertEquals(UssdAction.Wait, flow.onScreen(pinScreen))
         // A prompt with a warning in front looks like a PIN prompt but arrives after the PIN was sent: stop.
-        assertEquals(UssdAction.Fail("unexpected_screen"), flow.onScreen("Wrong PIN, try again.\nEnter PIN:"))
+        assertEquals(UssdAction.Fail("wallet_refused"), flow.onScreen("Wrong PIN, try again.\nEnter PIN:"))
         assertEquals(1, pinReads)
     }
 
@@ -223,8 +223,8 @@ class UssdTest {
     @Test fun theBkashFlowNeverGivesThePinOutOfOrderOrTwice() {
         // The PIN prompt straight away (no menus first) is not what is expected.
         assertEquals(UssdAction.Fail("unexpected_screen"), BkashBalanceFlow { "0000" }.onScreen("Enter PIN:"))
-        // A refusal where a menu should be stops the run.
-        assertEquals(UssdAction.Fail("unexpected_screen"), BkashBalanceFlow { "0000" }.onScreen("Service is not available at the moment"))
+        // A refusal where a menu should be stops the run, and says so in its own words.
+        assertEquals(UssdAction.Fail("wallet_refused"), BkashBalanceFlow { "0000" }.onScreen("Service is not available at the moment"))
         // A second PIN prompt after the PIN went in is not answered.
         var pinReads = 0
         val flow = BkashBalanceFlow { pinReads++; "0000" }
@@ -238,6 +238,25 @@ class UssdTest {
         noPin.onScreen(bkMain)
         noPin.onScreen(bkAccount)
         assertEquals(UssdAction.Fail("no_pin"), noPin.onScreen("Enter PIN:"))
+    }
+
+    @Test fun theContinueQuestionBeforeTheMenuIsAnsweredNo() {
+        // Real screen, owner's bKash agent menu 2026-11-02: it comes up when an earlier session was left open, and
+        // answering "2 - No" opened a fresh main menu. "1 - Yes" would carry on that other, unknown session.
+        val ask = "Do you want to continue?\n1 - Yes\n2 - No"
+        assertEquals(UssdScreen.CONTINUE_ASK, BkashUssd.classify(ask))
+        assertEquals(UssdScreen.CONTINUE_ASK, NagadUssd.classify(ask))
+        var pinReads = 0
+        val flow = BkashBalanceFlow { pinReads++; "0000" }
+        assertEquals(UssdAction.Reply("2"), flow.onScreen(ask))
+        assertEquals(UssdAction.Reply("4"), flow.onScreen(bkMain))
+        assertEquals(UssdAction.Reply("1"), flow.onScreen(bkAccount))
+        assertEquals(UssdAction.Reply("0000", secret = true), flow.onScreen("Enter PIN:"))
+        assertEquals(1, pinReads)
+        // Asked a second time it is not answered again, so it can never become a loop.
+        val twice = NagadBalanceFlow { "0000" }
+        assertEquals(UssdAction.Reply("2"), twice.onScreen(ask))
+        assertEquals(UssdAction.Fail("unexpected_screen"), twice.onScreen(ask + " "))
     }
 
     @Test fun eachWalletHasItsOwnCodeAndFlow() {

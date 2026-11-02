@@ -75,12 +75,13 @@ class CashInFlow(private val order: CashInOrder, private val pin: () -> String) 
     private var stage = 0 // 0 main menu, 1 number, 2 amount, 3 confirm+PIN, 4 receipt
     private var screens = 0
     private var lastAnswered: String? = null
+    private var saidNo = false
     private val wallet = order.provider
 
     override fun recognises(text: String): Boolean =
         UssdProviders.classify(wallet, text) != UssdScreen.OTHER ||
             CashInRead.asksForNumber(text) || CashInRead.asksForAmount(text) ||
-            CashInRead.asksForPin(text) || CashInRead.succeeded(text)
+            CashInRead.asksForPin(text) || CashInRead.succeeded(text) || UssdAsk.refused(text)
 
     override fun onScreen(text: String): UssdAction {
         val clean = text.trim()
@@ -91,8 +92,18 @@ class CashInFlow(private val order: CashInOrder, private val pin: () -> String) 
         screens++
         if (screens > MAX_SCREENS) return UssdAction.Fail("too_many_steps")
 
+        // The wallet said no, in its own words ("Amount too low to transact.", "Wrong PIN", a limit). Stop; never try
+        // again. Not checked where the confirmation is expected: that screen has its own strict rule below, and nothing
+        // may weaken it. A refusal means the wallet rejected the request, so no money moved.
+        if (stage != 3 && UssdAsk.refused(clean)) return UssdAction.Fail("wallet_refused")
+
         return when (stage) {
-            0 -> if (UssdProviders.classify(wallet, clean) == UssdScreen.MAIN_MENU) {
+            // bKash can ask "Do you want to continue?" before the menu, when an earlier session was left open.
+            // Answer No once: that starts a fresh menu. Yes would carry on a half-finished transaction.
+            0 -> if (UssdAsk.wantsToContinue(clean)) {
+                if (saidNo) UssdAction.Fail("unexpected_screen")
+                else { saidNo = true; answered(clean); UssdAction.Reply(UssdAsk.NO) }
+            } else if (UssdProviders.classify(wallet, clean) == UssdScreen.MAIN_MENU) {
                 stage = 1; answered(clean); UssdAction.Reply("1")
             } else UssdAction.Fail("unexpected_screen")
 
@@ -124,5 +135,6 @@ class CashInFlow(private val order: CashInOrder, private val pin: () -> String) 
 
     private fun answered(text: String) { lastAnswered = text }
 
-    companion object { const val MAX_SCREENS = 8 }
+    // One more than the walk needs, because bKash can put a "Do you want to continue?" question in front of the menu.
+    companion object { const val MAX_SCREENS = 9 }
 }

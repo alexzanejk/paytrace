@@ -53,6 +53,7 @@ const ERROR_TEXT: Record<string, string> = {
   cash_in_off: "Cash-in is switched off on that phone. Turn it on in the app: Settings, Balance check.",
   bad_cash_in: "The phone refused the amount or the number. Nothing was sent.",
   confirm_does_not_match: "The wallet's own screen did not show this number and this amount, so the phone stopped before the PIN. NOTHING was sent.",
+  wallet_refused: "The wallet itself said no (for example the amount is under its minimum, or the PIN was wrong). Nothing was sent.",
   dialled_as_call: "The phone turned the menu code into an ordinary call. Nothing was sent. Try again.",
   sim_no_service: "The SIM chosen on that phone has no network. Choose the other SIM in the app.",
   expired: "The phone never picked it up (it may be offline or asleep).",

@@ -2,7 +2,34 @@ package com.paytrace.app
 
 /** What one USSD dialog on the screen is, judged only from its own words. Pure, so it is unit tested with the real
  *  screens of the owner's Nagad recordings (2026-11-01). */
-enum class UssdScreen { MAIN_MENU, MY_NAGAD_MENU, ACCOUNT_MENU, ENTER_PIN, BALANCE, PROGRESS, OTHER }
+enum class UssdScreen { MAIN_MENU, MY_NAGAD_MENU, ACCOUNT_MENU, ENTER_PIN, BALANCE, PROGRESS, CONTINUE_ASK, OTHER }
+
+/** Screens that are neither a menu nor an answer: the wallet saying no, and the "Do you want to continue?" question
+ *  that can come before the main menu. Both were seen on the owner's own phone (bKash agent menu, 2026-11-02). */
+object UssdAsk {
+    /** "Do you want to continue? / 1 - Yes / 2 - No". bKash shows it when an earlier menu session was left open.
+     *  PayTrace always answers NO: that is what the owner's recording did, and it led straight to the main menu.
+     *  Answering YES would carry on somebody else's half-finished transaction, which must never happen. */
+    fun wantsToContinue(text: String): Boolean {
+        val t = text.lowercase()
+        return t.contains("want to continue") && t.contains("yes") && t.contains("no")
+    }
+
+    /** The answer to that question: No, start again from the main menu. */
+    const val NO = "2"
+
+    /** The wallet refused, in its own words. A run that sees this stops at once and is never retried.
+     *  Seen for real: "Amount too low to transact." (bKash agent Cash In of Tk 150, owner 2026-11-02). */
+    private val REFUSALS = listOf(
+        "too low", "too high", "not available", "insufficient", "invalid", "wrong pin", "incorrect pin",
+        "limit exceed", "not allowed", "unsuccessful", "cannot be processed", "try again later", "no longer available",
+    )
+
+    fun refused(text: String): Boolean {
+        val t = text.lowercase()
+        return REFUSALS.any { t.contains(it) }
+    }
+}
 
 /** One balance check as a walk through a provider's USSD menus (Nagad and bKash each have their own). It is fed the text of each
  *  screen the phone shows or the network sends back, and says what to answer. */
@@ -49,6 +76,7 @@ object NagadUssd {
     fun classify(text: String): UssdScreen {
         val t = text.lowercase()
         if (t.contains("code running") || t.contains("please wait")) return UssdScreen.PROGRESS
+        if (UssdAsk.wantsToContinue(text)) return UssdScreen.CONTINUE_ASK
         return when {
             // The menus come first: the main menu lists "Cash In" but is only a menu.
             t.contains("balance enquiry") && t.contains("mini statement") -> UssdScreen.MY_NAGAD_MENU
@@ -71,6 +99,7 @@ class NagadBalanceFlow(private val pin: () -> String) : BalanceFlow {
     private var stage = 0 // 0 expect main menu, 1 expect My Nagad menu, 2 expect PIN, 3 expect balance
     private var screens = 0
     private var lastAnswered: String? = null
+    private var saidNo = false
 
     override fun recognises(text: String): Boolean = NagadUssd.classify(text) != UssdScreen.OTHER
 
@@ -84,6 +113,9 @@ class NagadBalanceFlow(private val pin: () -> String) : BalanceFlow {
         screens++
         if (screens > MAX_SCREENS) return UssdAction.Fail("too_many_steps")
         return when {
+            // "Do you want to continue?" before the menu: answer No once, which opens a fresh main menu.
+            kind == UssdScreen.CONTINUE_ASK && stage == 0 && !saidNo -> { saidNo = true; answered(clean); UssdAction.Reply(UssdAsk.NO) }
+            UssdAsk.refused(clean) -> UssdAction.Fail("wallet_refused")
             kind == UssdScreen.MAIN_MENU && stage == 0 -> { stage = 1; answered(clean); UssdAction.Reply("6") }
             kind == UssdScreen.MY_NAGAD_MENU && stage == 1 -> { stage = 2; answered(clean); UssdAction.Reply("1") }
             kind == UssdScreen.ENTER_PIN && stage == 2 -> {
@@ -101,7 +133,8 @@ class NagadBalanceFlow(private val pin: () -> String) : BalanceFlow {
 
     private fun answered(text: String) { lastAnswered = text }
 
-    companion object { const val MAX_SCREENS = 6 }
+    // One more than the walk needs, because bKash can put a "Do you want to continue?" question in front of the menu.
+    companion object { const val MAX_SCREENS = 7 }
 }
 
 /** bKash (agent menu), from the owner's recording 2026-11-01. bKash does NOT take one long code: `*247*4*1*PIN#` answers
@@ -127,6 +160,7 @@ object BkashUssd {
     fun classify(text: String): UssdScreen {
         val t = text.lowercase()
         if (t.contains("code running") || t.contains("please wait")) return UssdScreen.PROGRESS
+        if (UssdAsk.wantsToContinue(text)) return UssdScreen.CONTINUE_ASK
         return when {
             // The menus come first: the main menu lists "Cash In" but is only a menu.
             t.contains("check balance") && t.contains("request statement") -> UssdScreen.ACCOUNT_MENU
@@ -145,6 +179,7 @@ class BkashBalanceFlow(private val pin: () -> String) : BalanceFlow {
     private var stage = 0 // 0 expect main menu, 1 expect the My bKash menu, 2 expect PIN, 3 expect balance
     private var screens = 0
     private var lastAnswered: String? = null
+    private var saidNo = false
 
     override fun recognises(text: String): Boolean = BkashUssd.classify(text) != UssdScreen.OTHER
 
@@ -157,6 +192,9 @@ class BkashBalanceFlow(private val pin: () -> String) : BalanceFlow {
         screens++
         if (screens > MAX_SCREENS) return UssdAction.Fail("too_many_steps")
         return when {
+            // "Do you want to continue?" before the menu: answer No once, which opens a fresh main menu.
+            kind == UssdScreen.CONTINUE_ASK && stage == 0 && !saidNo -> { saidNo = true; lastAnswered = clean; UssdAction.Reply(UssdAsk.NO) }
+            UssdAsk.refused(clean) -> UssdAction.Fail("wallet_refused")
             kind == UssdScreen.MAIN_MENU && stage == 0 -> { stage = 1; lastAnswered = clean; UssdAction.Reply("4") }
             kind == UssdScreen.ACCOUNT_MENU && stage == 1 -> { stage = 2; lastAnswered = clean; UssdAction.Reply("1") }
             kind == UssdScreen.ENTER_PIN && stage == 2 -> {
@@ -172,7 +210,8 @@ class BkashBalanceFlow(private val pin: () -> String) : BalanceFlow {
         }
     }
 
-    companion object { const val MAX_SCREENS = 6 }
+    // One more than the walk needs, because bKash can put a "Do you want to continue?" question in front of the menu.
+    companion object { const val MAX_SCREENS = 7 }
 }
 
 /** Labels of buttons the dialer shows, judged from their accessibility description, text or view id. Pure, unit tested. */
