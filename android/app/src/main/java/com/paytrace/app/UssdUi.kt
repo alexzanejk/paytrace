@@ -81,12 +81,36 @@ fun UssdCard(settings: AppSettings, tick: Int) {
             Text((if (accessibility) "✓ " else "") + "Backup way (optional): PayTrace in Accessibility", style = MaterialTheme.typography.bodyMedium)
             // Switched on in Settings and actually RUNNING are two different things, and some phones do the first
             // without the second. The owner's Redmi did (2026-11-02): the dialer opened and nothing ever looked at it.
-            if (accessibility && !UssdSession.connected()) Text(
-                "⚠ Switched on, but this phone has not actually started it, so nothing is watching the screen. " +
-                    "Switch PayTrace OFF and then ON again in Accessibility settings.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
+            if (accessibility && !UssdSession.connected()) {
+                Text(
+                    "⚠ Switched on, but this phone has not actually started it, so nothing is watching the screen.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Text(
+                    "Try in this order. 1) Accessibility settings: switch PayTrace OFF and then ON again. " +
+                        "2) If that does not help, this is the \"restricted settings\" block that Redmi and OnePlus put on apps " +
+                        "installed outside the Play Store, and it comes BACK with every app update: open PayTrace's app page, " +
+                        "tap the three dots at the top right, choose \"Allow restricted settings\" and confirm, then switch it " +
+                        "on in Accessibility again. 3) If those three dots are not there, tap the greyed name in Accessibility " +
+                        "once, press OK, and look again.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = {
+                        try { ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
+                    }) { Text("Accessibility") }
+                    OutlinedButton(onClick = {
+                        try {
+                            ctx.startActivity(
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", ctx.packageName, null))
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        } catch (e: Exception) { }
+                    }) { Text("App page") }
+                }
+            }
             if (AccessibilityHeal.allowed(ctx)) Text(
                 "This phone can switch it back on by itself after an app update.",
                 style = MaterialTheme.typography.bodySmall,
