@@ -30,6 +30,8 @@ interface JobRow {
 
 /** Cash-in jobs: when a wallet's balance reaches the amount, the partner cashes in to one of these personal numbers (a number of the same wallet type,
  *  taken in turn) and types the amount and the cash-in commission the wallet gave; the next Cash Out message checks it. */
+import { CashInCommandLimit } from "@/components/CashInCommandLimit";
+
 export function CashInJobs() {
   const devices = useDevices();
   const { data, error, refresh } = useQuery(
@@ -57,6 +59,7 @@ export function CashInJobs() {
       {error ? <p role="alert" className="mb-3 text-sm text-destructive">{error}</p> : null}
       {data ? (
         <div className="grid gap-6 xl:grid-cols-2">
+          <CashInCommandLimit />
           <SettingsCard key={JSON.stringify(data.settings)} initial={data.settings} onSaved={refresh} />
           <NumbersCard numbers={data.numbers} onChanged={refresh} />
         </div>

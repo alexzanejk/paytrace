@@ -312,6 +312,12 @@ class AppSettings(ctx: Context) {
         get() = p.getBoolean("ussd_dialer_way", false)
         set(v) { p.edit().putBoolean("ussd_dialer_way", v).apply() }
 
+    /** Whether this phone will do a cash-in the dashboard asks for. OFF until someone switches it on, on the phone
+     *  itself, so a phone can never be made to send money from the dashboard alone. */
+    var cashInAllowed: Boolean
+        get() = p.getBoolean("cash_in_allowed", false)
+        set(v) { p.edit().putBoolean("cash_in_allowed", v).apply() }
+
     /** How many runs in a row the direct way failed on this phone (see UssdDirectHealth). Reset whenever it works. */
     var ussdDirectFails: Int
         get() = p.getInt("ussd_direct_fails", 0)

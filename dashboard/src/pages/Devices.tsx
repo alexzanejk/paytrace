@@ -18,6 +18,7 @@ import { DeviceHealthBadge } from "@/components/DeviceHealthBadge";
 import { DeviceDetails } from "@/components/DeviceDetails";
 import { WalletsCard } from "@/components/WalletsCard";
 import { BalanceCheck } from "@/components/BalanceCheck";
+import { CashInSection } from "@/components/CashInSection";
 import { AppVersionCard, VersionChip } from "@/components/AppVersionCard";
 import { GROUP_CODE, GroupChoice } from "@/components/GroupChoice";
 import { CommissionCard } from "@/components/CommissionCard";
@@ -412,6 +413,7 @@ function DeviceCard({
         <div className="flex flex-col gap-2">
           <BalanceCheck deviceId={d.id} provider="nagad" />
           <BalanceCheck deviceId={d.id} provider="bkash" />
+          <CashInSection deviceId={d.id} />
         </div>
       ) : null}
       {showHealth ? <DeviceDetails info={d.info} /> : null}

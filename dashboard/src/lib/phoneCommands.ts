@@ -9,7 +9,22 @@ export interface PhoneCommand {
   error: string | null;
   created_at: string;
   finished_at: string | null;
+  /** Cash-in only: how much, to whom, and the wallet's own receipt number once it is through. */
+  amount?: number | null;
+  to_number?: string | null;
+  trx_id?: string | null;
 }
+
+/** The amounts the dashboard offers for a cash-in. The database refuses anything over MOST_PER_CASH_IN whatever is sent. */
+export const CASH_IN_AMOUNTS = [3000, 4000, 5000, 6000, 8000, 10000];
+export const MOST_PER_CASH_IN = 10000;
+
+/** A Bangladesh mobile number, the only kind money may be sent to. */
+export const looksLikeANumber = (n: string): boolean => /^01[0-9]{9}$/.test(n.trim());
+
+/** What the owner is about to do, in words, for the confirmation box. Never shortened: this is the last chance to see it. */
+export const cashInSummary = (wallet: string, amount: number, to: string, money: (n: number) => string): string =>
+  `Send ${money(amount)} from this phone's ${wallet} wallet to ${to}.`;
 
 /** A command is "live" while the phone has not finished it. */
 export const isLive = (c: Pick<PhoneCommand, "status"> | null | undefined): boolean => !!c && (c.status === "queued" || c.status === "running");
@@ -35,6 +50,12 @@ const ERROR_TEXT: Record<string, string> = {
   sim_not_found: "The phone could not pick the Nagad SIM. Check the SIM number in the app's settings.",
   dial_failed: "The phone could not start the code.",
   unsupported: "That phone's app is too old for this. Update the app.",
+  cash_in_off: "Cash-in is switched off on that phone. Turn it on in the app: Settings, Balance check.",
+  bad_cash_in: "The phone refused the amount or the number. Nothing was sent.",
+  confirm_does_not_match: "The wallet's own screen did not show this number and this amount, so the phone stopped before the PIN. NOTHING was sent.",
+  wallet_refused: "The wallet itself said no (for example the amount is under its minimum, or the PIN was wrong). Nothing was sent.",
+  dialled_as_call: "The phone turned the menu code into an ordinary call. Nothing was sent. Try again.",
+  sim_no_service: "The SIM chosen on that phone has no network. Choose the other SIM in the app.",
   expired: "The phone never picked it up (it may be offline or asleep).",
   failed: "It did not work.",
 };
@@ -44,11 +65,19 @@ export const errorText = (code: string | null): string => (code ? ERROR_TEXT[cod
 /** One line for the phone card. [money] formats a number as taka. */
 export function commandLine(c: PhoneCommand | null, money: (n: number) => string, when: (t: string) => string, label = "Nagad"): string {
   if (!c) return "";
+  const cashIn = c.kind === "cashin";
   switch (c.status) {
     case "queued": return "Waiting for the phone to pick it up (it checks every 30 seconds)…";
-    case "running": return "The phone is reading the balance…";
-    case "done": return `${label} balance ${c.balance == null ? "–" : money(c.balance)} as of ${when(c.finished_at ?? c.created_at)}`;
+    case "running": return cashIn ? "The phone is sending it…" : "The phone is reading the balance…";
+    case "done":
+      return cashIn
+        ? `Sent ${c.amount == null ? "–" : money(c.amount)} to ${c.to_number ?? "–"}${c.trx_id ? `, receipt ${c.trx_id}` : ""}` +
+          `${c.balance == null ? "" : `, ${label} balance now ${money(c.balance)}`} (${when(c.finished_at ?? c.created_at)})`
+        : `${label} balance ${c.balance == null ? "–" : money(c.balance)} as of ${when(c.finished_at ?? c.created_at)}`;
     case "cancelled":
-    case "failed": return `Last check ${when(c.finished_at ?? c.created_at)} did not work. ${errorText(c.error)}`;
+    case "failed":
+      return cashIn
+        ? `The cash-in of ${c.amount == null ? "–" : money(c.amount)} at ${when(c.finished_at ?? c.created_at)} did not go through. ${errorText(c.error)}`
+        : `Last check ${when(c.finished_at ?? c.created_at)} did not work. ${errorText(c.error)}`;
   }
 }

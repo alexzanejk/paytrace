@@ -296,7 +296,9 @@ async function handle(req: Request): Promise<Response> {
     const balance = typeof body.balance === "number" && Number.isFinite(body.balance) && body.balance >= 0 && body.balance < 1e9 ? Math.round(body.balance * 100) / 100 : null;
     if (ok && balance === null) return json({ success: false, message: "a successful balance check needs the balance" }, 400);
     const error = typeof body.error === "string" && /^[a-z_]{1,40}$/.test(body.error) ? body.error : "failed";
-    const { error: rpcError } = await db.rpc("device_command_result", { p_device: device.id, p_id: id, p_ok: ok, p_balance: balance, p_error: ok ? null : error });
+    // A cash-in that went through also carries the wallet's own receipt number.
+    const trx = typeof body.trx_id === "string" && /^[A-Za-z0-9]{1,24}$/.test(body.trx_id) ? body.trx_id : null;
+    const { error: rpcError } = await db.rpc("device_command_result", { p_device: device.id, p_id: id, p_ok: ok, p_balance: balance, p_trx: trx, p_error: ok ? null : error });
     if (rpcError) {
       console.error("device_command_result failed", rpcError.code);
       return json({ success: false, message: "could not save the result" }, 500);

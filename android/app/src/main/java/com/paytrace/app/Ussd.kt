@@ -2,7 +2,46 @@ package com.paytrace.app
 
 /** What one USSD dialog on the screen is, judged only from its own words. Pure, so it is unit tested with the real
  *  screens of the owner's Nagad recordings (2026-11-01). */
-enum class UssdScreen { MAIN_MENU, MY_NAGAD_MENU, ACCOUNT_MENU, ENTER_PIN, BALANCE, PROGRESS, OTHER }
+enum class UssdScreen { MAIN_MENU, MY_NAGAD_MENU, ACCOUNT_MENU, ENTER_PIN, BALANCE, PROGRESS, CONTINUE_ASK, OTHER }
+
+/** Screens that are neither a menu nor an answer: the wallet saying no, and the "Do you want to continue?" question
+ *  that can come before the main menu. Both were seen on the owner's own phone (bKash agent menu, 2026-11-02). */
+object UssdAsk {
+    /** "Do you want to continue? / 1 - Yes / 2 - No". bKash shows it when an earlier menu session was left open.
+     *  PayTrace always answers NO: that is what the owner's recording did, and it led straight to the main menu.
+     *  Answering YES would carry on somebody else's half-finished transaction, which must never happen. */
+    fun wantsToContinue(text: String): Boolean {
+        val t = text.lowercase()
+        return t.contains("want to continue") && t.contains("yes") && t.contains("no")
+    }
+
+    /** The answer to that question: No, start again from the main menu. */
+    const val NO = "2"
+
+    /** A screen asking for the wallet's menu PIN. bKash does NOT always write it the same way: the balance check says
+     *  "Enter PIN:", while Request Statement and the cash-in confirmation say "Enter Menu PIN:" (owner's phone,
+     *  2026-11-02). Matching only the exact words "enter pin" would have made the app stop on a screen it should have
+     *  answered. What makes this safe is not the wording but the rule around it: the flow only ever types the PIN at the
+     *  step where it is expected, and never on a screen that mentions an amount or an account. */
+    private val PIN_PROMPT = Regex("""enter\s+(?:[a-z]+\s+){0,2}pin""", RegexOption.IGNORE_CASE)
+
+    fun asksForPin(text: String): Boolean = PIN_PROMPT.containsMatchIn(text)
+
+    /** The wallet refused, in its own words. A run that sees this stops at once and is never retried.
+     *  Seen for real: "Amount too low to transact." (bKash agent Cash In of Tk 150, owner 2026-11-02). */
+    // Only words the WALLET uses to say no. Deliberately not the bare word "invalid": "Connection problem or invalid
+    // MMI code" is the phone failing to send the code, which is a different problem and keeps its own reason.
+    private val REFUSALS = listOf(
+        "too low", "too high", "not available", "insufficient", "wrong pin", "incorrect pin", "invalid pin",
+        "invalid amount", "invalid account", "invalid number", "limit exceed", "not allowed", "unsuccessful",
+        "cannot be processed", "try again later", "no longer available",
+    )
+
+    fun refused(text: String): Boolean {
+        val t = text.lowercase()
+        return REFUSALS.any { t.contains(it) }
+    }
+}
 
 /** One balance check as a walk through a provider's USSD menus (Nagad and bKash each have their own). It is fed the text of each
  *  screen the phone shows or the network sends back, and says what to answer. */
@@ -17,7 +56,8 @@ interface BalanceFlow {
 sealed class UssdAction {
     /** Type [text] into the dialog and press Send. [secret] marks the PIN: it is never logged or kept by the flow. */
     data class Reply(val text: String, val secret: Boolean = false) : UssdAction()
-    data class Done(val balance: Double) : UssdAction()
+    /** Finished: [balance] is what the wallet printed; [trx] is the wallet's own receipt number, for a cash-in. */
+    data class Done(val balance: Double, val trx: String? = null) : UssdAction()
     data class Fail(val reason: String) : UssdAction()
     /** Nothing to do yet (the dialog has not changed, or the phone is still working). */
     object Wait : UssdAction()
@@ -48,11 +88,12 @@ object NagadUssd {
     fun classify(text: String): UssdScreen {
         val t = text.lowercase()
         if (t.contains("code running") || t.contains("please wait")) return UssdScreen.PROGRESS
+        if (UssdAsk.wantsToContinue(text)) return UssdScreen.CONTINUE_ASK
         return when {
             // The menus come first: the main menu lists "Cash In" but is only a menu.
             t.contains("balance enquiry") && t.contains("mini statement") -> UssdScreen.MY_NAGAD_MENU
             t.contains("register customer") && t.contains("my nagad") -> UssdScreen.MAIN_MENU
-            t.contains("enter pin") && !mentionsMoneyMove(t) -> UssdScreen.ENTER_PIN
+            UssdAsk.asksForPin(t) && !mentionsMoneyMove(t) -> UssdScreen.ENTER_PIN
             BALANCE.containsMatchIn(text) && !mentionsMoneyMove(t) -> UssdScreen.BALANCE
             else -> UssdScreen.OTHER
         }
@@ -70,6 +111,7 @@ class NagadBalanceFlow(private val pin: () -> String) : BalanceFlow {
     private var stage = 0 // 0 expect main menu, 1 expect My Nagad menu, 2 expect PIN, 3 expect balance
     private var screens = 0
     private var lastAnswered: String? = null
+    private var saidNo = false
 
     override fun recognises(text: String): Boolean = NagadUssd.classify(text) != UssdScreen.OTHER
 
@@ -83,6 +125,9 @@ class NagadBalanceFlow(private val pin: () -> String) : BalanceFlow {
         screens++
         if (screens > MAX_SCREENS) return UssdAction.Fail("too_many_steps")
         return when {
+            // "Do you want to continue?" before the menu: answer No once, which opens a fresh main menu.
+            kind == UssdScreen.CONTINUE_ASK && stage == 0 && !saidNo -> { saidNo = true; answered(clean); UssdAction.Reply(UssdAsk.NO) }
+            UssdAsk.refused(clean) -> UssdAction.Fail("wallet_refused")
             kind == UssdScreen.MAIN_MENU && stage == 0 -> { stage = 1; answered(clean); UssdAction.Reply("6") }
             kind == UssdScreen.MY_NAGAD_MENU && stage == 1 -> { stage = 2; answered(clean); UssdAction.Reply("1") }
             kind == UssdScreen.ENTER_PIN && stage == 2 -> {
@@ -100,7 +145,8 @@ class NagadBalanceFlow(private val pin: () -> String) : BalanceFlow {
 
     private fun answered(text: String) { lastAnswered = text }
 
-    companion object { const val MAX_SCREENS = 6 }
+    // One more than the walk needs, because bKash can put a "Do you want to continue?" question in front of the menu.
+    companion object { const val MAX_SCREENS = 7 }
 }
 
 /** bKash (agent menu), from the owner's recording 2026-11-01. bKash does NOT take one long code: `*247*4*1*PIN#` answers
@@ -126,11 +172,12 @@ object BkashUssd {
     fun classify(text: String): UssdScreen {
         val t = text.lowercase()
         if (t.contains("code running") || t.contains("please wait")) return UssdScreen.PROGRESS
+        if (UssdAsk.wantsToContinue(text)) return UssdScreen.CONTINUE_ASK
         return when {
             // The menus come first: the main menu lists "Cash In" but is only a menu.
             t.contains("check balance") && t.contains("request statement") -> UssdScreen.ACCOUNT_MENU
             t.contains("my bkash") && t.contains("cash in") -> UssdScreen.MAIN_MENU
-            t.contains("enter pin") && !mentionsMoneyMove(t) -> UssdScreen.ENTER_PIN
+            UssdAsk.asksForPin(t) && !mentionsMoneyMove(t) -> UssdScreen.ENTER_PIN
             BALANCE.containsMatchIn(text) && !mentionsMoneyMove(t) -> UssdScreen.BALANCE
             else -> UssdScreen.OTHER
         }
@@ -144,6 +191,7 @@ class BkashBalanceFlow(private val pin: () -> String) : BalanceFlow {
     private var stage = 0 // 0 expect main menu, 1 expect the My bKash menu, 2 expect PIN, 3 expect balance
     private var screens = 0
     private var lastAnswered: String? = null
+    private var saidNo = false
 
     override fun recognises(text: String): Boolean = BkashUssd.classify(text) != UssdScreen.OTHER
 
@@ -156,6 +204,9 @@ class BkashBalanceFlow(private val pin: () -> String) : BalanceFlow {
         screens++
         if (screens > MAX_SCREENS) return UssdAction.Fail("too_many_steps")
         return when {
+            // "Do you want to continue?" before the menu: answer No once, which opens a fresh main menu.
+            kind == UssdScreen.CONTINUE_ASK && stage == 0 && !saidNo -> { saidNo = true; lastAnswered = clean; UssdAction.Reply(UssdAsk.NO) }
+            UssdAsk.refused(clean) -> UssdAction.Fail("wallet_refused")
             kind == UssdScreen.MAIN_MENU && stage == 0 -> { stage = 1; lastAnswered = clean; UssdAction.Reply("4") }
             kind == UssdScreen.ACCOUNT_MENU && stage == 1 -> { stage = 2; lastAnswered = clean; UssdAction.Reply("1") }
             kind == UssdScreen.ENTER_PIN && stage == 2 -> {
@@ -171,7 +222,8 @@ class BkashBalanceFlow(private val pin: () -> String) : BalanceFlow {
         }
     }
 
-    companion object { const val MAX_SCREENS = 6 }
+    // One more than the walk needs, because bKash can put a "Do you want to continue?" question in front of the menu.
+    companion object { const val MAX_SCREENS = 7 }
 }
 
 /** Labels of buttons the dialer shows, judged from their accessibility description, text or view id. Pure, unit tested. */
@@ -391,4 +443,13 @@ object UssdProviders {
 
     /** Only Nagad takes the whole check as one code; bKash has to be walked one menu at a time. */
     fun oneCode(p: String): Boolean = p == NAGAD
+
+    /** What one screen of this wallet's menu is. */
+    fun classify(p: String, text: String): UssdScreen = if (p == BKASH) BkashUssd.classify(text) else NagadUssd.classify(text)
+
+    /** The balance printed on a screen of this wallet, whatever else is on it. */
+    fun balanceOn(p: String, text: String): Double? = if (p == BKASH) BkashUssd.balanceOf(text) else NagadUssd.balanceOf(text)
+
+    /** A cash-in through this wallet's menu. */
+    fun cashIn(order: CashInOrder, pin: () -> String): BalanceFlow = CashInFlow(order, pin)
 }

@@ -22,7 +22,15 @@ import java.util.Locale
 
 /** How a run ended. [error] is a short code (see [UssdText.error]); [balance] is set when [ok]. [pinSent] is true only if the PIN was
  *  really submitted (then nothing is ever retried by itself). [trace] is a short log of the steps, never containing the PIN. */
-data class UssdOutcome(val ok: Boolean, val balance: Double?, val error: String?, val pinSent: Boolean = false, val trace: String = "")
+data class UssdOutcome(
+    val ok: Boolean,
+    val balance: Double?,
+    val error: String?,
+    val pinSent: Boolean = false,
+    val trace: String = "",
+    /** The wallet's own receipt number, for a cash-in that went through. */
+    val trx: String? = null,
+)
 
 /** Plain wording for the codes above, for the screen on the phone. */
 object UssdText {
@@ -484,7 +492,7 @@ object UssdSession {
                 note(if (a.secret) "menu: typing the PIN" else "menu: typing " + a.text)
                 continueAct(fresh, w)
             }
-            is UssdAction.Done -> { note("balance read"); finish(UssdOutcome(true, a.balance, null)) }
+            is UssdAction.Done -> { note(if (a.trx == null) "balance read" else "done, receipt number read"); finish(UssdOutcome(true, a.balance, null, trx = a.trx)) }
             is UssdAction.Fail -> { note("stopped: " + a.reason + " [" + UssdRedact.snippet(w.text) + "]"); finish(UssdOutcome(false, null, a.reason)) }
         }
     }
@@ -617,6 +625,29 @@ object UssdRunner {
         if (AccessibilityHeal.heal(app)) Handler(Looper.getMainLooper()).postDelayed({ go() }, HEAL_PAUSE_MS) else go()
     }
 
+    /** A cash-in the owner asked for from the dashboard. It MOVES MONEY, so it is deliberately the plainest path there is:
+     *  always through the phone's own dialer and menu (never the direct request, whose answers Android hides), never tried
+     *  again by itself, and only when this phone has been switched on for it. The flow itself refuses to type the PIN
+     *  unless the wallet's own screen shows this number and this amount. */
+    fun runCashIn(ctx: Context, order: CashInOrder, onFinish: (UssdOutcome) -> Unit) {
+        val app = ctx.applicationContext
+        val s = AppSettings(app)
+        fun fail(e: String) = onFinish(UssdOutcome(false, null, e))
+        if (!UssdProviders.isKnown(order.provider)) return fail("unsupported")
+        if (!order.sane()) return fail("bad_cash_in")
+        if (!s.ussdAllowed) return fail("not_allowed")
+        if (!s.cashInAllowed) return fail("cash_in_off")
+        if (!UssdSetup.callPermission(app)) return fail("no_call_permission")
+        val pin = UssdSetup.pinStore(app, order.provider).get()
+        if (pin.isEmpty()) return fail("no_pin")
+        if (UssdSession.active() || UssdApi.active()) return fail("busy")
+        fun go() {
+            if (!UssdSetup.accessibilityOn(app)) return fail("no_accessibility")
+            viaDialer(app, order.provider, 1, "", onFinish, s, pin, order)
+        }
+        if (AccessibilityHeal.heal(app)) Handler(Looper.getMainLooper()).postDelayed({ go() }, HEAL_PAUSE_MS) else go()
+    }
+
     /** A phone whose modem will not send a balance code from an app (the owner's Vivo: "failure code -1", or the network's
      *  "try again later", while the same code dialed by hand works) moves itself to the dialer way, rather than failing every
      *  time until someone notices. It says so in the run's own log, and Settings still lets it be moved back by hand. */
@@ -659,7 +690,16 @@ object UssdRunner {
     }
 
     @Suppress("DEPRECATION")
-    private fun viaDialer(app: Context, provider: String, n: Int, earlier: String, onFinish: (UssdOutcome) -> Unit, s: AppSettings, pin: String) {
+    private fun viaDialer(
+        app: Context,
+        provider: String,
+        n: Int,
+        earlier: String,
+        onFinish: (UssdOutcome) -> Unit,
+        s: AppSettings,
+        pin: String,
+        cashIn: CashInOrder? = null,
+    ) {
         fun fail(e: String) = onFinish(UssdOutcome(false, null, e, trace = earlier))
         if (!UssdSetup.accessibilityOn(app)) return fail("no_accessibility")
         if (UssdSession.active()) return fail("busy")
@@ -667,8 +707,10 @@ object UssdRunner {
         // The phone's own dialer, so the right app opens whatever the brand or the home screen looks like.
         val dialer = try { (app.getSystemService(Context.TELECOM_SERVICE) as TelecomManager).defaultDialerPackage } catch (e: Exception) { null }
         val head = if (n > 1) earlier + "\n-- second try --" else earlier
-        UssdSession.start(s.ussdSlotOf(provider), UssdProviders.flow(provider) { pin }, RUN_MS, dialer, head) { outcome ->
-            if (UssdRetry.shouldRetry(outcome.error, outcome.ok, outcome.pinSent, n)) {
+        val flow = cashIn?.let { order -> UssdProviders.cashIn(order) { pin } } ?: UssdProviders.flow(provider) { pin }
+        UssdSession.start(s.ussdSlotOf(provider), flow, RUN_MS, dialer, head) { outcome ->
+            // A cash-in is NEVER tried again by itself: it moves money, and a second run could send it twice.
+            if (cashIn == null && UssdRetry.shouldRetry(outcome.error, outcome.ok, outcome.pinSent, n)) {
                 Handler(Looper.getMainLooper()).postDelayed({ attempt(app, provider, n + 1, outcome.trace, onFinish) }, RETRY_PAUSE_MS)
             } else {
                 onFinish(outcome)
@@ -724,13 +766,23 @@ object UssdCommands {
         val id = cmd.optString("id")
         if (id.isBlank()) return
         val provider = cmd.optString("provider")
-        if (cmd.optString("kind") != "balance" || !UssdProviders.isKnown(provider)) {
+        if (!UssdProviders.isKnown(provider)) {
             report(ctx, id, UssdOutcome(false, null, "unsupported"))
             return
         }
-        UssdRunner.run(ctx, provider) { outcome ->
-            remember(ctx, provider, outcome)
-            report(ctx, id, outcome)
+        when (cmd.optString("kind")) {
+            "balance" -> UssdRunner.run(ctx, provider) { outcome ->
+                remember(ctx, provider, outcome)
+                report(ctx, id, outcome)
+            }
+            "cashin" -> {
+                val order = CashInOrder(provider, cmd.optString("to_number"), cmd.optDouble("amount", -1.0))
+                UssdRunner.runCashIn(ctx, order) { outcome ->
+                    remember(ctx, provider, outcome)
+                    report(ctx, id, outcome)
+                }
+            }
+            else -> report(ctx, id, UssdOutcome(false, null, "unsupported"))
         }
     }
 
@@ -748,6 +800,7 @@ object UssdCommands {
             try {
                 val j = JSONObject().put("action", "command_result").put("id", id).put("ok", o.ok)
                 if (o.balance != null) j.put("balance", o.balance)
+                if (o.trx != null) j.put("trx_id", o.trx)
                 if (o.error != null) j.put("error", o.error)
                 Sender.send(AppSettings(ctx.applicationContext), j)
             } catch (e: Exception) {
