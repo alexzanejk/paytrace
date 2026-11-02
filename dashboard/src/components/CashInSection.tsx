@@ -4,6 +4,7 @@ import { tk } from "@/lib/format";
 import { Send } from "lucide-react";
 import { Disclosure } from "@/components/Disclosure";
 import { CashInCommand } from "@/components/CashInCommand";
+import { WALLETS, walletLabel } from "@/lib/phoneCommands";
 
 /** The one place on the dashboard that moves money: a cash-in this phone makes through the wallet's own menu.
  *
@@ -45,14 +46,19 @@ export function CashInSection({ deviceId }: { deviceId: string }) {
             {tk(left ?? 0)} of today&apos;s {tk(limit ?? 0)} is left for this phone. One cash-in can be at most {tk(10000)}.
             The phone stops before typing its PIN unless the wallet&apos;s own screen shows the number and the amount.
           </p>
-          <div>
-            <p className="mb-1 text-sm font-medium">Nagad</p>
-            <CashInCommand deviceId={deviceId} provider="nagad" />
-          </div>
-          <div>
-            <p className="mb-1 text-sm font-medium">bKash</p>
-            <CashInCommand deviceId={deviceId} provider="bkash" />
-          </div>
+          {WALLETS.map((w) => (
+            <div key={w}>
+              <p className="mb-1 text-sm font-medium">{walletLabel(w)}</p>
+              <CashInCommand deviceId={deviceId} provider={w} />
+              {w === "rocket" ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Rocket asks for the PIN on a bare screen, so unlike the other two the wallet never repeats the number
+                  and the amount back. PayTrace still types both into Rocket&apos;s own boxes first and stops if that
+                  screen shows any other number or amount, but it cannot be checked the way bKash and Nagad are.
+                </p>
+              ) : null}
+            </div>
+          ))}
         </div>
       )}
     </Disclosure>

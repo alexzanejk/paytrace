@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FileClock, Search } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
-import { isLive, POLL_MS, errorText, type PhoneCommand } from "@/lib/phoneCommands";
+import { isLive, POLL_MS, errorText, type PhoneCommand, type WalletName, walletLabel } from "@/lib/phoneCommands";
 import {
   readList, readDetail, unreadLines, matchRow, statementSummary, type RowMatch, type StatementRow,
 } from "@/lib/statement";
@@ -22,8 +22,8 @@ const COLUMNS = "grid grid-cols-[1.6rem_5rem_1fr_auto] gap-x-2 gap-y-2 items-bas
  *  changed — it only reads. Opening one entry asks the phone again and brings back that entry's own screen, which
  *  carries the TrxID, the full numbers and the exact time.
  */
-export function StatementCheck({ deviceId, provider = "bkash" }: { deviceId: string; provider?: "nagad" | "bkash" }) {
-  const label = provider === "bkash" ? "bKash" : "Nagad";
+export function StatementCheck({ deviceId, provider = "bkash" }: { deviceId: string; provider?: WalletName }) {
+  const label = walletLabel(provider);
   const [last, setLast] = useState<StatementCommand | null>(null);
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);

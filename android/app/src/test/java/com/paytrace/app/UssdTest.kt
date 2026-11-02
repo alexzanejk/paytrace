@@ -283,9 +283,12 @@ class UssdTest {
         assertEquals("*247#", UssdProviders.dialCode(UssdProviders.BKASH))
         assertEquals("Nagad", UssdProviders.label("nagad"))
         assertEquals("bKash", UssdProviders.label("bkash"))
-        assertTrue(UssdProviders.isKnown("nagad") && UssdProviders.isKnown("bkash") && !UssdProviders.isKnown("rocket") && !UssdProviders.isKnown(""))
-        // Nagad takes the whole check as one code; bKash has to be walked.
-        assertTrue(UssdProviders.oneCode("nagad") && !UssdProviders.oneCode("bkash"))
+        assertEquals("*322#", UssdProviders.dialCode(UssdProviders.ROCKET))
+        assertEquals("Rocket", UssdProviders.label("rocket"))
+        assertTrue(UssdProviders.isKnown("nagad") && UssdProviders.isKnown("bkash") && UssdProviders.isKnown("rocket"))
+        assertTrue(!UssdProviders.isKnown("upay") && !UssdProviders.isKnown(""))
+        // Nagad takes the whole check as one code; the others have to be walked.
+        assertTrue(UssdProviders.oneCode("nagad") && !UssdProviders.oneCode("bkash") && !UssdProviders.oneCode("rocket"))
         assertTrue(UssdProviders.flow("nagad") { "0000" }.recognises(mainMenu))
         assertTrue(!UssdProviders.flow("nagad") { "0000" }.recognises(bkMain))
         assertTrue(UssdProviders.flow("bkash") { "0000" }.recognises(bkMain))

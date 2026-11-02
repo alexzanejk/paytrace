@@ -1,6 +1,7 @@
 import { FileClock } from "lucide-react";
 import { Disclosure } from "@/components/Disclosure";
 import { StatementCheck } from "@/components/StatementCheck";
+import { WALLETS, walletLabel } from "@/lib/phoneCommands";
 
 /** The wallet's own statement, for when a phone's balance does not match what PayTrace has stored.
  *
@@ -15,18 +16,18 @@ export function StatementSection({ deviceId }: { deviceId: string }) {
           wallet lists as a Cash Out that PayTrace has no payment for is an SMS that never arrived. Nothing is sent and
           nothing is changed. It takes about a minute, and the phone must be online with its balance-check switch on.
         </p>
-        <div>
-          <p className="mb-1 text-sm font-medium">bKash</p>
-          <StatementCheck deviceId={deviceId} provider="bkash" />
-        </div>
-        <div>
-          <p className="mb-1 text-sm font-medium">Nagad</p>
-          <StatementCheck deviceId={deviceId} provider="nagad" />
-          <p className="mt-1 text-xs text-muted-foreground">
-            Nagad&apos;s statement screens have never been seen, so this may come back saying the menu looked different.
-            Whatever it does show is kept word for word, which is how we learn what it looks like.
-          </p>
-        </div>
+        {WALLETS.map((w) => (
+          <div key={w}>
+            <p className="mb-1 text-sm font-medium">{walletLabel(w)}</p>
+            <StatementCheck deviceId={deviceId} provider={w} />
+            {w === "bkash" ? null : (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {walletLabel(w)}&apos;s statement screens have never been seen, so this may come back saying the menu
+                looked different. Whatever it does show is kept word for word, which is how we learn what it looks like.
+              </p>
+            )}
+          </div>
+        ))}
       </div>
     </Disclosure>
   );

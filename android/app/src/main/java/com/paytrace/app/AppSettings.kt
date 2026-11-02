@@ -294,16 +294,20 @@ class AppSettings(ctx: Context) {
     var ussdLast: String
         get() = p.getString("ussd_last", "") ?: ""
         set(v) { p.edit().putString("ussd_last", v).apply() }
-    /** The same settings for each wallet ("nagad" uses the ones above; "bkash" has its own SIM choice and last result). */
+    /** The same settings for each wallet. Nagad keeps the unsuffixed keys it had before there was more than one wallet,
+     *  so no phone loses its SIM choice; every wallet added later gets its own. */
+    private fun own(provider: String): String? = if (provider == "nagad") null else "_" + provider
     fun ussdSlotOf(provider: String): Int =
-        if (provider == "bkash") p.getInt("ussd_slot_bkash", 0).coerceIn(0, 1) else ussdSlot
+        own(provider)?.let { p.getInt("ussd_slot$it", 0).coerceIn(0, 1) } ?: ussdSlot
     fun setUssdSlotOf(provider: String, v: Int) {
-        if (provider == "bkash") p.edit().putInt("ussd_slot_bkash", v.coerceIn(0, 1)).apply() else ussdSlot = v
+        val k = own(provider)
+        if (k != null) p.edit().putInt("ussd_slot$k", v.coerceIn(0, 1)).apply() else ussdSlot = v
     }
     fun ussdLastOf(provider: String): String =
-        if (provider == "bkash") p.getString("ussd_last_bkash", "") ?: "" else ussdLast
+        own(provider)?.let { p.getString("ussd_last$it", "") ?: "" } ?: ussdLast
     fun setUssdLastOf(provider: String, v: String) {
-        if (provider == "bkash") p.edit().putString("ussd_last_bkash", v).apply() else ussdLast = v
+        val k = own(provider)
+        if (k != null) p.edit().putString("ussd_last$k", v).apply() else ussdLast = v
     }
 
     /** Use the dialer way (Accessibility presses the dialer) instead of Android's direct USSD request. For phones where the direct

@@ -3,6 +3,7 @@ import { Send, TriangleAlert } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import {
+  type WalletName, walletLabel,
   CASH_IN_AMOUNTS,
   cashInSummary,
   commandLine,
@@ -18,8 +19,8 @@ import { Button } from "@/components/ui/button";
  *  This is the one button on the dashboard that moves money, so nothing happens on a single tap: you pick the amount,
  *  type the number, and then confirm a sentence that spells out exactly what will be sent and to whom. The phone checks
  *  the same limits again, and its own wallet must show that number and that amount on screen before the PIN is typed. */
-export function CashInCommand({ deviceId, provider }: { deviceId: string; provider: "nagad" | "bkash" }) {
-  const label = provider === "bkash" ? "bKash" : "Nagad";
+export function CashInCommand({ deviceId, provider }: { deviceId: string; provider: WalletName }) {
+  const label = walletLabel(provider);
   const [last, setLast] = useState<PhoneCommand | null>(null);
   const [amount, setAmount] = useState<number>(CASH_IN_AMOUNTS[0]);
   const [to, setTo] = useState("");

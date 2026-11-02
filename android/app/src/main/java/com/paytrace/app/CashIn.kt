@@ -22,7 +22,9 @@ data class CashInOrder(val provider: String, val number: String, val amount: Dou
  *  or one whose number or amount does not match, stops the run before anything secret is typed and before money moves. */
 object CashInRead {
     private val DIGITS = Regex("[0-9][0-9,]*(?:\\.[0-9]{1,2})?")
-    private val TRX = Regex("""TrxID\s*:?\s*([A-Za-z0-9]{4,24})""", RegexOption.IGNORE_CASE)
+    //  bKash writes "TrxID DK29URXBHB", Nagad "TrxID: ...", Rocket "TxnId:7113219742". All three are the same thing,
+    //  and missing one would read a cash-in that WENT THROUGH as an unknown screen, after the money had moved.
+    private val TRX = Regex("""T(?:rx|xn)\s?Id\s*:?\s*([A-Za-z0-9]{4,24})""", RegexOption.IGNORE_CASE)
     // The receipt prints the balance in its own way, not the way the balance-check screen does: the owner's real bKash
     // receipt says "Balance Tk 1,371.53", while a bKash balance check says "Current balance Tk ...". So the receipt is
     // read with this plain pattern, or the new balance would be reported as zero.
@@ -30,8 +32,9 @@ object CashInRead {
 
     fun asksForNumber(text: String): Boolean {
         val t = text.lowercase()
+        // Rocket writes "Enter Mobile/Account No"; Nagad "Enter Account Number:"; bKash "Enter Customer bKash Account No:".
         return (t.contains("account number") || t.contains("receiver") || t.contains("mobile number") ||
-            t.contains("enter number") || t.contains("account no")) && !t.contains("amount")
+            t.contains("enter number") || t.contains("account no") || t.contains("mobile/account")) && !t.contains("amount")
     }
 
     fun asksForAmount(text: String): Boolean {
@@ -52,6 +55,18 @@ object CashInRead {
     }
 
     fun trxOn(text: String): String? = TRX.find(text)?.groupValues?.get(1)
+
+    /** A screen that says NOTHING about the money: no account number, no amount, no "Tk".
+     *
+     *  Rocket's PIN prompt is exactly this — "Enter Your 4-digit PIN" and nothing else (owner's recording 2026-11-02).
+     *  It is the only reason a cash-in may ever go ahead without the wallet repeating the number and the amount, and
+     *  it is deliberately strict: a screen showing ANY longer number, or any amount, is not this and falls back to the
+     *  full check, so a confirmation that disagrees still stops the run. */
+    fun saysNothingAboutTheMoney(text: String): Boolean {
+        val t = text.lowercase()
+        if (t.contains("tk")) return false
+        return !Regex("""[0-9]{4,}""").containsMatchIn(t)
+    }
 
     /** The balance the receipt itself prints, whichever wallet wrote it. */
     fun balanceOn(text: String): Double? =
@@ -124,9 +139,17 @@ class CashInFlow(private val order: CashInOrder, private val pin: () -> String) 
             } else UssdAction.Fail("unexpected_screen")
 
             // The one that matters: the wallet must be asking for the PIN on a screen that shows this very cash-in.
+            //
+            // Rocket is the one exception the owner chose (2026-11-02): its PIN prompt is bare, so there is nothing to
+            // check against. Even there the PIN is only typed on a screen that says NOTHING about the money — a screen
+            // naming some OTHER number or amount still stops the run — and only after PayTrace itself typed this
+            // cash-in's number into the wallet's own "Enter Mobile/Account No" box and its amount into "Enter Amount",
+            // both of which the wallet accepted before showing this.
             3 -> when {
                 !CashInRead.asksForPin(clean) -> UssdAction.Fail("unexpected_screen")
-                !CashInRead.confirms(clean, order) -> UssdAction.Fail("confirm_does_not_match")
+                !CashInRead.confirms(clean, order) &&
+                    !(!UssdProviders.confirmsCashIn(wallet) && CashInRead.saysNothingAboutTheMoney(clean)) ->
+                    UssdAction.Fail("confirm_does_not_match")
                 else -> {
                     val p = pin()
                     if (p.isEmpty()) UssdAction.Fail("no_pin")

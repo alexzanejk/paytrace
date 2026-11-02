@@ -2,13 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Wallet } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
-import { commandLine, isLive, POLL_MS, type PhoneCommand } from "@/lib/phoneCommands";
+import { commandLine, isLive, POLL_MS, type PhoneCommand, type WalletName, walletLabel } from "@/lib/phoneCommands";
 import { Button } from "@/components/ui/button";
 
 /** Asks this phone to read a wallet's balance (Nagad or bKash) through the provider's own USSD menu. Nothing is sent or spent: it only reads.
  *  The phone picks the request up on its next 30-second check and answers within about a minute and a half. */
-export function BalanceCheck({ deviceId, provider = "nagad" }: { deviceId: string; provider?: "nagad" | "bkash" }) {
-  const label = provider === "bkash" ? "bKash" : "Nagad";
+export function BalanceCheck({ deviceId, provider = "nagad" }: { deviceId: string; provider?: WalletName }) {
+  const label = walletLabel(provider);
   const [last, setLast] = useState<PhoneCommand | null>(null);
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);

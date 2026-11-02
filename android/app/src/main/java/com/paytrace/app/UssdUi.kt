@@ -205,6 +205,21 @@ fun UssdCard(settings: AppSettings, tick: Int) {
                 )
             }
 
+            // MIUI will not let a background app open another app's screen without this, and that is exactly where the
+            // owner's Redmi stopped on 2026-11-02: the screen came on and nothing else happened.
+            if (ScreenWake.miui()) {
+                Text("Xiaomi/Redmi: one more switch", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "Open \"Other permissions\" and turn ON \"Display pop-up windows while running in the background\". " +
+                        "Without it this phone lights its screen for a dashboard command and then stops, because MIUI will " +
+                        "not let PayTrace open the dialer while nothing of ours is on screen. Android cannot report this " +
+                        "one, so there is nothing to tick: check it by eye.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedButton(onClick = { ScreenWake.openPopupSetting(ctx) }) { Text("Open other permissions") }
+            }
+
             Text("Test it now, right here:", style = MaterialTheme.typography.bodyMedium)
             Button(
                 enabled = !running,

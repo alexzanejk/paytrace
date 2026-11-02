@@ -23,7 +23,9 @@ object UssdAsk {
      *  2026-11-02). Matching only the exact words "enter pin" would have made the app stop on a screen it should have
      *  answered. What makes this safe is not the wording but the rule around it: the flow only ever types the PIN at the
      *  step where it is expected, and never on a screen that mentions an amount or an account. */
-    private val PIN_PROMPT = Regex("""enter\s+(?:[a-z]+\s+){0,2}pin""", RegexOption.IGNORE_CASE)
+    //  "Enter PIN:" (bKash balance), "Enter Menu PIN to confirm:" (bKash cash-in), "Enter Your 4-digit PIN" (Rocket).
+    //  The words between "enter" and "pin" are whatever the wallet feels like, digits and hyphens included.
+    private val PIN_PROMPT = Regex("""enter\s+(?:[a-z0-9-]+\s+){0,3}pin""", RegexOption.IGNORE_CASE)
 
     fun asksForPin(text: String): Boolean = PIN_PROMPT.containsMatchIn(text)
 
@@ -184,6 +186,83 @@ object BkashUssd {
             else -> UssdScreen.OTHER
         }
     }
+}
+
+/** Rocket (agent menu), from the owner's recordings 2026-11-02. Dial `*322#`:
+ *
+ *    1.Cash-In / 2.Cash-Out / 3.Registration / 4.Payment / 5.My Acc / 0.LogOut / Select Your option
+ *      -> `5` -> 1.Balance / 2.Statement / 3.Change Pin / 4.Account No / 5.Remittance / 6.Help / 7.Activate Account / 9.Main Menu
+ *      -> `1` -> "Enter Your 4-digit PIN"
+ *      -> "Your A/C balance: Tk 546.59, Available balance: Tk 546.59. Do not share your PIN with others."
+ *
+ *  Note that last screen SAYS "PIN" without asking for one, which is why a PIN prompt is recognised by "enter ... pin"
+ *  and not by the word alone. */
+object RocketUssd {
+    const val CODE = "*322#"
+    private val BALANCE = Regex("""balance\s*:?\s*Tk\.?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)""", RegexOption.IGNORE_CASE)
+
+    fun balanceOf(text: String): Double? =
+        BALANCE.find(text)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
+
+    fun balanceOnly(text: String): Double? = if (classify(text) == UssdScreen.BALANCE) balanceOf(text) else null
+
+    /** Anything that moves or confirms money. The balance flow must never be on such a screen. */
+    private fun mentionsMoneyMove(t: String): Boolean =
+        t.contains("txnid") || t.contains("txn id") || t.contains("success") || t.contains("amount") ||
+            t.contains("account no") || t.contains("cash in to") || t.contains("cash-in to")
+
+    fun classify(text: String): UssdScreen {
+        val t = text.lowercase()
+        if (t.contains("code running") || t.contains("please wait") || t.contains("initiated ussd session")) return UssdScreen.PROGRESS
+        if (UssdAsk.wantsToContinue(text)) return UssdScreen.CONTINUE_ASK
+        return when {
+            // The menus come first: the main menu lists "Cash-In" but is only a menu.
+            t.contains("statement") && t.contains("change pin") -> UssdScreen.ACCOUNT_MENU
+            t.contains("my acc") && t.contains("cash") -> UssdScreen.MAIN_MENU
+            UssdAsk.asksForPin(t) && !mentionsMoneyMove(t) -> UssdScreen.ENTER_PIN
+            BALANCE.containsMatchIn(text) && !mentionsMoneyMove(t) -> UssdScreen.BALANCE
+            else -> UssdScreen.OTHER
+        }
+    }
+}
+
+/** Rocket balance check: main menu -> "5" (My Acc) -> "1" (Balance) -> PIN -> balance. Same safety rules as the others. */
+class RocketBalanceFlow(private val pin: () -> String) : BalanceFlow {
+    private var stage = 0
+    private var screens = 0
+    private var lastAnswered: String? = null
+    private var saidNo = false
+
+    override fun recognises(text: String): Boolean = RocketUssd.classify(text) != UssdScreen.OTHER
+
+    override fun onScreen(text: String): UssdAction {
+        val clean = text.trim()
+        if (clean.isEmpty()) return UssdAction.Wait
+        if (clean == lastAnswered) return UssdAction.Wait
+        val kind = RocketUssd.classify(clean)
+        if (kind == UssdScreen.PROGRESS) return UssdAction.Wait
+        screens++
+        if (screens > MAX_SCREENS) return UssdAction.Fail("too_many_steps")
+        return when {
+            kind == UssdScreen.CONTINUE_ASK && stage == 0 && !saidNo -> { saidNo = true; lastAnswered = clean; UssdAction.Reply(UssdAsk.NO) }
+            UssdAsk.refused(clean) -> UssdAction.Fail("wallet_refused")
+            kind == UssdScreen.MAIN_MENU && stage == 0 -> { stage = 1; lastAnswered = clean; UssdAction.Reply("5") }
+            kind == UssdScreen.ACCOUNT_MENU && stage == 1 -> { stage = 2; lastAnswered = clean; UssdAction.Reply("1") }
+            kind == UssdScreen.ENTER_PIN && stage == 2 -> {
+                val p = pin()
+                if (p.isEmpty()) UssdAction.Fail("no_pin")
+                else { stage = 3; lastAnswered = clean; UssdAction.Reply(p, secret = true) }
+            }
+            kind == UssdScreen.BALANCE && stage == 3 -> {
+                val b = RocketUssd.balanceOf(clean)
+                if (b == null) UssdAction.Fail("unexpected_screen") else UssdAction.Done(b)
+            }
+            else -> UssdAction.Fail("unexpected_screen")
+        }
+    }
+
+    // One more than the walk needs, because a wallet can put a "Do you want to continue?" question in front of the menu.
+    companion object { const val MAX_SCREENS = 7 }
 }
 
 /** bKash balance check, one screen at a time: main menu -> "4" (My bKash) -> "1" (Check Balance) -> PIN -> balance.
@@ -433,24 +512,51 @@ object UssdDirectHealth {
 object UssdProviders {
     const val NAGAD = "nagad"
     const val BKASH = "bkash"
-    val all = listOf(NAGAD, BKASH)
+    const val ROCKET = "rocket"
+    val all = listOf(NAGAD, BKASH, ROCKET)
 
-    fun isKnown(p: String): Boolean = p == NAGAD || p == BKASH
-    fun label(p: String): String = if (p == BKASH) "bKash" else "Nagad"
+    fun isKnown(p: String): Boolean = p == NAGAD || p == BKASH || p == ROCKET
+    fun label(p: String): String = when (p) { BKASH -> "bKash"; ROCKET -> "Rocket"; else -> "Nagad" }
 
     /** The code a person dials to open the provider's menu. */
-    fun dialCode(p: String): String = if (p == BKASH) BkashUssd.CODE else NagadUssd.CODE
+    fun dialCode(p: String): String = when (p) { BKASH -> BkashUssd.CODE; ROCKET -> RocketUssd.CODE; else -> NagadUssd.CODE }
 
-    fun flow(p: String, pin: () -> String): BalanceFlow = if (p == BKASH) BkashBalanceFlow(pin) else NagadBalanceFlow(pin)
+    fun flow(p: String, pin: () -> String): BalanceFlow = when (p) {
+        BKASH -> BkashBalanceFlow(pin)
+        ROCKET -> RocketBalanceFlow(pin)
+        else -> NagadBalanceFlow(pin)
+    }
 
-    /** Only Nagad takes the whole check as one code; bKash has to be walked one menu at a time. */
+    /** Only Nagad takes the whole check as one code; the others have to be walked one menu at a time. */
     fun oneCode(p: String): Boolean = p == NAGAD
 
     /** What one screen of this wallet's menu is. */
-    fun classify(p: String, text: String): UssdScreen = if (p == BKASH) BkashUssd.classify(text) else NagadUssd.classify(text)
+    fun classify(p: String, text: String): UssdScreen = when (p) {
+        BKASH -> BkashUssd.classify(text)
+        ROCKET -> RocketUssd.classify(text)
+        else -> NagadUssd.classify(text)
+    }
 
     /** The balance printed on a screen of this wallet, whatever else is on it. */
-    fun balanceOn(p: String, text: String): Double? = if (p == BKASH) BkashUssd.balanceOf(text) else NagadUssd.balanceOf(text)
+    fun balanceOn(p: String, text: String): Double? = when (p) {
+        BKASH -> BkashUssd.balanceOf(text)
+        ROCKET -> RocketUssd.balanceOf(text)
+        else -> NagadUssd.balanceOf(text)
+    }
+
+    /** Which number opens this wallet's own account menu from the main menu, and which opens the balance inside it. */
+    fun ownMenuPick(p: String): String = when (p) { BKASH -> "4"; ROCKET -> "5"; else -> "6" }
+
+    /** Which number in the account menu asks for a statement. */
+    fun statementPick(p: String): String = "2"
+
+    /** The account menu this wallet shows after [ownMenuPick]. */
+    fun ownMenu(p: String): UssdScreen = if (p == NAGAD) UssdScreen.MY_NAGAD_MENU else UssdScreen.ACCOUNT_MENU
+
+    /** Rocket asks for the PIN on a bare screen that shows neither the number nor the amount, so a cash-in there
+     *  cannot be checked against the wallet's own words. The owner chose to allow it anyway (2026-11-02); every other
+     *  wallet must still show both before the PIN is typed. */
+    fun confirmsCashIn(p: String): Boolean = p != ROCKET
 
     /** A cash-in through this wallet's menu. */
     fun cashIn(order: CashInOrder, pin: () -> String): BalanceFlow = CashInFlow(order, pin)
