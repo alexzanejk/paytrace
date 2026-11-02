@@ -241,6 +241,24 @@ class UssdTest {
         assertEquals(UssdAction.Fail("no_pin"), noPin.onScreen("Enter PIN:"))
     }
 
+    @Test fun aPinPromptIsRecognisedHoweverTheWalletWordsIt() {
+        // bKash does not word it the same way everywhere: the balance check says "Enter PIN:", Request Statement says
+        // "Enter Menu PIN:" (owner's phone, 2026-11-02). Both are the same question and both must be answered.
+        assertEquals(UssdScreen.ENTER_PIN, BkashUssd.classify("Enter PIN:"))
+        assertEquals(UssdScreen.ENTER_PIN, BkashUssd.classify("Enter Menu PIN:"))
+        assertEquals(UssdScreen.ENTER_PIN, NagadUssd.classify("Enter Menu PIN:"))
+        // What keeps this safe is the rule around it, not the wording: a screen that moves money is never a plain PIN
+        // prompt, whatever it calls the PIN.
+        assertEquals(UssdScreen.OTHER, BkashUssd.classify("Cash In.\nTo: 01846632612\nAmount: Tk 200\nEnter Menu PIN to confirm:"))
+        assertTrue(!UssdAsk.asksForPin("You entered a wrong PIN"))
+        var pinReads = 0
+        val flow = BkashBalanceFlow { pinReads++; "0000" }
+        flow.onScreen(bkMain)
+        flow.onScreen(bkAccount)
+        assertEquals(UssdAction.Reply("0000", secret = true), flow.onScreen("Enter Menu PIN:"))
+        assertEquals(1, pinReads)
+    }
+
     @Test fun theContinueQuestionBeforeTheMenuIsAnsweredNo() {
         // Real screen, owner's bKash agent menu 2026-11-02: it comes up when an earlier session was left open, and
         // answering "2 - No" opened a fresh main menu. "1 - Yes" would carry on that other, unknown session.

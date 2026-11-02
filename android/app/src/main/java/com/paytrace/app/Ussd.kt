@@ -18,6 +18,15 @@ object UssdAsk {
     /** The answer to that question: No, start again from the main menu. */
     const val NO = "2"
 
+    /** A screen asking for the wallet's menu PIN. bKash does NOT always write it the same way: the balance check says
+     *  "Enter PIN:", while Request Statement and the cash-in confirmation say "Enter Menu PIN:" (owner's phone,
+     *  2026-11-02). Matching only the exact words "enter pin" would have made the app stop on a screen it should have
+     *  answered. What makes this safe is not the wording but the rule around it: the flow only ever types the PIN at the
+     *  step where it is expected, and never on a screen that mentions an amount or an account. */
+    private val PIN_PROMPT = Regex("""enter\s+(?:[a-z]+\s+){0,2}pin""", RegexOption.IGNORE_CASE)
+
+    fun asksForPin(text: String): Boolean = PIN_PROMPT.containsMatchIn(text)
+
     /** The wallet refused, in its own words. A run that sees this stops at once and is never retried.
      *  Seen for real: "Amount too low to transact." (bKash agent Cash In of Tk 150, owner 2026-11-02). */
     // Only words the WALLET uses to say no. Deliberately not the bare word "invalid": "Connection problem or invalid
@@ -84,7 +93,7 @@ object NagadUssd {
             // The menus come first: the main menu lists "Cash In" but is only a menu.
             t.contains("balance enquiry") && t.contains("mini statement") -> UssdScreen.MY_NAGAD_MENU
             t.contains("register customer") && t.contains("my nagad") -> UssdScreen.MAIN_MENU
-            t.contains("enter pin") && !mentionsMoneyMove(t) -> UssdScreen.ENTER_PIN
+            UssdAsk.asksForPin(t) && !mentionsMoneyMove(t) -> UssdScreen.ENTER_PIN
             BALANCE.containsMatchIn(text) && !mentionsMoneyMove(t) -> UssdScreen.BALANCE
             else -> UssdScreen.OTHER
         }
@@ -168,7 +177,7 @@ object BkashUssd {
             // The menus come first: the main menu lists "Cash In" but is only a menu.
             t.contains("check balance") && t.contains("request statement") -> UssdScreen.ACCOUNT_MENU
             t.contains("my bkash") && t.contains("cash in") -> UssdScreen.MAIN_MENU
-            t.contains("enter pin") && !mentionsMoneyMove(t) -> UssdScreen.ENTER_PIN
+            UssdAsk.asksForPin(t) && !mentionsMoneyMove(t) -> UssdScreen.ENTER_PIN
             BALANCE.containsMatchIn(text) && !mentionsMoneyMove(t) -> UssdScreen.BALANCE
             else -> UssdScreen.OTHER
         }
