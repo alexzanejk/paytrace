@@ -380,9 +380,12 @@ switch is on but the service is not running, and a dashboard command gives up af
 PayTrace is switched on in Accessibility, but it never actually started it" rather than timing out after a minute and
 a half.
 
-On a Xiaomi/Redmi also turn on **Other permissions → "Display pop-up windows while running in the background"**
-(there is a button for it in the app's card). Without it the phone can light its screen for a command and go no
-further.
+**On a Xiaomi/Redmi this is the one that actually matters: Other permissions → "Display pop-up windows while running
+in the background".** There is a button for it on PayTrace's own card. That is what made the Redmi work (2026-11-02);
+without it MIUI quietly refuses to show the dialer, so the run says "dialer opened" and then nothing happens. It may
+need setting again after an app update.
+
+All three phones (Vivo, OnePlus, Redmi) now wake themselves and run a dashboard command with nobody touching them.
 
 ### Rocket joined the dashboard's phone commands (2026-11-02)
 
