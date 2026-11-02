@@ -366,6 +366,20 @@ first. From the next app update on, PayTrace switches it back on by itself and n
 What that permission is used for: PayTrace adds **its own** balance-check service back to the Accessibility list, and
 writes no other setting. Without the permission nothing happens and the switch is flipped by hand as before.
 
+### The phone must not have a screen lock (2026-11-02)
+
+**Take the screen lock off every payment phone** (Settings, Security, Screen lock, **None**). This is not a small point:
+the wallet's menu is drawn by the phone's **own dialer**, which sits behind the lock screen, so while a phone is locked
+the dashboard cannot check a balance, send a cash-in or read a statement. Android does not let any app open a locked
+phone — that is the whole purpose of a lock screen, and no amount of code gets past it.
+
+With no lock (or "Swipe", which protects nothing), PayTrace wakes the phone by itself and pushes the lock screen aside,
+so a command works with the screen off and the phone lying on a table. With a PIN, pattern or fingerprint the command
+now stops straight away and the dashboard says so, instead of waiting a minute and a half and failing for no stated
+reason. The app's own Settings card shows a red warning while a phone has a lock, with a button to the right page.
+
+These are dedicated phones that hold agent wallets. Keep them physically safe; the screen lock is what you give up.
+
 ### Reading the balance straight from the phone (2026-11-02)
 
 What the owner's Redmi proved: Nagad **does** answer the direct request with the balance ("Balance: Tk ...", then

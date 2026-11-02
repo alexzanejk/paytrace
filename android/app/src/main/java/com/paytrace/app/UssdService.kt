@@ -56,6 +56,7 @@ object UssdText {
         "sim_no_service" -> "The SIM chosen here is grey on the phone's own screen, so it has no network and cannot be used. Choose the other SIM above, or put a working SIM in that slot."
         "dial_failed" -> "The phone could not start the code."
         "unsupported" -> "This phone's app does not know that command yet. Update the app."
+        "phone_locked" -> "This phone has a screen lock (PIN, pattern or fingerprint). Android does not let any app open a locked phone, so the wallet's menu cannot be reached. Unlock the phone and try again, or take the screen lock off this phone."
         "wallet_refused" -> "The wallet itself said no (for example the amount is under its minimum, or the PIN was wrong). Nothing was sent."
         "cash_in_off" -> "Cash-in is switched off on this phone. Turn it on above."
         "bad_cash_in" -> "The amount or the number was not something this phone will send. Nothing was sent."
@@ -735,10 +736,28 @@ object UssdRunner {
         special: (() -> BalanceFlow)? = null,
         /** A run that moves money is never tried again by itself. */
         retryable: Boolean = true,
+        /** True on the second pass, after the phone was asked to wake up. */
+        woke: Boolean = false,
     ) {
         fun fail(e: String) = onFinish(UssdOutcome(false, null, e, trace = earlier))
         if (!UssdSetup.accessibilityOn(app)) return fail("no_accessibility")
         if (UssdSession.active()) return fail("busy")
+
+        // The menus PayTrace walks are drawn by the phone's own dialer, so a sleeping or locked phone has nothing to
+        // read and nothing to press. A phone with no real lock is woken and its lock screen pushed aside; a phone with
+        // a PIN or pattern cannot be opened by any app, so the run stops here and says so plainly.
+        when (ScreenWake.state(app)) {
+            ScreenGate.State.LOCKED_SECURE -> return fail("phone_locked")
+            ScreenGate.State.WAKE_NEEDED -> if (!woke) {
+                UssdSession.note("phone asleep or on the lock screen: waking it")
+                ScreenWake.wakeUp(UssdSession.launchContext() ?: app)
+                Handler(Looper.getMainLooper()).postDelayed({
+                    viaDialer(app, provider, n, earlier, onFinish, s, pin, special, retryable, woke = true)
+                }, ScreenWake.WAKE_MS)
+                return
+            }
+            ScreenGate.State.READY -> Unit
+        }
         val code = UssdProviders.dialCode(provider)
         // The phone's own dialer, so the right app opens whatever the brand or the home screen looks like.
         val dialer = try { (app.getSystemService(Context.TELECOM_SERVICE) as TelecomManager).defaultDialerPackage } catch (e: Exception) { null }

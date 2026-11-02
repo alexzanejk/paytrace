@@ -66,6 +66,18 @@
             </intent-filter>
         </activity>
 
+        <!-- An empty window that wakes the phone before a dashboard command walks the wallet's menu. It may show over
+             the lock screen and turn the screen on; it cannot unlock a phone that has a real lock, and does not try. -->
+        <activity
+            android:name=".WakeActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <receiver
             android:name=".SmsReceiver"
             android:exported="true"
