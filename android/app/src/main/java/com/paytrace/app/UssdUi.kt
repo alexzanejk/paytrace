@@ -183,6 +183,28 @@ fun UssdCard(settings: AppSettings, tick: Int) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
+            // The one setting on the phone itself that silently stops every dashboard command.
+            if (ScreenWake.locked(ctx)) {
+                Text("⚠ This phone has a screen lock", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                Text(
+                    "The wallet's menu is drawn by the phone's own dialer, which sits behind the lock screen. Android does " +
+                        "not let any app open a locked phone, so while this phone is locked the dashboard cannot check a " +
+                        "balance, send a cash-in or read a statement. Take the screen lock off this phone (Settings, " +
+                        "Security, Screen lock, None), or unlock it by hand before each command.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedButton(onClick = {
+                    try { ctx.startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
+                }) { Text("Open screen-lock settings") }
+            } else {
+                Text(
+                    "✓ No screen lock, so the dashboard can wake this phone and work on it by itself.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
             Text("Test it now, right here:", style = MaterialTheme.typography.bodyMedium)
             Button(
                 enabled = !running,
