@@ -56,8 +56,10 @@ interface BalanceFlow {
 sealed class UssdAction {
     /** Type [text] into the dialog and press Send. [secret] marks the PIN: it is never logged or kept by the flow. */
     data class Reply(val text: String, val secret: Boolean = false) : UssdAction()
-    /** Finished: [balance] is what the wallet printed; [trx] is the wallet's own receipt number, for a cash-in. */
-    data class Done(val balance: Double, val trx: String? = null) : UssdAction()
+    /** Finished. [balance] is what the wallet printed, or null when the command was never about a balance (a
+     *  statement); [trx] is the wallet's own receipt number, for a cash-in; [screens] is what the wallet showed, word
+     *  for word, for a statement. */
+    data class Done(val balance: Double?, val trx: String? = null, val screens: List<String> = emptyList()) : UssdAction()
     data class Fail(val reason: String) : UssdAction()
     /** Nothing to do yet (the dialog has not changed, or the phone is still working). */
     object Wait : UssdAction()

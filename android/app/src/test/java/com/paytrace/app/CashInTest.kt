@@ -29,7 +29,7 @@ class CashInTest {
         assertEquals(UssdAction.Reply("0000", secret = true), steps[3])
         val done = steps[4] as UssdAction.Done
         assertEquals("AB12CD34", done.trx)
-        assertEquals(17100.42, done.balance, 0.001)
+        assertEquals(17100.42, done.balance!!, 0.001)
     }
 
     @Test fun thePinIsNeverTypedUnlessTheScreenShowsThisVeryCashIn() {
@@ -112,7 +112,7 @@ class CashInTest {
         assertEquals("DK29URXBHB", done.trx)
         // "Balance Tk 1,371.53", not the "Current balance Tk ..." a bKash BALANCE CHECK prints. Reading it the other
         // way round would have reported the new balance as zero.
-        assertEquals(1371.53, done.balance, 0.001)
+        assertEquals(1371.53, done.balance!!, 0.001)
         assertTrue(CashInRead.succeeded(receipt))
         // A receipt saying it did NOT work is not a success, and is read as the wallet refusing.
         assertTrue(!CashInRead.succeeded("Cash In Tk 200.00 unsuccessful."))

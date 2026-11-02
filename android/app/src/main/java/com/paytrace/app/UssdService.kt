@@ -30,6 +30,8 @@ data class UssdOutcome(
     val trace: String = "",
     /** The wallet's own receipt number, for a cash-in that went through. */
     val trx: String? = null,
+    /** What the wallet showed, word for word, for a statement. Read on the server, not here. */
+    val screens: List<String> = emptyList(),
 )
 
 /** Plain wording for the codes above, for the screen on the phone. */
@@ -54,6 +56,12 @@ object UssdText {
         "sim_no_service" -> "The SIM chosen here is grey on the phone's own screen, so it has no network and cannot be used. Choose the other SIM above, or put a working SIM in that slot."
         "dial_failed" -> "The phone could not start the code."
         "unsupported" -> "This phone's app does not know that command yet. Update the app."
+        "wallet_refused" -> "The wallet itself said no (for example the amount is under its minimum, or the PIN was wrong). Nothing was sent."
+        "cash_in_off" -> "Cash-in is switched off on this phone. Turn it on above."
+        "bad_cash_in" -> "The amount or the number was not something this phone will send. Nothing was sent."
+        "confirm_does_not_match" -> "The wallet's own screen did not show that number and that amount, so PayTrace stopped before the PIN. NOTHING was sent."
+        "bad_entry" -> "That is not a statement entry PayTrace can ask for."
+        "entry_not_found" -> "The wallet's statement does not go back far enough to show that entry."
         else -> "It did not work."
     }
 }
@@ -492,7 +500,10 @@ object UssdSession {
                 note(if (a.secret) "menu: typing the PIN" else "menu: typing " + a.text)
                 continueAct(fresh, w)
             }
-            is UssdAction.Done -> { note(if (a.trx == null) "balance read" else "done, receipt number read"); finish(UssdOutcome(true, a.balance, null, trx = a.trx)) }
+            is UssdAction.Done -> {
+                note(if (a.screens.isNotEmpty()) "statement read, " + a.screens.size + " screen(s)" else if (a.trx == null) "balance read" else "done, receipt number read")
+                finish(UssdOutcome(true, a.balance, null, trx = a.trx, screens = a.screens))
+            }
             is UssdAction.Fail -> { note("stopped: " + a.reason + " [" + UssdRedact.snippet(w.text) + "]"); finish(UssdOutcome(false, null, a.reason)) }
         }
     }
@@ -643,7 +654,29 @@ object UssdRunner {
         if (UssdSession.active() || UssdApi.active()) return fail("busy")
         fun go() {
             if (!UssdSetup.accessibilityOn(app)) return fail("no_accessibility")
-            viaDialer(app, order.provider, 1, "", onFinish, s, pin, order)
+            viaDialer(app, order.provider, 1, "", onFinish, s, pin, { UssdProviders.cashIn(order) { pin } }, retryable = false)
+        }
+        if (AccessibilityHeal.heal(app)) Handler(Looper.getMainLooper()).postDelayed({ go() }, HEAL_PAUSE_MS) else go()
+    }
+
+    /** The wallet's own statement, asked for from the dashboard. Read-only: it brings back the list of recent
+     *  transactions, or one entry of it, exactly as the wallet wrote them. Always the dialer way, like a cash-in: the
+     *  direct request cannot carry a menu session (Android hides every answer that keeps one open). Safe to try twice
+     *  because nothing is sent and nothing changes. */
+    fun runStatement(ctx: Context, provider: String, item: Int?, onFinish: (UssdOutcome) -> Unit) {
+        val app = ctx.applicationContext
+        val s = AppSettings(app)
+        fun fail(e: String) = onFinish(UssdOutcome(false, null, e))
+        if (!UssdProviders.isKnown(provider)) return fail("unsupported")
+        if (item != null && (item < 1 || item > 40)) return fail("bad_entry")
+        if (!s.ussdAllowed) return fail("not_allowed")
+        if (!UssdSetup.callPermission(app)) return fail("no_call_permission")
+        val pin = UssdSetup.pinStore(app, provider).get()
+        if (pin.isEmpty()) return fail("no_pin")
+        if (UssdSession.active() || UssdApi.active()) return fail("busy")
+        fun go() {
+            if (!UssdSetup.accessibilityOn(app)) return fail("no_accessibility")
+            viaDialer(app, provider, 1, "", onFinish, s, pin, { StatementFlow(provider, item) { pin } })
         }
         if (AccessibilityHeal.heal(app)) Handler(Looper.getMainLooper()).postDelayed({ go() }, HEAL_PAUSE_MS) else go()
     }
@@ -698,7 +731,10 @@ object UssdRunner {
         onFinish: (UssdOutcome) -> Unit,
         s: AppSettings,
         pin: String,
-        cashIn: CashInOrder? = null,
+        /** A flow other than the plain balance check (a cash-in, a statement). */
+        special: (() -> BalanceFlow)? = null,
+        /** A run that moves money is never tried again by itself. */
+        retryable: Boolean = true,
     ) {
         fun fail(e: String) = onFinish(UssdOutcome(false, null, e, trace = earlier))
         if (!UssdSetup.accessibilityOn(app)) return fail("no_accessibility")
@@ -707,10 +743,10 @@ object UssdRunner {
         // The phone's own dialer, so the right app opens whatever the brand or the home screen looks like.
         val dialer = try { (app.getSystemService(Context.TELECOM_SERVICE) as TelecomManager).defaultDialerPackage } catch (e: Exception) { null }
         val head = if (n > 1) earlier + "\n-- second try --" else earlier
-        val flow = cashIn?.let { order -> UssdProviders.cashIn(order) { pin } } ?: UssdProviders.flow(provider) { pin }
+        val flow = special?.invoke() ?: UssdProviders.flow(provider) { pin }
         UssdSession.start(s.ussdSlotOf(provider), flow, RUN_MS, dialer, head) { outcome ->
             // A cash-in is NEVER tried again by itself: it moves money, and a second run could send it twice.
-            if (cashIn == null && UssdRetry.shouldRetry(outcome.error, outcome.ok, outcome.pinSent, n)) {
+            if (retryable && UssdRetry.shouldRetry(outcome.error, outcome.ok, outcome.pinSent, n)) {
                 Handler(Looper.getMainLooper()).postDelayed({ attempt(app, provider, n + 1, outcome.trace, onFinish) }, RETRY_PAUSE_MS)
             } else {
                 onFinish(outcome)
@@ -779,7 +815,14 @@ object UssdCommands {
                 val order = CashInOrder(provider, cmd.optString("to_number"), cmd.optDouble("amount", -1.0))
                 UssdRunner.runCashIn(ctx, order) { outcome ->
                     remember(ctx, provider, outcome)
-                    report(ctx, id, outcome)
+                    report(ctx, id, outcome, "cashin")
+                }
+            }
+            "statement" -> {
+                val item = if (cmd.has("item")) cmd.optInt("item", -1) else -1
+                UssdRunner.runStatement(ctx, provider, item.takeIf { it > 0 }) { outcome ->
+                    remember(ctx, provider, outcome)
+                    report(ctx, id, outcome, "statement")
                 }
             }
             else -> report(ctx, id, UssdOutcome(false, null, "unsupported"))
@@ -795,12 +838,17 @@ object UssdCommands {
         AppSettings(ctx).setUssdLastOf(provider, j.toString())
     }
 
-    private fun report(ctx: Context, id: String, o: UssdOutcome) {
+    private fun report(ctx: Context, id: String, o: UssdOutcome, kind: String = "balance") {
         Thread {
             try {
-                val j = JSONObject().put("action", "command_result").put("id", id).put("ok", o.ok)
+                val j = JSONObject().put("action", "command_result").put("id", id).put("ok", o.ok).put("kind", kind)
                 if (o.balance != null) j.put("balance", o.balance)
                 if (o.trx != null) j.put("trx_id", o.trx)
+                if (o.screens.isNotEmpty()) {
+                    val arr = org.json.JSONArray()
+                    o.screens.take(12).forEach { arr.put(it.take(2000)) }
+                    j.put("screens", arr)
+                }
                 if (o.error != null) j.put("error", o.error)
                 Sender.send(AppSettings(ctx.applicationContext), j)
             } catch (e: Exception) {

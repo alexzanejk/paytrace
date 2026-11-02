@@ -49,7 +49,7 @@ class UssdTest {
         assertEquals(1, pinReads)
         val done = flow.onScreen(balanceScreen)
         assertTrue(done is UssdAction.Done)
-        assertEquals(17200.42, (done as UssdAction.Done).balance, 0.001)
+        assertEquals(17200.42, (done as UssdAction.Done).balance!!, 0.001)
         assertEquals(1, pinReads)
     }
 

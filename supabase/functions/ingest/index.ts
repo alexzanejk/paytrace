@@ -276,14 +276,28 @@ async function handle(req: Request): Promise<Response> {
       : (((jobData as { jobs?: Array<Record<string, unknown>> } | null)?.jobs) ?? []).map((j) => ({
           kind: j.kind ?? "send", provider: j.provider, agent: j.agent, urgency: j.urgency, balance: j.balance, balance_at: j.balance_at,
         }));
-    // A command the owner queued for this phone (for now: read the Nagad balance). Taking it marks it running; a lookup
-    // failure just means "none this time". Only the id, kind and wallet travel: nothing secret.
+    // A command the owner queued for this phone (read a balance, send a cash-in, fetch the wallet's statement). Taking
+    // it marks it running; a lookup failure just means "none this time". A cash-in has to carry how much and to whom,
+    // or the phone has nothing to act on; a statement carries which entry to open. Nothing secret travels: the PIN
+    // lives only on the phone.
     const { data: cmdData, error: cmdError } = await db.rpc("device_next_command", { p_device: device.id });
-    const cmd = cmdError ? null : (cmdData as { id?: string; kind?: string; provider?: string } | null);
+    const cmd = cmdError
+      ? null
+      : (cmdData as { id?: string; kind?: string; provider?: string; amount?: number | string | null; to_number?: string | null; item?: number | null } | null);
+    const command = cmd && cmd.id
+      ? {
+        id: cmd.id,
+        kind: cmd.kind,
+        provider: cmd.provider,
+        ...(cmd.amount == null ? {} : { amount: Number(cmd.amount) }),
+        ...(cmd.to_number == null ? {} : { to_number: cmd.to_number }),
+        ...(cmd.item == null ? {} : { item: Number(cmd.item) }),
+      }
+      : null;
     return json({
       success: true, message: "heartbeat ok", device_status: "approved",
       ...(brief ? { jobs: brief } : {}),
-      ...(cmd && cmd.id ? { command: { id: cmd.id, kind: cmd.kind, provider: cmd.provider } } : {}),
+      ...(command ? { command } : {}),
     });
   }
 
@@ -293,14 +307,27 @@ async function handle(req: Request): Promise<Response> {
     const id = typeof body.id === "string" ? body.id : "";
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return json({ success: false, message: "bad id" }, 400);
     const ok = body.ok === true;
+    // Older app builds say nothing about which command they ran, and those only ever read a balance.
+    const kind = typeof body.kind === "string" && /^[a-z_]{1,20}$/.test(body.kind) ? body.kind : "balance";
     const balance = typeof body.balance === "number" && Number.isFinite(body.balance) && body.balance >= 0 && body.balance < 1e9 ? Math.round(body.balance * 100) / 100 : null;
-    if (ok && balance === null) return json({ success: false, message: "a successful balance check needs the balance" }, 400);
+    if (ok && kind === "balance" && balance === null) return json({ success: false, message: "a successful balance check needs the balance" }, 400);
     const error = typeof body.error === "string" && /^[a-z_]{1,40}$/.test(body.error) ? body.error : "failed";
     // A cash-in that went through also carries the wallet's own receipt number.
     const trx = typeof body.trx_id === "string" && /^[A-Za-z0-9]{1,24}$/.test(body.trx_id) ? body.trx_id : null;
-    const { error: rpcError } = await db.rpc("device_command_result", { p_device: device.id, p_id: id, p_ok: ok, p_balance: balance, p_trx: trx, p_error: ok ? null : error });
+    // A statement brings back the wallet's own screens, word for word. Kept as text and never trusted as instructions:
+    // the dashboard reads them, so a wording change never needs a new app on every phone.
+    const screens = Array.isArray(body.screens)
+      ? body.screens.filter((x): x is string => typeof x === "string").slice(0, 12).map((x) => x.slice(0, 2000))
+      : null;
+    if (ok && kind === "statement" && (!screens || screens.length === 0)) {
+      return json({ success: false, message: "a statement needs the screens" }, 400);
+    }
+    const { error: rpcError } = await db.rpc("device_command_finish", {
+      p_device: device.id, p_id: id, p_ok: ok, p_balance: balance, p_trx: trx,
+      p_screens: screens, p_error: ok ? null : error,
+    });
     if (rpcError) {
-      console.error("device_command_result failed", rpcError.code);
+      console.error("device_command_finish failed", rpcError.code);
       return json({ success: false, message: "could not save the result" }, 500);
     }
     return json({ success: true });
