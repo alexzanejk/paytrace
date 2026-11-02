@@ -386,6 +386,8 @@ fun SettingsScreen(settings: AppSettings, tick: Int, onUpdateChecked: () -> Unit
 
         UssdCard(settings, tick)
 
+        DeviceOwnerCard(tick)
+
         Card(Modifier.fillMaxWidth()) {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f).padding(end = 12.dp)) {
