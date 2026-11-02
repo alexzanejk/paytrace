@@ -13,7 +13,7 @@ interface StatementCommand extends PhoneCommand {
   screens: string[] | null;
 }
 
-const COLUMNS = "grid grid-cols-[2.2rem_5.5rem_1fr_auto] gap-x-3 gap-y-1 items-baseline";
+const COLUMNS = "grid grid-cols-[1.6rem_5rem_1fr_auto] gap-x-2 gap-y-2 items-baseline sm:gap-x-3 sm:gap-y-1";
 
 /** Asks this phone for the wallet's own statement, and says which of those transactions PayTrace never received.
  *
@@ -162,10 +162,11 @@ function Row({ row, match, onOpen, busy }: { row: StatementRow; match: RowMatch;
       <span>
         {row.type} <span className="tabular-nums">{tk(Math.abs(row.amount))}</span>
         {row.amount < 0 ? <span className="text-muted-foreground"> (out)</span> : null}
-        <span className={"ml-2 text-xs " + m.cls}>{m.text}</span>
+        {/* Its own line on a phone, where running it after the amount reads as one muddled sentence. */}
+        <span className={"block text-xs sm:ml-2 sm:inline " + m.cls}>{m.text}</span>
       </span>
       <Button size="sm" variant="ghost" onClick={onOpen} disabled={busy} title={`Open entry ${row.no} on the phone`}>
-        <Search aria-hidden /> Open
+        <Search aria-hidden /> <span className="hidden sm:inline">Open</span>
       </Button>
     </>
   );
