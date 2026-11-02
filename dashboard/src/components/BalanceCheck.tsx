@@ -3,6 +3,7 @@ import { Wallet } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { commandLine, isLive, POLL_MS, type PhoneCommand, type WalletName, walletLabel } from "@/lib/phoneCommands";
+import { nudgePhone } from "@/lib/wake";
 import { Button } from "@/components/ui/button";
 
 /** Asks this phone to read a wallet's balance (Nagad or bKash) through the provider's own USSD menu. Nothing is sent or spent: it only reads.
@@ -41,6 +42,8 @@ export function BalanceCheck({ deviceId, provider = "nagad" }: { deviceId: strin
     const { error } = await sb.rpc("queue_phone_command", { p_device: deviceId, p_kind: "balance", p_provider: provider });
     setBusy(false);
     if (error) return setProblem(error.message);
+    // Wake the phone so it takes this now rather than on its next 30-second beat. It is queued either way.
+    nudgePhone(deviceId);
     await load();
   }
 

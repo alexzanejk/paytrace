@@ -14,7 +14,9 @@ check("queued and running are live", isLive(base) && isLive({ ...base, status: "
 check("done, failed and cancelled are not live", !isLive({ ...base, status: "done" }) && !isLive({ ...base, status: "failed" }) && !isLive({ ...base, status: "cancelled" }));
 check("no command is not live", !isLive(null));
 
-check("queued wording", commandLine(base, money, when).startsWith("Waiting for the phone"));
+check("queued wording", commandLine(base, money, when).startsWith("Waking the phone"));
+// It must still promise the slow case: a phone the wake-up cannot reach takes it on its own 30-second beat.
+check("queued wording keeps the honest worst case", commandLine(base, money, when).includes("30 seconds"));
 check("running wording", commandLine({ ...base, status: "running" }, money, when).includes("reading the balance"));
 check("done shows the balance and time", commandLine({ ...base, status: "done", balance: 17200.42, finished_at: "2026-11-01T10:01:00Z" }, money, when) === "Nagad balance Tk 17200.42 as of @2026-11-01T10:01:00Z");
 check("failed shows the reason", commandLine({ ...base, status: "failed", error: "unexpected_screen", finished_at: "2026-11-01T10:01:00Z" }, money, when).includes("Nothing was sent"));

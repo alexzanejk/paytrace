@@ -12,6 +12,7 @@ import {
   POLL_MS,
   type PhoneCommand,
 } from "@/lib/phoneCommands";
+import { nudgePhone } from "@/lib/wake";
 import { Button } from "@/components/ui/button";
 
 /** Asks this phone to CASH IN: it opens the wallet's own menu and sends money to a number you type.
@@ -65,6 +66,8 @@ export function CashInCommand({ deviceId, provider }: { deviceId: string; provid
     setBusy(false);
     setConfirming(false);
     if (error) return setProblem(error.message);
+    // Wake the phone so it takes this now rather than on its next 30-second beat. It is queued either way.
+    nudgePhone(deviceId);
     setTo("");
     await load();
   }
