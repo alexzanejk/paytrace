@@ -20,6 +20,7 @@ import { WalletsCard } from "@/components/WalletsCard";
 import { BalanceCheck } from "@/components/BalanceCheck";
 import { WALLETS } from "@/lib/phoneCommands";
 import { StatementSection } from "@/components/StatementSection";
+import { PhoneActions } from "@/components/PhoneActions";
 import { CashInSection } from "@/components/CashInSection";
 import { AppVersionCard, VersionChip } from "@/components/AppVersionCard";
 import { GROUP_CODE, GroupChoice } from "@/components/GroupChoice";
@@ -413,6 +414,7 @@ function DeviceCard({
       {wakeNote ? <p role="status" className="text-sm text-muted-foreground">{wakeNote}</p> : null}
       {d.status === "approved" ? (
         <div className="flex flex-col gap-2">
+          <PhoneActions deviceId={d.id} />
           {WALLETS.map((w) => <BalanceCheck key={w} deviceId={d.id} provider={w} />)}
           <CashInSection deviceId={d.id} />
           <StatementSection deviceId={d.id} />

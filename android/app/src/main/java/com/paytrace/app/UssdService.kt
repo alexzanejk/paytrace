@@ -869,6 +869,13 @@ object UssdCommands {
         val cmd = try { JSONObject(body).optJSONObject("command") } catch (e: Exception) { null } ?: return
         val id = cmd.optString("id")
         if (id.isBlank()) return
+        // Phone controls (restart, inbox, resend, screen, ring) name no wallet, so they are routed BEFORE the wallet
+        // check below, which would otherwise answer "unsupported" to every one of them.
+        val kind = cmd.optString("kind")
+        if (PhoneActions.isAction(kind)) {
+            PhoneActions.run(ctx, kind) { outcome -> report(ctx, id, outcome, kind) }
+            return
+        }
         val provider = cmd.optString("provider")
         if (!UssdProviders.isKnown(provider)) {
             report(ctx, id, UssdOutcome(false, null, "unsupported"))
