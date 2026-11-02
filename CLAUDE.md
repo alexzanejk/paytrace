@@ -341,6 +341,22 @@ NOT yet verified (be honest about this):
   the function answered 404/401/200 via pg_net, and the pay page and dashboard pages were driven in a browser against a simulated gateway.
   NOT yet done: a real order end to end with real money, a real webhook to a real site, withdrawals.
 
+## Phones that do not work
+- **Oppo A15 (ColorOS 7.2, Android 10, 2-3 GB RAM) — dropped 2026-11-02, never diagnosed.** The app installed but crashed
+  on every launch. The owner chose to skip the device rather than chase it, so NO crash log was ever taken; everything
+  below is unconfirmed suspicion, not a finding. Two things made it unlike the three phones that work (Vivo V2120,
+  OnePlus LE2111, Redmi 22101316I): it is the first phone below **Android 11** (`minSdk` is 26, so 10 is claimed as
+  supported, but nothing under 11 has ever actually run PayTrace), and it is the first phone to meet a RECENT build as
+  its FIRST install — the other three started on an old build and grew into the current one through in-app updates, so
+  "newest code + nothing granted yet + first launch" had never happened before. The two suspects found by reading the
+  code, both of which fit a crash on every launch of one phone only: (1) `AppSettings.kt` `deviceKey` calls
+  `SecretStore.set` to mint this phone's key on first launch, and while `SecretStore.get` is wrapped, **`set`/`key()`
+  are not**, so a keystore that refuses that AES/GCM key spec takes the app down; (2) the Android 8-11
+  foreground-service rule — `MainActivity.onCreate` starts `MonitorService`, and if its `startForeground` does not
+  land within 5 s the system kills the app with an uncatchable `RemoteServiceException`, which a slow 2 GB phone
+  invites (the `catch` around `startForeground` makes the refusal silent, not survivable). If another sub-Android-11
+  or low-RAM phone is ever tried, get `adb logcat -b crash -d` FIRST; wrapping (1) is a cheap fix worth making anyway.
+
 ## Known limits to repeat to the owner
 Unofficial approach, may breach bKash/Nagad terms (wallet freeze risk); SMS can be spoofed or delayed; phone must stay
 on and unrestricted; Play Store will not allow SMS-reading apps (sideload only); official aggregators (e.g. SSLCOMMERZ)
