@@ -40,6 +40,7 @@ export const POLL_MS = 3000;
 const ERROR_TEXT: Record<string, string> = {
   not_allowed: "The switch on that phone is off. Turn it on in the app: Settings, Nagad balance check.",
   no_accessibility: "PayTrace is not switched on in that phone's Accessibility settings.",
+  accessibility_not_running: "That phone says PayTrace is switched on in Accessibility, but it never actually started it, so nothing was watching the screen. On the phone: Settings, Accessibility, Downloaded apps, switch PayTrace OFF and ON again. On Xiaomi/Redmi also allow \"Display pop-up windows while running in the background\".",
   no_call_permission: "That phone has not allowed phone calls for PayTrace.",
   no_pin: "No Nagad PIN is saved on that phone.",
   busy: "That phone was already busy with a check. Try again in a minute.",

@@ -366,6 +366,24 @@ first. From the next app update on, PayTrace switches it back on by itself and n
 What that permission is used for: PayTrace adds **its own** balance-check service back to the Accessibility list, and
 writes no other setting. Without the permission nothing happens and the switch is flipped by hand as before.
 
+### "Switched on" in Accessibility is not the same as running (2026-11-02, the Redmi)
+
+The Redmi's own run log showed the dialer opening and then **nothing at all** — no sign that PayTrace ever looked at
+the screen. The reason: Accessibility settings listed PayTrace as switched on, but the phone had never actually
+started it. MIUI does this, especially after an app update.
+
+**The fix, on the phone: Settings, Accessibility, Downloaded apps, switch PayTrace balance check OFF and then ON
+again.** It only takes a moment and it binds the service properly.
+
+From this build on, PayTrace says so instead of leaving you guessing: the app's own card shows a red line while the
+switch is on but the service is not running, and a dashboard command gives up after six seconds with "that phone says
+PayTrace is switched on in Accessibility, but it never actually started it" rather than timing out after a minute and
+a half.
+
+On a Xiaomi/Redmi also turn on **Other permissions → "Display pop-up windows while running in the background"**
+(there is a button for it in the app's card). Without it the phone can light its screen for a command and go no
+further.
+
 ### Rocket joined the dashboard's phone commands (2026-11-02)
 
 From your own two recordings. Rocket's agent menu is `*322#`:

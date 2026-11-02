@@ -79,6 +79,14 @@ fun UssdCard(settings: AppSettings, tick: Int) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text((if (accessibility) "✓ " else "") + "Backup way (optional): PayTrace in Accessibility", style = MaterialTheme.typography.bodyMedium)
+            // Switched on in Settings and actually RUNNING are two different things, and some phones do the first
+            // without the second. The owner's Redmi did (2026-11-02): the dialer opened and nothing ever looked at it.
+            if (accessibility && !UssdSession.connected()) Text(
+                "⚠ Switched on, but this phone has not actually started it, so nothing is watching the screen. " +
+                    "Switch PayTrace OFF and then ON again in Accessibility settings.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
             if (AccessibilityHeal.allowed(ctx)) Text(
                 "This phone can switch it back on by itself after an app update.",
                 style = MaterialTheme.typography.bodySmall,
