@@ -23,6 +23,22 @@ export async function wakePhone(deviceId: string): Promise<WakeOutcome> {
   }
 }
 
+/** Pokes a phone the moment a command is queued for it, so it picks the command up in a second or two instead of
+ *  waiting out its own 30-second heartbeat.
+ *
+ *  Deliberately fire-and-forget: the command is already saved and the phone WILL take it on the next heartbeat
+ *  anyway, so a phone with no Firebase address, a push Google refuses, or no internet at this instant must never
+ *  make the button look as if it failed. Nothing is shown and nothing is awaited.
+ *
+ *  Cost is one call per command. The phone's answering heartbeat is not extra: it was due within 30 seconds. */
+export function nudgePhone(deviceId: string): void {
+  try {
+    void wakePhone(deviceId).catch(() => {});
+  } catch {
+    // Never let waking a phone get in the way of the command that is already queued.
+  }
+}
+
 export const WAKE_TEXT: Record<WakeOutcome, string> = {
   sent: "Sent to Google. If the phone is on and has internet it should be back within a minute or two.",
   signed_out: "You are signed out. Sign in again and retry.",

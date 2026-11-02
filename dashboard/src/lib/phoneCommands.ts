@@ -76,7 +76,9 @@ export function commandLine(c: PhoneCommand | null, money: (n: number) => string
   if (!c) return "";
   const cashIn = c.kind === "cashin";
   switch (c.status) {
-    case "queued": return "Waiting for the phone to pick it up (it checks every 30 seconds)…";
+    // The dashboard pokes the phone the moment a command is queued, so this is usually a second or two. A phone that
+    // the wake-up cannot reach still takes it on its own 30-second beat, so the line promises the slower one.
+    case "queued": return "Waking the phone to take it now (within 30 seconds at worst)…";
     case "running": return cashIn ? "The phone is sending it…" : "The phone is reading the balance…";
     case "done":
       return cashIn

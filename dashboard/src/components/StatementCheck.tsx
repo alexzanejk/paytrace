@@ -6,6 +6,7 @@ import { isLive, POLL_MS, errorText, type PhoneCommand, type WalletName, walletL
 import {
   readList, readDetail, unreadLines, matchRow, statementSummary, type RowMatch, type StatementRow,
 } from "@/lib/statement";
+import { nudgePhone } from "@/lib/wake";
 import { Button } from "@/components/ui/button";
 
 interface StatementCommand extends PhoneCommand {
@@ -71,6 +72,8 @@ export function StatementCheck({ deviceId, provider = "bkash" }: { deviceId: str
     const { error } = await sb.rpc("queue_statement_command", { p_device: deviceId, p_provider: provider, p_item: item });
     setBusy(false);
     if (error) return setProblem(error.message);
+    // Wake the phone so it takes this now rather than on its next 30-second beat. It is queued either way.
+    nudgePhone(deviceId);
     await load();
   }
 
