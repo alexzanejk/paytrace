@@ -341,6 +341,24 @@ NOT yet verified (be honest about this):
   the function answered 404/401/200 via pg_net, and the pay page and dashboard pages were driven in a browser against a simulated gateway.
   NOT yet done: a real order end to end with real money, a real webhook to a real site, withdrawals.
 
+- **Device owner, step 1: find out if the phones allow it (owner request 2026-11-02; NOTHING is enforced, not run on a phone yet).** WHY: every phone needs the same handwork today (tap Install per update, grant each permission, and undo Android's "restricted settings" block on Accessibility AFTER EVERY UPDATE). A device owner app could auto-grant permissions, install its own updates silently, be impossible to uninstall or switch off, and escape the restricted-settings block. It CANNOT touch MIUI's Autostart / "Display pop-up windows while running in the background", Funtouch's background power rules or ColorOS's own: those are the brand's, not Android's, so they stay hand-set — do not oversell this. Built: `PayTraceAdmin` (a `DeviceAdminReceiver` that does nothing), `res/xml/device_admin.xml` with `<uses-policies />` EMPTY on purpose, manifest receiver with `BIND_DEVICE_ADMIN`, `DeviceOwner` object (`isOwner`, `couldBeOwner` = Android's own `isProvisioningAllowed(ACTION_PROVISION_MANAGED_DEVICE)`, `release` = `clearDeviceOwnerApp`, pure `adbCommand`/`requirements`/`XIAOMI_WARNING`/`isXiaomi`), `DeviceOwnerCard` on Settings, `DeviceOwnerTest`. **The Release button ships in the SAME build as the receiver and must never be split out of it:** a device owner cannot be uninstalled and usually cannot be removed from Settings, so without it the only way back is a factory reset, which on a payment phone means pairing, wallet numbers and the whole setup again. **THE XIAOMI CATCH-22, the owner spotted it:** `adb shell dpm set-device-owner` needs NO accounts on the phone, but MIUI's "USB debugging (Security settings)" (what lets adb grant permissions and simulate input, used on the Redmi for `appops set ... ACCESS_RESTRICTED_SETTINGS`) requires a Mi account signed in and switches itself off when that account is removed. Whether the `dpm` command itself needs that setting is UNKNOWN — that is exactly what the test answers. If it fails, the phone is left with no Mi account AND no privileged adb; the way back is to sign the Mi account in again. Claude advised testing on the Vivo or OnePlus first (no such account gate) and noted 3 of the 5 live phones are Xiaomi, so a Xiaomi failure would halve the payoff; **the owner chose Xiaomi first anyway (2026-11-02) and that is their call.** Easiest case for later: a NEW phone, device owner set before any account is added. Owner steps: docs/owner-setup.md, "Testing device owner on one phone".
+
+## Phones that do not work
+- **Oppo A15 (ColorOS 7.2, Android 10, 2-3 GB RAM) — dropped 2026-11-02, never diagnosed.** The app installed but crashed
+  on every launch. The owner chose to skip the device rather than chase it, so NO crash log was ever taken; everything
+  below is unconfirmed suspicion, not a finding. Two things made it unlike the three phones that work (Vivo V2120,
+  OnePlus LE2111, Redmi 22101316I): it is the first phone below **Android 11** (`minSdk` is 26, so 10 is claimed as
+  supported, but nothing under 11 has ever actually run PayTrace), and it is the first phone to meet a RECENT build as
+  its FIRST install — the other three started on an old build and grew into the current one through in-app updates, so
+  "newest code + nothing granted yet + first launch" had never happened before. The two suspects found by reading the
+  code, both of which fit a crash on every launch of one phone only: (1) `AppSettings.kt` `deviceKey` calls
+  `SecretStore.set` to mint this phone's key on first launch, and while `SecretStore.get` is wrapped, **`set`/`key()`
+  are not**, so a keystore that refuses that AES/GCM key spec takes the app down; (2) the Android 8-11
+  foreground-service rule — `MainActivity.onCreate` starts `MonitorService`, and if its `startForeground` does not
+  land within 5 s the system kills the app with an uncatchable `RemoteServiceException`, which a slow 2 GB phone
+  invites (the `catch` around `startForeground` makes the refusal silent, not survivable). If another sub-Android-11
+  or low-RAM phone is ever tried, get `adb logcat -b crash -d` FIRST; wrapping (1) is a cheap fix worth making anyway.
+
 ## Known limits to repeat to the owner
 Unofficial approach, may breach bKash/Nagad terms (wallet freeze risk); SMS can be spoofed or delayed; phone must stay
 on and unrestricted; Play Store will not allow SMS-reading apps (sideload only); official aggregators (e.g. SSLCOMMERZ)

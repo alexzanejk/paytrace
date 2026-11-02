@@ -181,5 +181,21 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Watches incoming payment SMS, forwards them to the owner's server, and reports every 30 seconds that this phone is online" />
         </service>
+
+        <!-- Only so `adb shell dpm set-device-owner` has something to point at. Its policy file is empty, so even
+             once this is the device owner it enforces nothing. See DeviceOwner.kt, and the Release button that is
+             the way back from it. -->
+        <receiver
+            android:name=".PayTraceAdmin"
+            android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
     </application>
 </manifest>
