@@ -296,46 +296,6 @@ a code that you approve on the dashboard's Phones page. Somebody who installs th
 The older way still works if you ever need it: the repository's **Actions** tab, open the newest **Build Android APK**
 run, then **Artifacts** → `paytrace-apk`. That one needs a GitHub login and gives a zip.
 
-## Testing "device owner" on one phone (2026-11-02, nothing is enforced yet)
-
-**What this is for.** Today every phone needs the same handwork: tap Install for each update, grant each permission,
-and undo Android's "restricted settings" block on Accessibility *after every single update*. A phone where PayTrace is
-the **device owner** could do all of that by itself.
-
-**What it would NOT fix:** MIUI's "Autostart" and "Display pop-up windows while running in the background", Vivo's
-"high background power consumption", ColorOS's own rules. Those belong to the phone brand, not to Android, and no
-policy reaches them. They stay hand-set.
-
-**This build only finds out whether the phone allows it.** It asks for no powers, so even once PayTrace is the device
-owner the phone behaves exactly as before.
-
-### The order to do it in
-1. **Charge the phone** to at least half. If it dies in the middle you are left with the worst case.
-2. Install this build. Open **Settings** in PayTrace → the card **"Let PayTrace own this phone (test)"**. It says
-   whether the phone could still allow it, and shows the exact command with a **Copy** button.
-3. Remove **every** account in the phone's Settings → Accounts (Google, Mi, email). Android refuses while even one is
-   there. Tailscale and AnyDesk are **not** accounts in this sense — they keep working and stay signed in.
-4. With the phone connected over adb, run the command the card shows:
-   `adb shell dpm set-device-owner com.paytrace.app/com.paytrace.app.PayTraceAdmin`
-5. Open the card again. It either says PayTrace **is** the device owner, or the command said why not. Tell Claude
-   either way — that answer is the whole point of the test.
-6. **When done, press "Release this phone"** in the same card. PayTrace goes back to being an ordinary app.
-
-### The Xiaomi trap, read this before removing the Mi account
-On Xiaomi, Redmi and Poco the setting that lets adb grant permissions — Developer options →
-**"USB debugging (Security settings)"** — needs a **Mi account signed in**, and switches itself off when that account
-is removed. So removing the Mi account to satisfy Android may take away the adb powers the command needs. Whether
-this particular command needs that setting is **not known** — that is what the test answers.
-
-If the command fails, you are left with no Mi account and no privileged adb. **The way back: sign the Mi account in
-again** and the setting can be switched on again.
-
-### Why the Release button matters
-A device owner **cannot be uninstalled**, and on most phones cannot be removed from Settings either. Without that
-button the only way back would be a factory reset — which on a payment phone means pairing again, wallet numbers
-again, Accessibility again, the whole setup. So the button ships in the same build as the test, never later. If it
-ever says the phone refused to release, stop and say so before doing anything else.
-
 ## Step 9: App updates inside the app
 
 After this is set up, every new build is published automatically, and each phone shows **"Update available"** at the top of the app. The partner taps **Update now**,
