@@ -23,6 +23,10 @@ data class CashInOrder(val provider: String, val number: String, val amount: Dou
 object CashInRead {
     private val DIGITS = Regex("[0-9][0-9,]*(?:\\.[0-9]{1,2})?")
     private val TRX = Regex("""TrxID\s*:?\s*([A-Za-z0-9]{4,24})""", RegexOption.IGNORE_CASE)
+    // The receipt prints the balance in its own way, not the way the balance-check screen does: the owner's real bKash
+    // receipt says "Balance Tk 1,371.53", while a bKash balance check says "Current balance Tk ...". So the receipt is
+    // read with this plain pattern, or the new balance would be reported as zero.
+    private val BALANCE = Regex("""Balance\s*:?\s*Tk\.?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)""", RegexOption.IGNORE_CASE)
 
     fun asksForNumber(text: String): Boolean {
         val t = text.lowercase()
@@ -48,6 +52,10 @@ object CashInRead {
     }
 
     fun trxOn(text: String): String? = TRX.find(text)?.groupValues?.get(1)
+
+    /** The balance the receipt itself prints, whichever wallet wrote it. */
+    fun balanceOn(text: String): Double? =
+        BALANCE.find(text)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
 
     /** The wallet says it is done: a receipt number and the words of a finished cash-in. */
     fun succeeded(text: String): Boolean {
@@ -127,7 +135,7 @@ class CashInFlow(private val order: CashInOrder, private val pin: () -> String) 
             }
 
             else -> if (CashInRead.succeeded(clean)) {
-                val balance = UssdProviders.balanceOn(wallet, clean) ?: 0.0
+                val balance = CashInRead.balanceOn(clean) ?: UssdProviders.balanceOn(wallet, clean) ?: 0.0
                 UssdAction.Done(balance, CashInRead.trxOn(clean))
             } else UssdAction.Fail("unexpected_screen")
         }

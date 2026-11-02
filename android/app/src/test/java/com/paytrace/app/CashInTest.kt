@@ -100,6 +100,27 @@ class CashInTest {
         assertEquals(UssdAction.Fail("unexpected_screen"), h.onScreen(ask + "\n(choose one)"))
     }
 
+    @Test fun theOwnersRealBkashReceiptIsReadInFull() {
+        // Word for word from the owner's phone (2026-11-02), a real Tk 200 cash-in that went through:
+        val receipt = "Cash In Tk 200.00 to 0184XXXX612 successful. Fee Tk 0.00. Balance Tk 1,371.53. " +
+            "TrxID DK29URXBHB at 02/11/2026 06:24"
+        val two = CashInOrder("bkash", "01846632612", 200.0)
+        val f = CashInFlow(two, pin)
+        walk(f, bkashMenu, bkashAskNumber, "Enter Amount:", "Cash In.\nTo: 01846632612\nAmount: Tk 200\nEnter Menu PIN to confirm:")
+        val done = f.onScreen(receipt) as UssdAction.Done
+        // The receipt number has no colon after "TrxID" here, and the wallet hides most of the number it went to.
+        assertEquals("DK29URXBHB", done.trx)
+        // "Balance Tk 1,371.53", not the "Current balance Tk ..." a bKash BALANCE CHECK prints. Reading it the other
+        // way round would have reported the new balance as zero.
+        assertEquals(1371.53, done.balance, 0.001)
+        assertTrue(CashInRead.succeeded(receipt))
+        // A receipt saying it did NOT work is not a success, and is read as the wallet refusing.
+        assertTrue(!CashInRead.succeeded("Cash In Tk 200.00 unsuccessful."))
+        assertTrue(UssdAsk.refused("Cash In Tk 200.00 unsuccessful."))
+        // The success wording must never itself look like a refusal.
+        assertTrue(!UssdAsk.refused(receipt))
+    }
+
     @Test fun theWalletsOwnRefusalStopsTheRunWithItsOwnReason() {
         // The real one: Tk 150 is under bKash's agent minimum.
         val f = CashInFlow(bkash, pin)
