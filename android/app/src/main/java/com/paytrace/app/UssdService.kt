@@ -40,6 +40,7 @@ object UssdText {
         null, "" -> ""
         "not_allowed" -> "The switch on this phone is off, so nothing was done."
         "no_accessibility" -> "PayTrace is not switched on in Accessibility settings."
+        "accessibility_not_running" -> "Accessibility says PayTrace is switched on, but the phone never actually started it, so nothing was watching the screen. Switch PayTrace OFF and then ON again in Settings, Accessibility, Downloaded apps. On Xiaomi/Redmi also allow \"Display pop-up windows while running in the background\"."
         "no_call_permission" -> "The phone-call permission is missing."
         "no_pin" -> "No Nagad PIN is saved on this phone."
         "busy" -> "Another check is still running."
@@ -243,6 +244,11 @@ object UssdSession {
     private const val MAX_SIM_TRIES = 6
     /** How long a screen PayTrace does not know is given to finish drawing before the run gives up on it. */
     private const val UNKNOWN_WAIT_MS = 5_000L
+    /** Android binds an accessibility service a moment after it is switched on. Longer than this and it is not coming,
+     *  so the run says so instead of waiting out its whole ninety seconds with nobody watching the screen. */
+    private const val NO_SERVICE_MS = 6_000L
+    /** How long the service may see nothing of the dialer before that is worth writing down. */
+    private const val BLIND_MS = 5_000L
 
     private class Act(val text: String, val secret: Boolean, val sig: String) {
         var typed = false
@@ -312,6 +318,11 @@ object UssdSession {
     /** The accessibility service's own context, which Android lets open screens more freely than a background service. */
     fun launchContext(): Context? = service
 
+    /** TRUE only when Android has really bound PayTrace's accessibility service. The switch in Accessibility settings
+     *  can read "on" while the service was never started — the owner's Redmi did exactly that (2026-11-02): its run log
+     *  showed the dialer opening and then nothing at all, because there was nothing on our side looking at the screen. */
+    fun connected(): Boolean = service != null
+
     /** Only the phone's own call and menu windows may be read: the system ones, plus the phone's chosen dialer app. */
     fun allowedPackage(pkg: String): Boolean =
         pkg == "com.android.phone" || pkg == "com.android.server.telecom" || pkg == "com.android.contacts" ||
@@ -327,6 +338,15 @@ object UssdSession {
     private fun tick() {
         if (!active()) return
         main.postDelayed(tickRunnable, TICK_MS)
+        val since = SystemClock.elapsedRealtime() - startedAt
+        if (service == null) {
+            // Nothing of ours is watching the screen. Android binds the service a moment after it is switched on, so a
+            // short wait is normal; after that it is not coming, and waiting out the whole run teaches nobody anything.
+            noteOnce("nosvc", "PayTrace's accessibility service is not running on this phone")
+            if (since > NO_SERVICE_MS) { finish(UssdOutcome(false, null, "accessibility_not_running")); return }
+            return
+        }
+        noteOnce("svc", "accessibility service connected")
         try {
             step()
         } catch (e: Exception) {
@@ -375,7 +395,14 @@ object UssdSession {
 
     private fun step() {
         val svc = service ?: return
-        val w = readScreen(svc) ?: return
+        val w = readScreen(svc)
+        if (w == null) {
+            if (SystemClock.elapsedRealtime() - startedAt > BLIND_MS) {
+                val seen = try { svc.windows.mapNotNull { it.root?.packageName?.toString() }.distinct().take(4).joinToString(", ") } catch (e: Exception) { "" }
+                noteOnce("blind", "nothing of the dialer can be read" + (if (seen.isBlank()) " (no windows at all)" else ", windows: " + seen))
+            }
+            return
+        }
         val sig = w.text + "|" + (if (w.callButton != null) "C" else "") + (if (w.edit != null) "E" else "") + (if (w.simRows.isNotEmpty()) "S" else "")
         if (sig.length <= 3) return
         if (w.text.isNotBlank()) lastText = w.text
