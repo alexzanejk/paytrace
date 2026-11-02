@@ -1,1 +1,1 @@
-Messages: each message now has a Copy button (long-press also copies).
+Phone commands from the dashboard: balance check, cash-in and the wallet's own statement. Rocket added beside bKash and Nagad. The phone now wakes its own screen for a command (take the screen lock off the payment phones). Clearer messages when a command cannot run.

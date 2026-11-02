@@ -277,6 +277,25 @@ PayTrace only reads the blockchain. It never holds keys or moves your USDT. Cust
 
 On the Websites page each site can also choose how its USDT payment page looks (six looks, section 2b). Classic is the original; Automatic gives each site its own fixed look.
 
+## The download link for the app (no GitHub login)
+
+**This link always gives the newest app:**
+
+`https://github.com/alexzanejk/paytrace/releases/latest/download/paytrace.apk`
+
+Open it in the phone's own browser, tap through Android's "download anyway" warning, then tap the file to install.
+No GitHub account, no signing in, no zip file to unpack.
+
+It is made automatically by the build: every build that runs from `main` **and** uses your permanent key attaches its
+APK to a release of this repository. The build's summary page prints the link. A build with the temporary key is
+never published, because Android would refuse to install it over the app already on the phone.
+
+There is nothing secret in the APK. The app has no password of its own: a phone gets in only by pairing, which shows
+a code that you approve on the dashboard's Phones page. Somebody who installs this app can see nothing of yours.
+
+The older way still works if you ever need it: the repository's **Actions** tab, open the newest **Build Android APK**
+run, then **Artifacts** → `paytrace-apk`. That one needs a GitHub login and gives a zip.
+
 ## Step 9: App updates inside the app
 
 After this is set up, every new build is published automatically, and each phone shows **"Update available"** at the top of the app. The partner taps **Update now**,

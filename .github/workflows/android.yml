@@ -10,6 +10,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Only so the finished APK can be attached to a release of this public repository, which is what makes a plain
+    # download link possible. Nothing else in this workflow writes to the repository.
+    permissions:
+      contents: write
     env:
       # Each build is numbered higher than the last, so it can be installed over the previous one.
       PAYTRACE_VERSION_CODE: ${{ github.run_number }}
@@ -110,6 +114,47 @@ jobs:
           name: paytrace-apk
           path: android/app/build/outputs/final/paytrace.apk
           if-no-files-found: error
+
+      # A download link that needs no GitHub login. The APK is attached to a release of this PUBLIC repository, so
+      #   https://github.com/<owner>/<repo>/releases/latest/download/paytrace.apk
+      # always hands back the newest build — openable straight from a phone's browser. Only a build carrying the
+      # PERMANENT key is published, because Android refuses to install an APK signed with a different key over an
+      # existing one. Nothing secret leaves here: the app holds no credentials of its own (a phone gets in only by
+      # pairing, which the owner approves in the dashboard). If the release cannot be made (for example the repository
+      # is set to give workflows read-only access), the build still passes and the run summary says so.
+      - name: Publish the download link (GitHub release)
+        if: github.ref == 'refs/heads/main' && env.SIGNING == 'permanent'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          CODE="$PAYTRACE_VERSION_CODE"
+          TAG="v1.0.$CODE"
+          APK=android/app/build/outputs/final/paytrace.apk
+          LINK="https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/paytrace.apk"
+          NOTES="$RUNNER_TEMP/notes.md"
+          {
+            head -c 1000 android/release-notes.txt 2>/dev/null || true
+            printf '\n\nInstall **paytrace.apk** below on the payment phones.\n'
+            printf '\nThis link always gives the newest build: %s\n' "$LINK"
+          } > "$NOTES"
+          # A re-run of the same build number finds its own release already there.
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            ok=yes
+            gh release upload "$TAG" "$APK" --clobber || ok=no
+            gh release edit "$TAG" --notes-file "$NOTES" --latest || ok=no
+          else
+            ok=yes
+            gh release create "$TAG" "$APK" --title "PayTrace 1.0.$CODE" --notes-file "$NOTES" --latest || ok=no
+          fi
+          if [ "$ok" = yes ]; then
+            {
+              echo "- Download link (no login needed): $LINK"
+              echo "- Just this build: https://github.com/${GITHUB_REPOSITORY}/releases/download/$TAG/paytrace.apk"
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- Download link: could not be published (the workflow may not be allowed to write to this repository)." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       # In-app updates (optional). Only a build signed with the PERMANENT key, only from main, and only when the Cloudflare R2
       # secrets exist. The APK is uploaded first and the small latest.json last, so phones never see a version whose file is
