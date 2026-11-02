@@ -762,6 +762,8 @@ object UssdRunner {
                 }, ScreenWake.WAKE_MS)
                 return
             }
+            // Already woken once and still not reported as awake: carry on anyway, the dialer is opened through the
+            // wake window below either way.
             ScreenGate.State.READY -> Unit
         }
         val code = UssdProviders.dialCode(provider)
@@ -789,18 +791,27 @@ object UssdRunner {
         // NOT withSim: naming the SIM on the dialer turns the menu code into an ordinary call on the owner's phones
         // (video 2026-11-02: the dialer holds "*247#", the call goes out as "*247*", the hash gone, and no menu ever opens).
         val dial = Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(code))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        try {
-            if (dialer != null) dial.setPackage(dialer)
-            opener.startActivity(dial)
-            UssdSession.note("dialer opened")
-        } catch (e: Exception) {
+        if (dialer != null) dial.setPackage(dialer)
+        // A phone that was asleep a moment ago has nothing in front of it, and some brands (MIUI on the owner's Redmi)
+        // will not let a background service open another app's screen then: the screen comes on and the run goes no
+        // further. So the dialer is opened BY the wake window, which is itself in front. A phone that was already awake
+        // keeps the plain way, which is proven on the Vivo and the OnePlus.
+        if (woke) {
+            UssdSession.note("opening the dialer through the wake window")
+            ScreenWake.wakeUp(opener, dial)
+        } else {
             try {
-                dial.setPackage(null)
                 opener.startActivity(dial)
-                UssdSession.note("dialer opened (any dialer)")
-            } catch (e2: Exception) {
-                UssdSession.abort("dial_failed")
-                return
+                UssdSession.note("dialer opened")
+            } catch (e: Exception) {
+                try {
+                    dial.setPackage(null)
+                    opener.startActivity(dial)
+                    UssdSession.note("dialer opened (any dialer)")
+                } catch (e2: Exception) {
+                    UssdSession.abort("dial_failed")
+                    return
+                }
             }
         }
         // If the Call button was not found and pressed in a few seconds, open the dialer once more and look again.
@@ -809,10 +820,15 @@ object UssdRunner {
         Handler(Looper.getMainLooper()).postDelayed({
             if (UssdSession.stillDialing()) {
                 UssdSession.note("no Call button yet, opening the dialer again")
-                try {
-                    (UssdSession.launchContext() ?: app).startActivity(dial)
-                } catch (e: Exception) {
-                    UssdSession.abort("dial_failed")
+                val again = UssdSession.launchContext() ?: app
+                if (woke) {
+                    ScreenWake.wakeUp(again, dial)
+                } else {
+                    try {
+                        again.startActivity(dial)
+                    } catch (e: Exception) {
+                        UssdSession.abort("dial_failed")
+                    }
                 }
             }
         }, DIAL_FALLBACK_MS)

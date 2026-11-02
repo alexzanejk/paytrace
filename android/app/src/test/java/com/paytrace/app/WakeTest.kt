@@ -32,6 +32,17 @@ class WakeTest {
         assertEquals(ScreenGate.State.LOCKED_SECURE, decide(interactive = true, locked = true, secure = true))
     }
 
+    @Test fun aPhoneThatWasJustWokenOpensTheDialerFromTheWakeWindow() {
+        // The owner's Redmi (2026-11-02) lit its screen for a dashboard command and then stopped. MIUI will not let a
+        // background service open another app's screen while nothing of ours is in front, so the dialer is opened BY
+        // the wake window, which is. The extra the window looks for is the one the runner puts there.
+        assertEquals("paytrace.then", ScreenWake.EXTRA_THEN)
+        // Opened a touch later than a bare wake, so the lock screen is gone before the dialer is drawn behind it.
+        assertEquals(true, WakeActivity.OPEN_MS > WakeActivity.CLOSE_MS)
+        // And the whole wake step is given longer than the window takes to do it.
+        assertEquals(true, ScreenWake.WAKE_MS > WakeActivity.OPEN_MS)
+    }
+
     @Test fun theOwnerIsToldWhatToDoAboutIt() {
         val said = UssdText.error("phone_locked")
         // It must name the cause and the fix, not just fail.
