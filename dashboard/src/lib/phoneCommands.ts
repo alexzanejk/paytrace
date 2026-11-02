@@ -15,6 +15,11 @@ export interface PhoneCommand {
   trx_id?: string | null;
 }
 
+/** The wallets a phone can be asked to work with. Rocket joined on 2026-11-02 from the owner's own recordings. */
+export type WalletName = "nagad" | "bkash" | "rocket";
+export const WALLETS: WalletName[] = ["nagad", "bkash", "rocket"];
+export const walletLabel = (w: WalletName): string => (w === "bkash" ? "bKash" : w === "rocket" ? "Rocket" : "Nagad");
+
 /** The amounts the dashboard offers for a cash-in. The database refuses anything over MOST_PER_CASH_IN whatever is sent. */
 export const CASH_IN_AMOUNTS = [3000, 4000, 5000, 6000, 8000, 10000];
 export const MOST_PER_CASH_IN = 10000;

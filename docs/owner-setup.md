@@ -366,6 +366,25 @@ first. From the next app update on, PayTrace switches it back on by itself and n
 What that permission is used for: PayTrace adds **its own** balance-check service back to the Accessibility list, and
 writes no other setting. Without the permission nothing happens and the switch is flipped by hand as before.
 
+### Rocket joined the dashboard's phone commands (2026-11-02)
+
+From your own two recordings. Rocket's agent menu is `*322#`:
+
+    1.Cash-In  2.Cash-Out  3.Registration  4.Payment  5.My Acc  0.LogOut
+      -> 5 (My Acc) -> 1.Balance  2.Statement  3.Change Pin  4.Account No  ...
+        -> 1 -> "Enter Your 4-digit PIN" -> "Your A/C balance: Tk 546.59, Available balance: Tk 546.59."
+
+So each phone's card now has **Check Rocket balance** and a Rocket block under cash-in and under the statement, beside
+Nagad and bKash. Set Rocket's own SIM and its own PIN in the phone's app (Settings, Balance check, choose **Rocket** at
+the top): each wallet keeps its own.
+
+**One thing is weaker on Rocket, and you chose it knowingly.** bKash and Nagad show the number and the amount again
+right before asking for the PIN, and PayTrace refuses to type the PIN unless both match what you asked for. Rocket's
+PIN screen says only "Enter Your 4-digit PIN" and nothing else, so there is nothing to check against. PayTrace still
+types the number into Rocket's own "Enter Mobile/Account No" box and the amount into "Enter Amount", and it still stops
+if that PIN screen shows any OTHER number or amount — but if it ever misread one of those two screens, Rocket would not
+catch it. **For large amounts, prefer bKash or Nagad.**
+
 ### The phone must not have a screen lock (2026-11-02)
 
 **Take the screen lock off every payment phone** (Settings, Security, Screen lock, **None**). This is not a small point:

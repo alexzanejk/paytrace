@@ -609,8 +609,14 @@ object UssdSetup {
         ContextCompat.checkSelfPermission(ctx, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
 
     /** Where each wallet's PIN is kept: encrypted, on this phone only. */
-    fun pinStore(ctx: Context, provider: String): SecretStore =
-        SecretStore(ctx.applicationContext, if (provider == UssdProviders.BKASH) "ussd_pin_bkash" else "ussd_pin")
+    fun pinStore(ctx: Context, provider: String): SecretStore = SecretStore(
+        ctx.applicationContext,
+        when (provider) {
+            UssdProviders.BKASH -> "ussd_pin_bkash"
+            UssdProviders.ROCKET -> "ussd_pin_rocket"
+            else -> "ussd_pin" // Nagad's, from before there was more than one wallet; left as it is so no phone loses its PIN.
+        },
+    )
 
     fun pinSaved(ctx: Context, provider: String = UssdProviders.NAGAD): Boolean = pinStore(ctx, provider).get().isNotEmpty()
 }

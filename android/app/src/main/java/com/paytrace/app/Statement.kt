@@ -46,9 +46,10 @@ object StatementRead {
  *
  *  bKash:  *247#  ->  4 (My bKash)  ->  2 (Request Statement)  ->  PIN  ->  the list
  *  Nagad:  *167#  ->  6 (My Nagad)  ->  2 (Mini Statement)     ->  PIN  ->  whatever Nagad shows
+ *  Rocket: *322#  ->  5 (My Acc)    ->  2 (Statement)          ->  PIN  ->  whatever Rocket shows
  *
- *  Nagad's own statement screens have never been seen. That is on purpose survivable: the menu steps are the same
- *  shape, and whatever comes back is sent on as text for us to look at rather than guessed at here. */
+ *  Only bKash's statement screens have been seen. That is on purpose survivable: the menu steps are the same shape
+ *  on all three, and whatever comes back is sent on as text for us to look at rather than guessed at here. */
 class StatementFlow(
     private val wallet: String,
     /** Which entry to open, or null for just the list. */
@@ -62,8 +63,8 @@ class StatementFlow(
     private var saidNo = false
     private val collected = mutableListOf<String>()
 
-    private val menuPick = if (wallet == UssdProviders.BKASH) "4" else "6"
-    private val ownMenu = if (wallet == UssdProviders.BKASH) UssdScreen.ACCOUNT_MENU else UssdScreen.MY_NAGAD_MENU
+    private val menuPick = UssdProviders.ownMenuPick(wallet)
+    private val ownMenu = UssdProviders.ownMenu(wallet)
 
     // Once the PIN has gone in, whatever the wallet shows next IS the answer, in wording nobody has seen before (Nagad's
     // statement especially). So from that point every dialog counts as ours, or the run would ignore the very screen it
@@ -92,7 +93,7 @@ class StatementFlow(
             } else UssdAction.Fail("unexpected_screen")
 
             1 -> if (kind == ownMenu) {
-                stage = 2; answered(clean); UssdAction.Reply("2")
+                stage = 2; answered(clean); UssdAction.Reply(UssdProviders.statementPick(wallet))
             } else UssdAction.Fail("unexpected_screen")
 
             2 -> if (kind == UssdScreen.ENTER_PIN) {
