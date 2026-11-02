@@ -296,6 +296,24 @@ a code that you approve on the dashboard's Phones page. Somebody who installs th
 The older way still works if you ever need it: the repository's **Actions** tab, open the newest **Build Android APK**
 run, then **Artifacts** → `paytrace-apk`. That one needs a GitHub login and gives a zip.
 
+## Phone controls from the dashboard (2026-11-02)
+
+On each approved phone's card, above the balance buttons, five buttons that need no wallet and move no money:
+
+| Button | What the phone does | Use it when |
+|---|---|---|
+| **Restart PayTrace** | Stops and starts PayTrace's always-on service and re-arms its safety nets | The phone shows Online but nothing arrives from it |
+| **Read inbox now** | Reads the phone's SMS inbox right now (normally every 5 minutes) | "Did we miss a message?" |
+| **Send waiting now** | Sends every message still waiting, including ones that failed only for lack of internet | After the phone's internet was down |
+| **Wake screen** | Turns the screen on and keeps it on for two minutes | You want to look at it over AnyDesk |
+| **Ring** | Sounds the alarm tone for 20 seconds, with a notice saying the dashboard is looking for the phone | A partner needs to notice the phone |
+
+The phone takes it within a second or two (the wake-up push), or on its own 30-second beat at worst, and the line under
+the buttons says what happened.
+
+**What no button can ever do, because Android gives no app the power:** switch a phone on from off, reboot it, or
+turn Wi-Fi / mobile data / flight mode on or off. A phone that is off needs a hand on its power button.
+
 ## Step 9: App updates inside the app
 
 After this is set up, every new build is published automatically, and each phone shows **"Update available"** at the top of the app. The partner taps **Update now**,

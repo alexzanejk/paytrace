@@ -3,7 +3,8 @@
 export interface PhoneCommand {
   id: string;
   kind: string;
-  provider: string;
+  /** The wallet a balance / cash-in / statement works on. A phone control (restart, inbox, …) has none. */
+  provider: string | null;
   status: "queued" | "running" | "done" | "failed" | "cancelled";
   balance: number | null;
   error: string | null;
@@ -92,3 +93,56 @@ export function commandLine(c: PhoneCommand | null, money: (n: number) => string
         : `Last check ${when(c.finished_at ?? c.created_at)} did not work. ${errorText(c.error)}`;
   }
 }
+
+// ---- Phone controls (owner request 2026-11-02): commands that need no wallet ----
+
+export type PhoneActionKind = "restart" | "inbox" | "resend" | "screen" | "ring";
+
+export interface PhoneAction {
+  kind: PhoneActionKind;
+  /** The button. */
+  label: string;
+  /** What the phone is doing while the command is live. */
+  busy: string;
+  /** Said when it finished well. */
+  done: string;
+  /** One line of why, shown as the button's tooltip. */
+  help: string;
+}
+
+/** The phone's PhoneActions.KINDS must name exactly these. What Android cannot do is left out on purpose: switching a
+ *  phone on from off, rebooting it, or toggling Wi-Fi / mobile data / flight mode — no app may. */
+export const PHONE_ACTIONS: PhoneAction[] = [
+  { kind: "restart", label: "Restart PayTrace", busy: "Restarting PayTrace on the phone…", done: "PayTrace was restarted",
+    help: "Stops and starts PayTrace's always-on service. For a phone that shows Online but does nothing." },
+  { kind: "inbox", label: "Read inbox now", busy: "Reading the phone's SMS inbox…", done: "Inbox read; anything missed was picked up",
+    help: "Reads the phone's SMS inbox right now instead of on the next 5-minute pass." },
+  { kind: "resend", label: "Send waiting now", busy: "Sending what was waiting…", done: "Waiting messages were sent",
+    help: "Sends every message still waiting, including ones that failed only because the internet was down." },
+  { kind: "screen", label: "Wake screen", busy: "Waking the screen…", done: "Screen woken, held on for 2 minutes",
+    help: "Turns the screen on and keeps it on for two minutes." },
+  { kind: "ring", label: "Ring", busy: "Ringing…", done: "The phone rang",
+    help: "Sounds the alarm tone for 20 seconds so whoever has the phone notices it." },
+];
+
+export const PHONE_ACTION_KINDS: PhoneActionKind[] = PHONE_ACTIONS.map((a) => a.kind);
+
+export const isPhoneAction = (kind: string | null | undefined): kind is PhoneActionKind =>
+  !!kind && PHONE_ACTION_KINDS.includes(kind as PhoneActionKind);
+
+/** One line under the controls for the newest phone control, whichever it was. */
+export function actionLine(c: PhoneCommand | null, when: (t: string) => string): string {
+  if (!c || !isPhoneAction(c.kind)) return "";
+  const a = PHONE_ACTIONS.find((x) => x.kind === c.kind)!;
+  switch (c.status) {
+    case "queued": return "Waking the phone to take it now (within 30 seconds at worst)…";
+    case "running": return a.busy;
+    case "done": return `${a.done} (${when(c.finished_at ?? c.created_at)})`;
+    case "cancelled":
+    case "failed":
+      return `"${a.label}" at ${when(c.finished_at ?? c.created_at)} did not work. ${errorText(c.error)}`;
+  }
+}
+
+// The one failure a phone control can report on its own; the rest come from the shared list above.
+ERROR_TEXT.inbox_unreadable = "The phone could not read its SMS inbox: PayTrace has no SMS permission there, or forwarding is paused.";
