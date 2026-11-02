@@ -366,26 +366,24 @@ first. From the next app update on, PayTrace switches it back on by itself and n
 What that permission is used for: PayTrace adds **its own** balance-check service back to the Accessibility list, and
 writes no other setting. Without the permission nothing happens and the switch is flipped by hand as before.
 
-### "Switched on" in Accessibility is not the same as running (2026-11-02, the Redmi)
+### Xiaomi and Redmi need one more permission (2026-11-02)
 
-The Redmi's own run log showed the dialer opening and then **nothing at all** — no sign that PayTrace ever looked at
-the screen. The reason: Accessibility settings listed PayTrace as switched on, but the phone had never actually
-started it. MIUI does this, especially after an app update.
+**Other permissions → "Display pop-up windows while running in the background".** There is a button for it on
+PayTrace's own card (Settings, Balance check). This is what made the Redmi work: without it MIUI quietly refuses to
+show the dialer, so the run says "dialer opened" and then nothing happens at all. **It may need setting again after
+an app update**, so check it whenever you install a new build on one of those phones.
 
-**The fix, on the phone: Settings, Accessibility, Downloaded apps, switch PayTrace balance check OFF and then ON
-again.** It only takes a moment and it binds the service properly.
+With it on, all three phones — Vivo, OnePlus and Redmi — wake themselves and run a dashboard command with nobody
+touching them.
 
-From this build on, PayTrace says so instead of leaving you guessing: the app's own card shows a red line while the
-switch is on but the service is not running, and a dashboard command gives up after six seconds with "that phone says
-PayTrace is switched on in Accessibility, but it never actually started it" rather than timing out after a minute and
-a half.
+If a phone still does nothing, two other things can cause the same silence, and PayTrace now tells them apart instead
+of just timing out:
 
-**On a Xiaomi/Redmi this is the one that actually matters: Other permissions → "Display pop-up windows while running
-in the background".** There is a button for it on PayTrace's own card. That is what made the Redmi work (2026-11-02);
-without it MIUI quietly refuses to show the dialer, so the run says "dialer opened" and then nothing happens. It may
-need setting again after an app update.
-
-All three phones (Vivo, OnePlus, Redmi) now wake themselves and run a dashboard command with nobody touching them.
+* **Accessibility says on, but the phone never started it.** The app's card shows a red line, and a dashboard command
+  gives up after six seconds saying so. Fix: Settings, Accessibility, Downloaded apps, switch PayTrace OFF and ON again.
+* **Android's "restricted settings" block**, which it puts on apps installed outside a store and which comes back with
+  every update. Fix: PayTrace's app page, three dots at the top right, "Allow restricted settings", confirm, then
+  switch it on in Accessibility again. The app's warning has a button to that page.
 
 ### Rocket joined the dashboard's phone commands (2026-11-02)
 
