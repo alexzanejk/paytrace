@@ -164,6 +164,25 @@ fun UssdCard(settings: AppSettings, tick: Int) {
                 Switch(checked = allowed, onCheckedChange = { allowed = it; settings.ussdAllowed = it })
             }
 
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text("5. Let the dashboard send money from this phone", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "Off means the dashboard cannot make this phone cash in, whatever it asks. The balance check above is not affected.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                var cashIn by remember { mutableStateOf(settings.cashInAllowed) }
+                Switch(checked = cashIn, onCheckedChange = { cashIn = it; settings.cashInAllowed = it })
+            }
+            Text(
+                "Even when it is on, this phone sends only what the dashboard asks for, at most Tk 10,000 at a time, and it " +
+                    "stops without typing the PIN unless the wallet's own screen shows that number and that amount.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
             Text("Test it now, right here:", style = MaterialTheme.typography.bodyMedium)
             Button(
                 enabled = !running,

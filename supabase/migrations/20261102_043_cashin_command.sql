@@ -138,3 +138,9 @@ begin
   get diagnostics v_rows = row_count;
   return v_rows > 0;
 end $$;
+
+-- Admins read the commands and the limit from the dashboard; only the RPCs above ever write them.
+create policy phone_commands_read2 on public.phone_commands for select to authenticated using (is_admin());
+create policy cashin_limits_read on public.cashin_limits for select to authenticated using (is_admin());
+grant select on public.phone_commands to authenticated;
+grant select on public.cashin_limits to authenticated;
