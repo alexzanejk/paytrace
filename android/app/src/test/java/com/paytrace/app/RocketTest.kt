@@ -51,13 +51,15 @@ class RocketTest {
 
     // ---- cash-in ----
 
-    private val order = CashInOrder(UssdProviders.ROCKET, "01846632612", 20.0)
+    // The owner's real recording was a Tk 20 cash-in. Since 2026-11-04 the floor is Tk 100 (CashInOrder.LEAST), so the
+    // order here is 200; the screens are the real ones and the receipt still reads as it did.
+    private val order = CashInOrder(UssdProviders.ROCKET, "01846632612", 200.0)
 
     @Test fun theOwnersRealCashInWalksThrough() {
         val f = CashInFlow(order, pin)
         assertEquals(UssdAction.Reply("1"), f.onScreen(main))
         assertEquals(UssdAction.Reply("01846632612"), f.onScreen("Enter Mobile/Account No"))
-        assertEquals(UssdAction.Reply("20"), f.onScreen("Enter Amount"))
+        assertEquals(UssdAction.Reply("200"), f.onScreen("Enter Amount"))
         // Rocket's PIN prompt says nothing about the money, which is the exception the owner chose.
         assertEquals(UssdAction.Reply("0000", secret = true), f.onScreen(askPin))
         val done = f.onScreen(receipt) as UssdAction.Done
