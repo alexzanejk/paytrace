@@ -1,6 +1,15 @@
 // Phone health: what a phone reports in its heartbeat, cleaned before it is stored, and the
 // problems worth telling the owner about. Pure functions, no I/O, so they can be unit tested.
 
+/** One wallet number saved on the phone (not secret: customers are shown it), the SIM slot chosen for it (0 = SIM 1) and
+ *  whether the app found that SIM by itself or the person picked it. */
+export interface WalletInfo {
+  provider: string;
+  number: string;
+  slot: number;
+  found: boolean;
+}
+
 export interface DeviceInfo {
   battery?: number; // percent, 0-100
   monitoring?: boolean; // the app's own on/off switch
@@ -18,6 +27,7 @@ export interface DeviceInfo {
   ussd_allowed?: boolean; // the phone's own switch: may the dashboard ask it for a balance, statement or other wallet menu read
   cashin_allowed?: boolean; // the phone's own switch: may the dashboard make it send money. Off unless the owner turned it on
   admin_code_set?: boolean; // an admin code protects those switches (the code itself is never sent)
+  wallets?: WalletInfo[]; // the wallet numbers saved on the phone and which SIM each is in
   wake_count?: number; // wake-up pushes this phone has received
   last_wake_at?: string; // when the latest one arrived
   push_ready?: boolean; // the phone has a Firebase push address, so the server can wake it
@@ -72,6 +82,20 @@ export function cleanInfo(body: Record<string, unknown>, now: Date = new Date())
   if (cashinAllowed !== undefined) info.cashin_allowed = cashinAllowed;
   const adminCodeSet = asBool(body.admin_code_set);
   if (adminCodeSet !== undefined) info.admin_code_set = adminCodeSet;
+  if (Array.isArray(body.wallets)) {
+    const wallets: WalletInfo[] = [];
+    for (const w of body.wallets.slice(0, 4)) {
+      if (!w || typeof w !== "object") continue;
+      const o = w as Record<string, unknown>;
+      const provider = typeof o.provider === "string" && /^(bkash|nagad|rocket|upay)$/.test(o.provider) ? o.provider : null;
+      const number = typeof o.number === "string" && /^01[0-9]{9}$/.test(o.number) ? o.number : null;
+      // Exactly SIM 1 or SIM 2; a slot like 5 is not rounded down to a SIM the phone may not have.
+      const slot = o.slot === 0 || o.slot === "0" ? 0 : o.slot === 1 || o.slot === "1" ? 1 : undefined;
+      const found = asBool(o.found);
+      if (provider && number && slot !== undefined) wallets.push({ provider, number, slot, found: found === true });
+    }
+    if (wallets.length) info.wallets = wallets;
+  }
   const wakes = asCount(body.wake_count, 1_000_000);
   if (wakes !== undefined) info.wake_count = wakes;
   // The phone sends the time as milliseconds since 1970; only a believable one is kept.

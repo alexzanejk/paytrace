@@ -139,9 +139,9 @@ fun UssdCard(settings: AppSettings, tick: Int) {
             }
 
             Text((if (call) "✓ " else "1. ") + "Allow phone access (needed to send the check and to see your SIMs)", style = MaterialTheme.typography.bodyMedium)
-            if (!call) OutlinedButton(onClick = { permission.launch(arrayOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE)) }) { Text("Allow") }
+            if (!call) OutlinedButton(onClick = { permission.launch(arrayOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_PHONE_NUMBERS)) }) { Text("Allow") }
 
-            Text("2. Your wallets. Tap one to choose its SIM and save its PIN.", style = MaterialTheme.typography.bodyMedium)
+            Text("2. Your wallets. Tap one, type its number (the app finds its SIM) and save its PIN.", style = MaterialTheme.typography.bodyMedium)
             val sims = remember(tick, call) { SimNames.list(ctx) }
             UssdProviders.all.forEach { p ->
                 WalletRow(settings, p, sims, expanded = provider == p, tick = tick, onTap = { provider = if (provider == p) "" else p })
@@ -227,26 +227,74 @@ fun UssdCard(settings: AppSettings, tick: Int) {
     }
 }
 
-/** One wallet in the list: a title with a plain status, and when tapped the two things to set, in words a partner understands:
- *  which SIM the wallet's number is in (named by its carrier when Android will tell us) and the wallet PIN. */
+/** One wallet in the list: a title with a plain status, and when tapped the things to set, in words a partner understands:
+ *  the wallet's own number (the app then works out which SIM it is in), the SIM if the app could not, and the wallet PIN. */
 @Composable
 private fun WalletRow(settings: AppSettings, provider: String, sims: List<SimName>, expanded: Boolean, tick: Int, onTap: () -> Unit) {
     val ctx = LocalContext.current
     val label = UssdProviders.label(provider)
     var slot by remember(provider, tick) { mutableStateOf(settings.ussdSlotOf(provider)) }
+    var number by remember(provider) { mutableStateOf(settings.walletNumberOf(provider)) }
+    var found by remember(provider, tick) { mutableStateOf(settings.walletSimFoundOf(provider)) }
+    var finding by remember(provider) { mutableStateOf(false) }
+    var findNote by remember(provider) { mutableStateOf("") }
+    var findLog by remember(provider) { mutableStateOf("") }
     var pin by remember(provider) { mutableStateOf("") }
     var pinSaved by remember(provider, tick) { mutableStateOf(UssdSetup.pinSaved(ctx, provider)) }
-    val simText = SimNames.label(slot, sims)
+    val savedNumber = settings.walletNumberOf(provider)
+    val simText = SimNames.label(slot, sims) + (if (found == slot) " ✓" else "")
+    val ready = pinSaved && savedNumber.isNotEmpty()
     Card(Modifier.fillMaxWidth().clickable(onClick = onTap), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(label, style = MaterialTheme.typography.titleSmall)
             Text(
-                if (pinSaved) "✓ Ready · $simText · PIN saved" else "Not ready · $simText · type its PIN",
+                (if (ready) "✓ Ready" else "Not ready") +
+                    " · " + (if (savedNumber.isEmpty()) "no number yet" else savedNumber) +
+                    " · " + simText +
+                    " · " + (if (pinSaved) "PIN saved" else "type its PIN"),
                 style = MaterialTheme.typography.bodySmall,
-                color = if (pinSaved) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                color = if (ready) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
             )
             if (expanded) {
-                Text("Which SIM is your $label number in?", style = MaterialTheme.typography.bodyMedium)
+                Text("Your $label number", style = MaterialTheme.typography.bodyMedium)
+                OutlinedTextField(
+                    value = number,
+                    onValueChange = { v -> number = v.filter { it.isDigit() }.take(11) },
+                    label = { Text("01XXXXXXXXX") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        enabled = !finding && PhoneNumbers.normalize(number) != null,
+                        onClick = {
+                            val n = PhoneNumbers.normalize(number) ?: return@Button
+                            settings.setWalletNumberOf(provider, n)
+                            settings.setWalletSimFoundOf(provider, -1)
+                            found = -1
+                            finding = true
+                            findNote = "Looking for the SIM that has $n…"
+                            val lines = ArrayList<String>()
+                            SimFinder.find(ctx, n, { lines.add(it); findLog = lines.joinToString("\n") }) { r ->
+                                finding = false
+                                when (r) {
+                                    is SimFind.Found -> {
+                                        slot = r.slot; settings.setUssdSlotOf(provider, r.slot)
+                                        found = r.slot; settings.setWalletSimFoundOf(provider, r.slot)
+                                        findNote = "✓ Found: $label is in SIM ${r.slot + 1}" + (if (r.carrier.isNotBlank()) " (${r.carrier})" else "") + ". Saved."
+                                    }
+                                    is SimFind.NotFound -> findNote = "Number saved, but the app could not tell which SIM has it. Pick the SIM below yourself."
+                                    SimFind.NoPermission -> findNote = "Number saved. Allow phone access (step 1 above) and press Save again to find the SIM."
+                                }
+                            }
+                        },
+                    ) { Text(if (finding) "Looking…" else if (savedNumber.isEmpty()) "Save and find its SIM" else "Save and find again") }
+                }
+                if (findNote.isNotEmpty()) Text(findNote, style = MaterialTheme.typography.bodySmall)
+                if (findLog.isNotEmpty() && !finding && found < 0) Text(findLog, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                Text(if (found >= 0) "SIM (found by the app; change only if it is wrong)" else "Which SIM is your $label number in?", style = MaterialTheme.typography.bodyMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(0, 1).forEach { n ->
                         FilterChip(
@@ -256,11 +304,6 @@ private fun WalletRow(settings: AppSettings, provider: String, sims: List<SimNam
                         )
                     }
                 }
-                Text(
-                    "The SIM is the one with the $label agent or personal number. If you are not sure, look at Settings, SIM cards on the phone.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Text(if (pinSaved) "$label PIN is saved" else "Type the $label PIN", style = MaterialTheme.typography.bodyMedium)
                 OutlinedTextField(
                     value = pin,

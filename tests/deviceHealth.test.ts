@@ -1,6 +1,5 @@
 import {
-  blockingProblems, agoText, deviceHealth, infoProblems, minutesSince, settingsLines, OFFLINE_AFTER_SEC, ALERT_AFTER_MIN,
-} from "../dashboard/src/lib/deviceHealth.ts";
+  blockingProblems, agoText, deviceHealth, infoProblems, minutesSince, settingsLines, OFFLINE_AFTER_SEC, ALERT_AFTER_MIN, walletLines } from "../dashboard/src/lib/deviceHealth.ts";
 import { readFileSync } from "node:fs";
 
 let pass = 0, fail = 0;
@@ -77,6 +76,9 @@ check("balance checks switched off is an amber line", settingsLines({ ussd_allow
 check("balance checks on is just a fact", settingsLines({ ussd_allowed: true })[0]?.tone === "idle");
 check("sending money is stated both ways, neither red", texts({ cashin_allowed: true }).includes("Sending money ON") && texts({ cashin_allowed: false }).includes("Sending money off") && settingsLines({ cashin_allowed: true, ussd_allowed: true, admin_code_set: false }).every((l) => l.tone !== ("bad" as never)));
 check("none of the guarded switches is a red-banner problem or an infoProblem", blockingProblems({ ussd_allowed: false, cashin_allowed: true, admin_code_set: false }).length === 0 && infoProblems({ ussd_allowed: false, cashin_allowed: true, admin_code_set: false }).length === 0);
+
+check("wallet lines name the wallet, the number, the SIM and how it was chosen", JSON.stringify(walletLines({ wallets: [{ provider: "bkash", number: "01712345678", slot: 0, found: true }, { provider: "nagad", number: "01812345678", slot: 1, found: false }] })) === JSON.stringify(["bKash 01712345678 · SIM 1 (found by the app)", "Nagad 01812345678 · SIM 2 (picked by hand)"]));
+check("no wallets reported (older build) = no lines", walletLines({}).length === 0 && walletLines(null).length === 0);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

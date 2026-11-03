@@ -1,11 +1,12 @@
 import { BatteryMedium, LifeBuoy, Lock, TriangleAlert } from "lucide-react";
-import { agoText, infoProblems, minutesSince, settingsLines, type DeviceInfo } from "@/lib/deviceHealth";
+import { agoText, infoProblems, minutesSince, settingsLines, walletLines, type DeviceInfo } from "@/lib/deviceHealth";
 
 /** What the phone reported about itself: battery, app version, and anything stopping it capturing payments. */
 export function DeviceDetails({ info }: { info: DeviceInfo | null | undefined }) {
   if (!info || !info.reported_at) return <span className="text-xs text-muted-foreground">No report yet</span>;
   const problems = infoProblems(info);
   const settings = settingsLines(info);
+  const wallets = walletLines(info);
   return (
     <div className="flex max-w-xs flex-col gap-1 whitespace-normal text-xs">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
@@ -54,6 +55,11 @@ export function DeviceDetails({ info }: { info: DeviceInfo | null | undefined })
               {l.text}
             </span>
           ))}
+        </div>
+      ) : null}
+      {wallets.length > 0 ? (
+        <div className="flex flex-col gap-0.5 text-muted-foreground" title="The wallet numbers saved in the app on this phone, and which SIM each is in">
+          {wallets.map((w) => <span key={w}>{w}</span>)}
         </div>
       ) : null}
       {info.recovered ? (

@@ -26,6 +26,8 @@ export interface DeviceInfo {
   ussd_allowed?: boolean;
   cashin_allowed?: boolean;
   admin_code_set?: boolean;
+  /** Wallet numbers saved on the phone: which number is bKash, Nagad, Rocket, and which SIM each is in. */
+  wallets?: { provider: string; number: string; slot: number; found: boolean }[];
   push_ready?: boolean;
   keepalive_test?: "pass" | "fail" | "short";
   keepalive_test_at?: string;
@@ -138,4 +140,13 @@ export function infoProblems(info: DeviceInfo | null | undefined): string[] {
   }
   if ((info.failed ?? 0) > 0) out.push(`${info.failed} message${info.failed === 1 ? "" : "s"} could not be sent`);
   return out;
+}
+
+const WALLET_NAME: Record<string, string> = { bkash: "bKash", nagad: "Nagad", rocket: "Rocket", upay: "Upay" };
+
+/** "bKash 01712345678 · SIM 1 (found by the app)" for each wallet number the phone reported. Empty for older builds. */
+export function walletLines(info: DeviceInfo | null | undefined): string[] {
+  return (info?.wallets ?? []).map(
+    (w) => `${WALLET_NAME[w.provider] ?? w.provider} ${w.number} · SIM ${w.slot + 1}${w.found ? " (found by the app)" : " (picked by hand)"}`,
+  );
 }
