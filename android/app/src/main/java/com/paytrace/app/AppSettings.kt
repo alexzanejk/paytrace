@@ -315,6 +315,9 @@ class AppSettings(ctx: Context) {
     fun walletNumberOf(provider: String): String = p.getString("wallet_number_$provider", "") ?: ""
     fun setWalletNumberOf(provider: String, v: String) { p.edit().putString("wallet_number_$provider", v.filter { it.isDigit() }.take(13)).apply() }
     fun walletSimFoundOf(provider: String): Int = p.getInt("wallet_sim_found_$provider", -1)
+    /** True when the person chose the SIM themselves after the app could not find it (owner 2026-11-04). */
+    fun walletSimByHandOf(provider: String): Boolean = p.getBoolean("wallet_sim_by_hand_$provider", false)
+    fun setWalletSimByHandOf(provider: String, v: Boolean) { p.edit().putBoolean("wallet_sim_by_hand_$provider", v).apply() }
     fun setWalletSimFoundOf(provider: String, v: Int) { p.edit().putInt("wallet_sim_found_$provider", v).apply() }
 
     /** Use the dialer way (Accessibility presses the dialer) instead of Android's direct USSD request. For phones where the direct
