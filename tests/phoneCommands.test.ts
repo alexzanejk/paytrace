@@ -1,4 +1,4 @@
-import { commandLine, errorText, isLive, type PhoneCommand, cashInSummary, looksLikeANumber, CASH_IN_AMOUNTS, MOST_PER_CASH_IN, PHONE_ACTIONS, PHONE_ACTION_KINDS, isPhoneAction, actionLine } from "../dashboard/src/lib/phoneCommands.ts";
+import { commandLine, errorText, isLive, type PhoneCommand, cashInSummary, looksLikeANumber, CASH_IN_AMOUNTS, MOST_PER_CASH_IN, PHONE_ACTIONS, PHONE_ACTION_KINDS, isPhoneAction, actionLine, traceOf, walletScreens } from "../dashboard/src/lib/phoneCommands.ts";
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, extra?: unknown) {
@@ -28,6 +28,11 @@ check("provider refusal is explained", errorText("network_refused").includes("no
 check("unknown error code falls back", errorText("zzz") === errorText("failed"));
 check("missing error code falls back", errorText(null) === errorText("failed"));
 check("no command gives an empty line", commandLine(null, money, when) === "");
+
+check("an unexpected screen names the wallet that was asked", errorText("unexpected_screen", "bKash").startsWith("The bKash menu looked different") && errorText("unexpected_screen").startsWith("The wallet's menu"));
+check("the failed line names the wallet too", commandLine({ ...base, status: "failed", error: "unexpected_screen", finished_at: "2026-11-01T10:01:00Z" }, money, when, "bKash").includes("The bKash menu"));
+check("the phone's step log is told apart from the wallet's screens", traceOf(["Statement List:\n1 02/11/26 Cash In -Tk -200.00", "What the phone saw:\n 0.1s dialer opened\n 3.0s stopped: unexpected_screen [...]"]) === "0.1s dialer opened\n 3.0s stopped: unexpected_screen [...]" && JSON.stringify(walletScreens(["a", "What the phone saw:\nx"])) === JSON.stringify(["a"]));
+check("no step log = nothing", traceOf(null) === null && traceOf(["Statement List:"]) === null && walletScreens(null).length === 0);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

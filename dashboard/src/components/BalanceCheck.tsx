@@ -5,6 +5,7 @@ import { tk, when } from "@/lib/format";
 import { commandLine, isLive, POLL_MS, type PhoneCommand, type WalletName, walletLabel } from "@/lib/phoneCommands";
 import { nudgePhone } from "@/lib/wake";
 import { Button } from "@/components/ui/button";
+import { PhoneTrace } from "@/components/PhoneTrace";
 
 /** Asks this phone to read a wallet's balance (Nagad or bKash) through the provider's own USSD menu. Nothing is sent or spent: it only reads.
  *  The phone picks the request up on its next 30-second check and answers within about a minute and a half. */
@@ -18,7 +19,7 @@ export function BalanceCheck({ deviceId, provider = "nagad" }: { deviceId: strin
   const load = useCallback(async () => {
     const { data } = await sb
       .from("phone_commands")
-      .select("id,kind,provider,status,balance,error,created_at,finished_at")
+      .select("id,kind,provider,status,balance,error,created_at,finished_at,screens")
       .eq("device_id", deviceId)
       .eq("kind", "balance")
       .eq("provider", provider)
@@ -49,12 +50,15 @@ export function BalanceCheck({ deviceId, provider = "nagad" }: { deviceId: strin
 
   const line = commandLine(last, tk as (n: number) => string, when as (t: string) => string, label);
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <Button size="sm" variant="outline" onClick={() => void ask()} disabled={busy || isLive(last)}>
-        <Wallet aria-hidden /> {isLive(last) ? "Checking…" : `Check ${label} balance`}
-      </Button>
-      {line ? <span role="status" className="text-sm text-muted-foreground">{line}</span> : null}
-      {problem ? <span className="text-xs text-destructive">{problem}</span> : null}
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <Button size="sm" variant="outline" onClick={() => void ask()} disabled={busy || isLive(last)}>
+          <Wallet aria-hidden /> {isLive(last) ? "Checking…" : `Check ${label} balance`}
+        </Button>
+        {line ? <span role="status" className="text-sm text-muted-foreground">{line}</span> : null}
+        {problem ? <span className="text-xs text-destructive">{problem}</span> : null}
+      </div>
+      {last && (last.status === "failed" || last.status === "cancelled") ? <PhoneTrace screens={last.screens} /> : null}
     </div>
   );
 }

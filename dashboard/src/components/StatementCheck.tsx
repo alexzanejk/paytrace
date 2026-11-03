@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FileClock, Search } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
-import { isLive, POLL_MS, errorText, type PhoneCommand, type WalletName, walletLabel } from "@/lib/phoneCommands";
+import { isLive, POLL_MS, errorText, walletScreens, type PhoneCommand, type WalletName, walletLabel } from "@/lib/phoneCommands";
+import { PhoneTrace } from "@/components/PhoneTrace";
 import {
   readList, readDetail, unreadLines, matchRow, statementSummary, type RowMatch, type StatementRow,
 } from "@/lib/statement";
@@ -77,7 +78,8 @@ export function StatementCheck({ deviceId, provider = "bkash" }: { deviceId: str
     await load();
   }
 
-  const screens = last?.status === "done" ? last.screens : null;
+  // The wallet's own screens (the phone's step log, if any, is shown separately by PhoneTrace).
+  const screens = last?.status === "done" ? walletScreens(last.screens) : null;
   const rows: StatementRow[] = last?.item == null ? readList(screens) : [];
   const dayOf = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Dhaka" });
   const matches: RowMatch[] = rows.map((r) => matchRow(r, payments, dayOf));
@@ -95,11 +97,25 @@ export function StatementCheck({ deviceId, provider = "bkash" }: { deviceId: str
             {last.status === "queued" ? "Waiting for the phone to pick it up (it checks every 30 seconds)…"
               : last.status === "running" ? "The phone is reading the wallet's menu…"
               : last.status === "done" ? `${last.item == null ? "Statement" : `Entry ${last.item}`} read ${when(last.finished_at ?? last.created_at)}`
-              : `It did not work (${when(last.finished_at ?? last.created_at)}). ${errorText(last.error)}`}
+              : `It did not work (${when(last.finished_at ?? last.created_at)}). ${errorText(last.error, label)}`}
           </span>
         ) : null}
         {problem ? <span className="text-xs text-destructive">{problem}</span> : null}
       </div>
+
+      {last && (last.status === "failed" || last.status === "cancelled") ? <PhoneTrace screens={last.screens} /> : null}
+
+      {last?.status === "done" && screens && screens.length > 0 && ((last.item == null && rows.length === 0) || (last.item != null && !detail)) ? (
+        <div className="rounded-lg border bg-card p-3 text-sm">
+          <p className="mb-1 font-medium">The wallet answered, but PayTrace could not read it{last.item == null ? " as a statement list" : " as an entry"}.</p>
+          <p className="mb-2 text-xs text-muted-foreground">
+            This is what {label} said, word for word. Send it to support: it is how PayTrace learns this wallet's wording.
+          </p>
+          {screens.map((s, i) => (
+            <pre key={i} className="whitespace-pre-wrap break-words rounded bg-muted/50 p-2 text-xs">{s}</pre>
+          ))}
+        </div>
+      ) : null}
 
       {last?.status === "done" && last.item == null && rows.length > 0 ? (
         <div className="rounded-lg border bg-card p-3 text-sm">
