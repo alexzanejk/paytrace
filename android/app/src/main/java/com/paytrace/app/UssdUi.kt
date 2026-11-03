@@ -5,6 +5,7 @@ import android.content.Intent
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -42,24 +44,20 @@ import java.util.Locale
 fun UssdCard(settings: AppSettings, tick: Int) {
     val ctx = LocalContext.current
     var provider by remember { mutableStateOf(UssdProviders.NAGAD) }
-    val label = UssdProviders.label(provider)
-    var slot by remember(provider) { mutableStateOf(settings.ussdSlotOf(provider)) }
-    var pin by remember(provider) { mutableStateOf("") }
-    var pinSaved by remember(provider) { mutableStateOf(UssdSetup.pinSaved(ctx, provider)) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
 
     // Read again every time the screen refreshes (tick changes), so the ticks follow what Android says.
     val accessibility = UssdSetup.accessibilityOn(ctx)
     val call = UssdSetup.callPermission(ctx)
-    val last = remember(tick, provider) { parseLast(settings.ussdLastOf(provider), label) }
-    val steps = remember(tick, provider) { lastTrace(settings.ussdLastOf(provider)) }
+    val lasts = remember(tick) { UssdProviders.all.mapNotNull { p -> parseLast(settings.ussdLastOf(p), UssdProviders.label(p)) } }
+    val steps = remember(tick, provider) { lastTrace(settings.ussdLastOf(provider.ifEmpty { UssdProviders.NAGAD })) }
     var details by remember { mutableStateOf(false) }
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Balance check from the dashboard", style = MaterialTheme.typography.titleSmall)
             Text(
-                "When the owner asks on the dashboard, this phone asks the wallet for its balance and reads the answer. Choose the wallet, then set it up once, in this order:",
+                "When the owner asks on the dashboard, this phone asks the wallet for its balance and reads the answer. Set up each wallet once, in this order:",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -74,12 +72,6 @@ fun UssdCard(settings: AppSettings, tick: Int) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                UssdProviders.all.forEach { p ->
-                    FilterChip(selected = provider == p, onClick = { provider = p }, label = { Text(UssdProviders.label(p)) })
-                }
-            }
-
             if (UssdLogs.allowed(ctx)) Text(
                 "✓ This phone lets PayTrace read the wallet's answer straight from the phone, so no menu has to be opened.",
                 style = MaterialTheme.typography.bodySmall,
@@ -146,21 +138,21 @@ fun UssdCard(settings: AppSettings, tick: Int) {
                 ) { Text("Open PayTrace's app page") }
             }
 
-            Text((if (call) "✓ " else "1. ") + "Allow phone and SIM access (to send the check and pick the SIM)", style = MaterialTheme.typography.bodyMedium)
+            Text((if (call) "✓ " else "1. ") + "Allow phone access (needed to send the check and to see your SIMs)", style = MaterialTheme.typography.bodyMedium)
             if (!call) OutlinedButton(onClick = { permission.launch(arrayOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE)) }) { Text("Allow") }
 
-            Text("2. Which SIM has $label?", style = MaterialTheme.typography.bodyMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = slot == 0, onClick = { slot = 0; settings.setUssdSlotOf(provider, 0) }, label = { Text("SIM 1") })
-                FilterChip(selected = slot == 1, onClick = { slot = 1; settings.setUssdSlotOf(provider, 1) }, label = { Text("SIM 2") })
+            Text("2. Your wallets. Tap one to choose its SIM and save its PIN.", style = MaterialTheme.typography.bodyMedium)
+            val sims = remember(tick, call) { SimNames.list(ctx) }
+            UssdProviders.all.forEach { p ->
+                WalletRow(settings, p, sims, expanded = provider == p, tick = tick, onTap = { provider = if (provider == p) "" else p })
             }
             Text(
-                "PayTrace uses the SIM you choose here.",
+                "A PIN stays encrypted on this phone. It is never sent to the dashboard or anywhere else.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            Text("Way to ask the wallet", style = MaterialTheme.typography.bodyMedium)
+            Text("If checks do not work on this phone", style = MaterialTheme.typography.bodyMedium)
             var dialerWay by remember { mutableStateOf(settings.ussdDialerWay) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = !dialerWay, onClick = { dialerWay = false; settings.ussdDialerWay = false }, label = { Text("Direct") })
@@ -172,34 +164,12 @@ fun UssdCard(settings: AppSettings, tick: Int) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            Text((if (pinSaved) "✓ " else "3. ") + "$label PIN" + if (pinSaved) " saved on this phone" else "", style = MaterialTheme.typography.bodyMedium)
-            OutlinedTextField(
-                value = pin,
-                onValueChange = { v -> pin = v.filter { it.isDigit() }.take(8) },
-                label = { Text(if (pinSaved) "New PIN (to replace the saved one)" else "Type the PIN here") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    enabled = pin.length >= 4,
-                    onClick = { UssdSetup.pinStore(ctx, provider).set(pin); pin = ""; pinSaved = true },
-                ) { Text("Save PIN") }
-                if (pinSaved) OutlinedButton(onClick = { UssdSetup.pinStore(ctx, provider).set(""); pinSaved = false }) { Text("Remove PIN") }
-            }
-            Text(
-                "The PIN stays encrypted on this phone. It is never sent to the dashboard or anywhere else.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
 
             // "Let the dashboard check the balance" and "Let the dashboard send money from this phone" are NOT here any more
             // (owner 2026-11-03): the owner switches them on the dashboard's Phones page, so they cannot be changed by mistake
             // on a phone. This phone just follows (RemoteSwitches). The rules below stay as they were.
             Text(
-                "4. Whether the dashboard may check the balance or make this phone send money is switched on the dashboard (Phones page), not here.",
+                "Whether the dashboard may check the balance or make this phone send money is switched on the dashboard (Phones page), not here.",
                 style = MaterialTheme.typography.bodyMedium,
             )
             Text(
@@ -247,11 +217,67 @@ fun UssdCard(settings: AppSettings, tick: Int) {
             }
 
             // "Check balance now" is a dashboard button only (owner 2026-11-03). What the last dashboard check found is shown here.
-            if (last != null) Text(last, style = MaterialTheme.typography.bodyMedium)
+            lasts.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
             if (steps.isNotBlank()) {
-                TextButton(onClick = { details = !details }) { Text(if (details) "Hide what happened" else "Show what happened (send this if it fails)") }
+                TextButton(onClick = { details = !details }) { Text(if (details) "Hide what happened" else "Show what happened last (send this if it fails)") }
                 if (details) Text(steps, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
             }
+            }
+        }
+    }
+}
+
+/** One wallet in the list: a title with a plain status, and when tapped the two things to set, in words a partner understands:
+ *  which SIM the wallet's number is in (named by its carrier when Android will tell us) and the wallet PIN. */
+@Composable
+private fun WalletRow(settings: AppSettings, provider: String, sims: List<SimName>, expanded: Boolean, tick: Int, onTap: () -> Unit) {
+    val ctx = LocalContext.current
+    val label = UssdProviders.label(provider)
+    var slot by remember(provider, tick) { mutableStateOf(settings.ussdSlotOf(provider)) }
+    var pin by remember(provider) { mutableStateOf("") }
+    var pinSaved by remember(provider, tick) { mutableStateOf(UssdSetup.pinSaved(ctx, provider)) }
+    val simText = SimNames.label(slot, sims)
+    Card(Modifier.fillMaxWidth().clickable(onClick = onTap), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(label, style = MaterialTheme.typography.titleSmall)
+            Text(
+                if (pinSaved) "✓ Ready · $simText · PIN saved" else "Not ready · $simText · type its PIN",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (pinSaved) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+            )
+            if (expanded) {
+                Text("Which SIM is your $label number in?", style = MaterialTheme.typography.bodyMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(0, 1).forEach { n ->
+                        FilterChip(
+                            selected = slot == n,
+                            onClick = { slot = n; settings.setUssdSlotOf(provider, n) },
+                            label = { Text(SimNames.label(n, sims)) },
+                        )
+                    }
+                }
+                Text(
+                    "The SIM is the one with the $label agent or personal number. If you are not sure, look at Settings, SIM cards on the phone.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(if (pinSaved) "$label PIN is saved" else "Type the $label PIN", style = MaterialTheme.typography.bodyMedium)
+                OutlinedTextField(
+                    value = pin,
+                    onValueChange = { v -> pin = v.filter { it.isDigit() }.take(8) },
+                    label = { Text(if (pinSaved) "New PIN (to replace the saved one)" else "PIN") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        enabled = pin.length >= 4,
+                        onClick = { UssdSetup.pinStore(ctx, provider).set(pin); pin = ""; pinSaved = true },
+                    ) { Text("Save PIN") }
+                    if (pinSaved) OutlinedButton(onClick = { UssdSetup.pinStore(ctx, provider).set(""); pinSaved = false }) { Text("Remove PIN") }
+                }
             }
         }
     }
