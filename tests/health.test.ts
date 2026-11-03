@@ -55,5 +55,24 @@ check("sms permission off is a problem", healthProblem({ monitoring: true, sms_p
 check("permission outranks the switch", healthProblem({ monitoring: false, sms_permission: false }) === "sms_permission_off");
 check("unknown values are not treated as problems", healthProblem({}) === null && healthProblem(null) === null && healthProblem(undefined) === null);
 
+
+// The guarded switches (2026-11-03): kept as on/off, also as text, junk dropped, and the code itself is never a field.
+i = cleanInfo({ ussd_allowed: true, cashin_allowed: "false", admin_code_set: "true" }, at);
+check("guarded switches are kept, also as text", i.ussd_allowed === true && i.cashin_allowed === false && i.admin_code_set === true, i);
+i = cleanInfo({ wallets: [
+  { provider: "bkash", number: "01712345678", slot: 1, found: true },
+  { provider: "nagad", number: "+8801812345678", slot: 0, found: false },
+  { provider: "visa", number: "01912345678", slot: 0 },
+  { provider: "rocket", number: "01912345678", slot: 5 },
+  "junk",
+] }, at);
+check("wallet numbers are kept only when provider, 11-digit number and slot are sane", JSON.stringify(i.wallets) === JSON.stringify([{ provider: "bkash", number: "01712345678", slot: 1, found: true }]), i.wallets);
+i = cleanInfo({ wallets: "01712345678" }, at);
+check("wallets that are not a list are dropped", i.wallets === undefined);
+i = cleanInfo({ ussd_allowed: "maybe", cashin_allowed: 1, admin_code_set: null }, at);
+check("an unclear guarded switch is left unknown, not guessed", i.ussd_allowed === undefined && i.cashin_allowed === undefined && i.admin_code_set === undefined, i);
+i = cleanInfo({ admin_code_set: true, admin_code: "483920", admin_code_hash: "v1:x" } as Record<string, unknown>, at);
+check("an admin code or its hash sent by mistake is dropped", !("admin_code" in i) && !("admin_code_hash" in i), i);
+
 console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
+if (fail) process.exit(1);

@@ -84,6 +84,9 @@ export interface Device {
   show_earnings?: boolean;
   /** The wallet group new numbers on this phone start in (a partner's code, or main). */
   default_group?: string;
+  /** What the dashboard may ask this phone to do. Balance checks default to allowed, sending money to not allowed. */
+  allow_balance?: boolean;
+  allow_cashin?: boolean;
 }
 
 export interface EventRow {

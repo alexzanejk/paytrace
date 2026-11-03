@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.BatteryManager
 import androidx.core.content.ContextCompat
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -113,6 +114,20 @@ object Sender {
         o.put("notifications", Setup.notificationsOn(ctx))
         o.put("battery_exempt", Setup.batteryExempt(ctx))
         o.put("setup_complete", Setup.missing(ctx, s).isEmpty())
+        // The switches that must not be changed by whoever holds the phone, and whether they are protected. The dashboard
+        // shows them so a switch that was turned off, or a phone with no admin code, is seen rather than discovered.
+        o.put("ussd_allowed", s.ussdAllowed)
+        o.put("cashin_allowed", s.cashInAllowed)
+        o.put("admin_code_set", AdminLock.isSet(ctx))
+        // The wallet numbers saved on this phone and which SIM each was found in (-1 = not found, the chosen slot is sent too),
+        // so the dashboard can say which number is bKash, Nagad and Rocket on this phone (owner 2026-11-03).
+        val wallets = JSONArray()
+        for (prov in UssdProviders.all) {
+            val n = s.walletNumberOf(prov)
+            if (n.isEmpty()) continue
+            wallets.put(JSONObject().put("provider", prov).put("number", n).put("slot", s.ussdSlotOf(prov)).put("found", s.walletSimFoundOf(prov) >= 0))
+        }
+        if (wallets.length() > 0) o.put("wallets", wallets)
         o.put("push_ready", s.pushToken.isNotEmpty())
         o.put("wake_count", s.wakeCount)
         if (s.lastWakeAt > 0) o.put("last_wake_at", s.lastWakeAt)

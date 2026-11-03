@@ -6,6 +6,7 @@ import { PROVIDERS, type Device, type DeviceBalance, type DeviceWallet } from "@
 import { addDays, dayLabel, dhakaDay, groupSummary, summarize, type DayTotal } from "@/lib/period";
 import { openPaymentsWith } from "@/lib/filters";
 import { infoProblems } from "@/lib/deviceHealth";
+import { FLOW_KINDS, FLOW_WORDS, groupFlows, hasFlows, type FlowRow } from "@/lib/flows";
 import { useQuery } from "@/hooks/useQuery";
 import { wakePhone, WAKE_TEXT } from "@/lib/wake";
 import { Screen } from "@/components/Screen";
@@ -22,6 +23,7 @@ import { WALLETS } from "@/lib/phoneCommands";
 import { StatementSection } from "@/components/StatementSection";
 import { PhoneActions } from "@/components/PhoneActions";
 import { CashInSection } from "@/components/CashInSection";
+import { PhonePermissions } from "@/components/PhonePermissions";
 import { AppVersionCard, VersionChip } from "@/components/AppVersionCard";
 import { GROUP_CODE, GroupChoice } from "@/components/GroupChoice";
 import { CommissionCard } from "@/components/CommissionCard";
@@ -50,6 +52,8 @@ export function Devices() {
         await sb.from("devices").select("*").neq("status", "revoked").order("created_at", { ascending: true }).limit(200),
       ) as Device[];
       const totals = must(await sb.from("device_day_totals").select("*").eq("day", day)) as DayTotal[];
+      // Cash Out / Cash In / B2B per wallet for the same day (view device_day_flows, migration 048).
+      const flows = must(await sb.from("device_day_flows").select("*").eq("day", day)) as FlowRow[];
       const balances = must(await sb.from("device_balances").select("*")) as DeviceBalance[];
       const wallets = must(await sb.from("device_wallets").select("*").order("created_at", { ascending: true })) as DeviceWallet[];
       // Partner commission (added later; reading these never changes anything above).
@@ -59,7 +63,7 @@ export function Devices() {
       // The newest app version (update system). A missing table never stops the page.
       const rel = await sb.from("app_release").select("version_code,notes").limit(1);
       const release = (rel.data?.[0] ?? null) as { version_code: number; notes: string | null } | null;
-      return { devices, totals, balances, wallets, rates, commission, groups, release };
+      return { devices, totals, flows, balances, wallets, rates, commission, groups, release };
     },
     [day],
     { refreshMs: 10000 },
@@ -234,6 +238,7 @@ export function Devices() {
               day={day}
               sum={perDevice.get(d.id)}
               totals={totals.filter((t) => t.device_id === d.id)}
+              flows={(data?.flows ?? []).filter((f) => f.device_id === d.id)}
               balances={(data?.balances ?? []).filter((b) => b.device_id === d.id)}
               wallets={(data?.wallets ?? []).filter((w) => w.device_id === d.id)}
               rates={(data?.rates ?? []).filter((r) => r.device_id === d.id)}
@@ -256,6 +261,7 @@ function DeviceCard({
   day,
   sum,
   totals,
+  flows,
   balances,
   wallets,
   rates,
@@ -270,6 +276,7 @@ function DeviceCard({
   day: string;
   sum: ReturnType<typeof summarize> | undefined;
   totals: DayTotal[];
+  flows: FlowRow[];
   balances: DeviceBalance[];
   wallets: DeviceWallet[];
   rates: RateRow[];
@@ -287,6 +294,8 @@ function DeviceCard({
   const [wakeNote, setWakeNote] = useState("");
   const s = sum ?? summarize([]);
   const byProvider = groupSummary(totals, (r) => r.provider);
+  const flowsBy = groupFlows(flows, (r) => r.provider);
+  const shown = PROVIDERS.filter((p) => byProvider.has(p) || hasFlows(flowsBy.get(p)) || balances.some((b) => b.provider === p));
   const problems = infoProblems(d.info).length;
 
   /** Sends one wake-up push to this phone right now. If it arrives, the phone is back within a minute or two. */
@@ -355,27 +364,39 @@ function DeviceCard({
         </div>
       </div>
 
+      <p className="text-xs text-muted-foreground">
+        Money through each wallet on {dayLabel(day)} (12:00 AM to 11:59 PM Bangladesh time). Received and Cash Out came IN; Cash In and B2B went OUT.
+        Hover a heading for what is counted.
+      </p>
       <Table className="[&_td]:px-2 [&_th]:px-2 sm:[&_td]:px-3 sm:[&_th]:px-3">
         <TableHeader>
           <TableRow>
-            <TableHead>Provider</TableHead>
-            <TableHead className="text-right">Received</TableHead>
-            <TableHead className="text-right">Cash Out</TableHead>
+            <TableHead>Gateway</TableHead>
+            <TableHead className="text-right" title="Payments and Send Money that came in (from the SMS).">Received</TableHead>
+            {FLOW_KINDS.map((k) => (
+              <TableHead key={k} className="text-right" title={FLOW_WORDS[k].meaning}>{FLOW_WORDS[k].label}</TableHead>
+            ))}
             <TableHead className="text-right">Last balance</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {PROVIDERS.filter((p) => byProvider.has(p) || balances.some((b) => b.provider === p)).length === 0 ? (
-            <EmptyRow cols={4} text={`No transactions yet for ${dayLabel(day)}.`} />
+          {shown.length === 0 ? (
+            <EmptyRow cols={6} text={`No transactions yet for ${dayLabel(day)}.`} />
           ) : (
-            PROVIDERS.filter((p) => byProvider.has(p) || balances.some((b) => b.provider === p)).map((p) => {
+            shown.map((p) => {
               const ps = byProvider.get(p);
+              const fl = flowsBy.get(p);
               const bal = balances.find((b) => b.provider === p);
               return (
                 <TableRow key={p}>
                   <TableCell><ProviderChip provider={p} /></TableCell>
                   <TableCell className="text-right tabular">{ps && ps.received.n ? tk(ps.received.amount) : "–"}</TableCell>
-                  <TableCell className="text-right tabular">{ps && ps.cashOut.n ? tk(ps.cashOut.amount) : "–"}</TableCell>
+                  {FLOW_KINDS.map((k) => (
+                    <TableCell key={k} className="text-right">
+                      <span className="tabular">{fl && fl[k].n ? tk(fl[k].amount) : "–"}</span>
+                      {fl && fl[k].n ? <span className="block text-xs text-muted-foreground">{fl[k].n}</span> : null}
+                    </TableCell>
+                  ))}
                   <TableCell className="text-right">
                     <span className="tabular">{bal ? tk(bal.balance) : "–"}</span>
                     {bal ? <span className="block text-xs text-muted-foreground">as of {when(bal.at)}</span> : null}
@@ -415,9 +436,10 @@ function DeviceCard({
       {d.status === "approved" ? (
         <div className="flex flex-col gap-2">
           <PhoneActions deviceId={d.id} />
-          {WALLETS.map((w) => <BalanceCheck key={w} deviceId={d.id} provider={w} />)}
-          <CashInSection deviceId={d.id} />
-          <StatementSection deviceId={d.id} />
+          <PhonePermissions device={d} onChanged={onChanged} />
+          {d.allow_balance !== false ? WALLETS.map((w) => <BalanceCheck key={w} deviceId={d.id} provider={w} />) : null}
+          {d.allow_cashin === true ? <CashInSection deviceId={d.id} /> : null}
+          {d.allow_balance !== false ? <StatementSection deviceId={d.id} /> : null}
         </div>
       ) : null}
       {showHealth ? <DeviceDetails info={d.info} /> : null}

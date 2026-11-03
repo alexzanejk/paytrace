@@ -310,6 +310,13 @@ class AppSettings(ctx: Context) {
         if (k != null) p.edit().putString("ussd_last$k", v).apply() else ussdLast = v
     }
 
+    /** The wallet's own number, typed on the phone (owner 2026-11-03), and the SIM slot the app FOUND it in (-1 = not found
+     *  yet; the chosen slot is still ussdSlotOf). Numbers are not secret: customers are shown them on the pay page. */
+    fun walletNumberOf(provider: String): String = p.getString("wallet_number_$provider", "") ?: ""
+    fun setWalletNumberOf(provider: String, v: String) { p.edit().putString("wallet_number_$provider", v.filter { it.isDigit() }.take(13)).apply() }
+    fun walletSimFoundOf(provider: String): Int = p.getInt("wallet_sim_found_$provider", -1)
+    fun setWalletSimFoundOf(provider: String, v: Int) { p.edit().putInt("wallet_sim_found_$provider", v).apply() }
+
     /** Use the dialer way (Accessibility presses the dialer) instead of Android's direct USSD request. For phones where the direct
      *  request fails (the Vivo V2120 answers failure code -1 or "try later" while the same code dialed by hand works). */
     var ussdDialerWay: Boolean

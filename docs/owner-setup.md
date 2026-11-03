@@ -338,6 +338,35 @@ Deposit orders use Admin Hub's own approval words: **Waiting**, **Paid**, **Held
 
 Admin Hub has an English / 中文 switch; PayTrace is English only for now (your choice on 2026-11-03). A matching 中文 switch can be added later.
 
+## Balance checks and sending money are switched on the dashboard (2026-11-03)
+
+On the dashboard's **Phones** page each approved phone has a box called **What the dashboard may do with this phone**:
+
+- **Check the balance and read the statement**: ON by default. It only reads.
+- **Send money from this phone**: OFF by default. It also needs a daily limit above zero on the Jobs page.
+
+The phone follows the switch within about 30 seconds and the box tells you when it has. The **Check balance** buttons are on the same page. These switches no longer exist in the phone app, so nobody can change them by mistake there. Phones need the new app build to follow the switch; until then they keep their old on-phone switches.
+
+## Wallet numbers and SIMs in the phone app (2026-11-03)
+
+In the app's Settings, under "Your wallets", tap bKash, Nagad or Rocket, type that wallet's number and press **Save and find its SIM**. The app asks the phone which SIM has that number (first Android's own record, then the operator's "my number" code on each SIM) and chooses SIM 1 or SIM 2 by itself. If it cannot tell, it says so and you pick the SIM yourself. The dashboard's Phones page then shows, under Phone health, which number is bKash, Nagad and Rocket on each phone and which SIM it is in.
+
+## Cash Out, Cash In and B2B per wallet (2026-11-03)
+
+Each phone's card on the Phones page has a table per wallet for the chosen day (12:00 AM to 11:59 PM Bangladesh time): Received and Cash Out came in; Cash In and B2B went out. Hover a heading to see what is counted. Two honest limits: a cash-in sends no SMS, so only cash-ins PayTrace knows about are counted (told from the dashboard, or reported by a partner and verified); and only Rocket's B2B message is recognised so far.
+
+## Lock the phone app's Settings with an admin code (2026-11-03)
+
+The phone app's Settings tab holds the saved wallet PINs, the SIM choice and the keep-alive options (the balance and send-money switches are on the dashboard). An admin code stops anyone from changing them by mistake.
+
+1. On each payment phone open PayTrace, go to **Settings**, and find the **Admin code** card at the top. Choose a code of 6 to 12 digits and type it twice. Easy codes such as 111111 or 123456 are refused.
+2. From then on Settings is read-only. A short summary shows what is ON or OFF. To change anything, type the code under **Unlock**. It stays open for 5 minutes, and closes at once when you leave the Settings tab.
+3. After five wrong tries the app makes you wait 5 minutes, and the wait doubles with every further five wrong tries (at most 6 hours).
+4. Keep the code in a password manager. **It is not the wallet PIN** and must be different from it.
+5. If you forget the code: Android settings > Apps > PayTrace > Storage > **Clear data**, then pair the phone again and re-enter its wallet PINs. There is no remote reset.
+6. The lock does not stop someone from uninstalling the app or clearing its data. It only protects against accidental changes.
+7. The dashboard's **Phones** page shows each phone's state: "Settings locked", "Settings not protected: set an admin code in the app", "Balance checks OFF on the phone" and "Sending money ON". A phone on an older app build shows none of these.
+
 ## Step 9: App updates inside the app
 
 After this is set up, every new build is published automatically, and each phone shows **"Update available"** at the top of the app. The partner taps **Update now**,

@@ -219,12 +219,12 @@ async function handle(req: Request): Promise<Response> {
   if (req.method === "POST" && body.action === "test_wake") return await testWake(authHeader, String(body.device_id ?? ""));
   const deviceKey = authHeader.match(/^Device\s+(\S{32,200})$/i)?.[1];
   let deviceId: string | null = null;
-  let device: { id: string; name: string; pair_code: string; info: DeviceInfo | null } | null = null;
+  let device: { id: string; name: string; pair_code: string; info: DeviceInfo | null; allow_balance: boolean; allow_cashin: boolean } | null = null;
   if (deviceKey) {
     const hash = await sha256hex(deviceKey);
     const { data: dev } = await db
       .from("devices")
-      .select("id,status,name,pair_code,info,silent_alerted_at")
+      .select("id,status,name,pair_code,info,silent_alerted_at,allow_balance,allow_cashin")
       .eq("token_hash", hash)
       .maybeSingle();
     if (!dev) return json({ success: false, message: "this phone is not paired", device_status: "unknown" }, 401);
@@ -233,7 +233,7 @@ async function handle(req: Request): Promise<Response> {
     }
     if (dev.status !== "approved") return json({ success: false, message: "this phone was removed in the dashboard", device_status: dev.status }, 403);
     deviceId = dev.id;
-    device = { id: dev.id, name: dev.name, pair_code: dev.pair_code, info: dev.info };
+    device = { id: dev.id, name: dev.name, pair_code: dev.pair_code, info: dev.info, allow_balance: dev.allow_balance !== false, allow_cashin: dev.allow_cashin === true };
     // Any word from the phone counts as proof of life.
     const wasSilent = !!dev.silent_alerted_at;
     await db
@@ -298,6 +298,8 @@ async function handle(req: Request): Promise<Response> {
       success: true, message: "heartbeat ok", device_status: "approved",
       ...(brief ? { jobs: brief } : {}),
       ...(command ? { command } : {}),
+      // What the owner has allowed this phone to do, set on the dashboard. The phone follows it; sending money is off unless switched on.
+      allow: { balance: device.allow_balance, cashin: device.allow_cashin },
     });
   }
 

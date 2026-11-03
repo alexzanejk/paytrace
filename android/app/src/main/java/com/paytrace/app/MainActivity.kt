@@ -50,6 +50,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -360,11 +361,16 @@ fun SettingsScreen(settings: AppSettings, tick: Int, onUpdateChecked: () -> Unit
     var msg by remember { mutableStateOf("") }
     var advanced by remember { mutableStateOf(false) }
     var strong by remember { mutableStateOf(settings.strongAlarm) }
+    // Leaving the Settings tab locks the important settings again.
+    DisposableEffect(Unit) { onDispose { AdminLock.lock() } }
+    val editable = AdminLock.canEdit(ctx)
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
+        AdminLockCard(tick)
+
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("This phone", style = MaterialTheme.typography.titleSmall)
@@ -396,7 +402,7 @@ fun SettingsScreen(settings: AppSettings, tick: Int, onUpdateChecked: () -> Unit
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Switch(checked = strong, onCheckedChange = {
+                Switch(checked = strong, enabled = editable, onCheckedChange = {
                     strong = it
                     settings.strongAlarm = it
                     Keepalive.schedule(ctx)
@@ -453,8 +459,10 @@ fun SettingsScreen(settings: AppSettings, tick: Int, onUpdateChecked: () -> Unit
             ctx.startActivity(Intent(AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
         }) { Text("Allow running in background (battery)") }
 
-        TextButton(onClick = { advanced = !advanced }) { Text(if (advanced) "Hide advanced" else "Advanced") }
-        if (advanced) {
+        TextButton(enabled = editable, onClick = { advanced = !advanced }) {
+            Text(if (!editable) "Advanced (locked)" else if (advanced) "Hide advanced" else "Advanced")
+        }
+        if (advanced && editable) {
             OutlinedTextField(
                 value = url, onValueChange = { url = it }, label = { Text("Server URL") },
                 singleLine = true, modifier = Modifier.fillMaxWidth(),

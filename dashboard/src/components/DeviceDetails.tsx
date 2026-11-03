@@ -1,10 +1,12 @@
-import { BatteryMedium, LifeBuoy, TriangleAlert } from "lucide-react";
-import { agoText, infoProblems, minutesSince, type DeviceInfo } from "@/lib/deviceHealth";
+import { BatteryMedium, LifeBuoy, Lock, TriangleAlert } from "lucide-react";
+import { agoText, infoProblems, minutesSince, settingsLines, walletLines, type DeviceInfo } from "@/lib/deviceHealth";
 
 /** What the phone reported about itself: battery, app version, and anything stopping it capturing payments. */
 export function DeviceDetails({ info }: { info: DeviceInfo | null | undefined }) {
   if (!info || !info.reported_at) return <span className="text-xs text-muted-foreground">No report yet</span>;
   const problems = infoProblems(info);
+  const settings = settingsLines(info);
+  const wallets = walletLines(info);
   return (
     <div className="flex max-w-xs flex-col gap-1 whitespace-normal text-xs">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
@@ -37,6 +39,29 @@ export function DeviceDetails({ info }: { info: DeviceInfo | null | undefined })
           <span title="Ask the partner to run the screen-off test in the app (Settings, then Keep this phone running)">Screen-off test: not done</span>
         )}
       </div>
+      {settings.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {settings.map((l) => (
+            <span
+              key={l.text}
+              title={l.hint}
+              className={
+                l.tone === "ok" ? "inline-flex items-center gap-1 text-status-ok"
+                : l.tone === "warn" ? "inline-flex items-center gap-1 text-status-warn"
+                : "text-muted-foreground"
+              }
+            >
+              {l.text.startsWith("Settings") ? <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden /> : null}
+              {l.text}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {wallets.length > 0 ? (
+        <div className="flex flex-col gap-0.5 text-muted-foreground" title="The wallet numbers saved in the app on this phone, and which SIM each is in">
+          {wallets.map((w) => <span key={w}>{w}</span>)}
+        </div>
+      ) : null}
       {info.recovered ? (
         <span className="inline-flex items-start gap-1 text-status-ok">
           <LifeBuoy className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
