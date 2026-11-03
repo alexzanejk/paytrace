@@ -137,10 +137,14 @@ class CashInTest {
 
     @Test fun aCommandThePhoneWillNotActOnIsRefusedBeforeAnything() {
         // The phone checks the limits again, so a command that got past the dashboard still cannot move money.
-        assertTrue(!CashInOrder("nagad", "01706630756", 10_001.0).sane())
+        assertTrue(!CashInOrder("nagad", "01706630756", 50_001.0).sane())
+        assertTrue(!CashInOrder("nagad", "01706630756", 99.0).sane())
+        assertTrue(CashInOrder("nagad", "01706630756", 100.0).sane())
+        assertTrue(CashInOrder("nagad", "01706630756", 50_000.0).sane())
         assertTrue(!CashInOrder("nagad", "0170663075", 100.0).sane())
         assertTrue(!CashInOrder("nagad", "01706630756", 0.0).sane())
         assertTrue(CashInOrder("nagad", "01706630756", 10_000.0).sane())
+        assertTrue(CashInOrder("nagad", "01706630756", 1234.5).sane())
         assertEquals(
             UssdAction.Fail("bad_cash_in"),
             CashInFlow(CashInOrder("nagad", "01706630756", 99_999.0), pin).onScreen(mainMenu),

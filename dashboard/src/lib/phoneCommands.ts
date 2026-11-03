@@ -23,9 +23,30 @@ export type WalletName = "nagad" | "bkash" | "rocket";
 export const WALLETS: WalletName[] = ["nagad", "bkash", "rocket"];
 export const walletLabel = (w: WalletName): string => (w === "bkash" ? "bKash" : w === "rocket" ? "Rocket" : "Nagad");
 
-/** The amounts the dashboard offers for a cash-in. The database refuses anything over MOST_PER_CASH_IN whatever is sent. */
-export const CASH_IN_AMOUNTS = [3000, 4000, 5000, 6000, 8000, 10000];
-export const MOST_PER_CASH_IN = 10000;
+/** Quick picks for a cash-in; any exact amount within the bounds can be typed too (owner 2026-11-04). The database refuses
+ *  anything outside LEAST..MOST whatever is sent, and so does the phone. */
+export const CASH_IN_AMOUNTS = [1000, 2000, 5000, 10000, 20000, 50000];
+export const LEAST_PER_CASH_IN = 100;
+export const MOST_PER_CASH_IN = 50000;
+
+/** Reads a typed amount ("5,000", "৫০০০", "2500.50"): a number within the bounds with at most 2 decimals, or null. */
+export function parseCashInAmount(raw: string): number | null {
+  const bn = "০১২৩৪৫৬৭৮৯";
+  const ascii = raw.replace(/[০-৯]/g, (d) => String(bn.indexOf(d))).replace(/[,\s]/g, "");
+  if (!/^[0-9]+(\.[0-9]{1,2})?$/.test(ascii)) return null;
+  const n = Number(ascii);
+  return Number.isFinite(n) && n >= LEAST_PER_CASH_IN && n <= MOST_PER_CASH_IN ? n : null;
+}
+
+/** One of the owner's saved cash-in numbers (the Jobs page keeps them). Money may only be sent to one of these. */
+export interface SavedNumber {
+  id: string;
+  provider: string;
+  number: string;
+  label: string | null;
+  enabled: boolean;
+}
+export const numberLabel = (n: SavedNumber): string => (n.label ? `${n.label} · ${n.number}` : n.number);
 
 /** A Bangladesh mobile number, the only kind money may be sent to. */
 export const looksLikeANumber = (n: string): boolean => /^01[0-9]{9}$/.test(n.trim());
