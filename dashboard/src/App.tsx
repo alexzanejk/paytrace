@@ -17,6 +17,7 @@ import { Jobs } from "@/pages/Jobs";
 import { Logs } from "@/pages/Logs";
 import { ApiAccess } from "@/pages/ApiAccess";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { Help } from "@/pages/Help";
 
 type Phase = { name: "loading" } | { name: "login"; note?: string } | { name: "mfa" } | { name: "ready" };
 
@@ -82,6 +83,7 @@ export default function App() {
       {tab === "logs" && <Logs />}
       {tab === "api" && <ApiAccess />}
       {tab === "settings" && <SettingsPage onSaved={setSettings} />}
+      {tab === "help" && <Help />}
     </AppShell>
   );
 }

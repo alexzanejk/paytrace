@@ -314,6 +314,30 @@ the buttons says what happened.
 **What no button can ever do, because Android gives no app the power:** switch a phone on from off, reboot it, or
 turn Wi-Fi / mobile data / flight mode on or off. A phone that is off needs a hand on its power button.
 
+## Reading the dashboard: the words, and how they match Admin Hub (2026-11-03)
+
+PayTrace is Admin Hub's payment automation, so the two now use the same words. The three money pages tell one story:
+
+1. **Deposit orders** — money that is *expected*. A player pressed Deposit on one of your sites (or you typed an order in).
+2. **Transactions** — the SMS that *arrived* in a gateway wallet (bKash, Nagad, Rocket, Upay). This is the money that is really there.
+3. **Review** — an SMS arrived but matched no order exactly, so a person decides: **Credit to order** or **Ignore**. While it waits here, Admin Hub shows the player's deposit as **HELD FOR REVIEW**.
+
+Each page opens with a short "what is this page" box (close it with the X; it stays on the **Help** page). Hover any status to read what it means.
+
+| On Transactions | Means | Admin Hub shows |
+|---|---|---|
+| Credited to order | It paid a deposit order | VERIFIED |
+| Received, no order | Money came, nothing was waiting. Not a problem | VERIFIED |
+| Agent cash-out | A player paid through your agent number | VERIFIED |
+| Held for review | Needs your decision on the Review page | HELD FOR REVIEW |
+| Ignored | You decided it pays nothing | UNVERIFIED |
+
+Deposit orders use Admin Hub's own approval words: **Waiting**, **Paid**, **Held for review**, **Expired**, **Cancelled**. Expired ones (most website deposits are abandoned) are hidden by default; the chips at the top show the count of each and filter with one click.
+
+**What PayTrace never does:** approve or reject a player's deposit. That is Admin Hub's decision. PayTrace only says whether the money arrived.
+
+Admin Hub has an English / 中文 switch; PayTrace is English only for now (your choice on 2026-11-03). A matching 中文 switch can be added later.
+
 ## Step 9: App updates inside the app
 
 After this is set up, every new build is published automatically, and each phone shows **"Update available"** at the top of the app. The partner taps **Update now**,
