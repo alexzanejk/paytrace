@@ -3,6 +3,10 @@ import { ChevronDown, ChevronRight, Download, Search } from "lucide-react";
 import { must, sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { PROVIDERS, PROVIDER_LABEL, TYPE_LABEL, type Payment } from "@/lib/types";
+import { PAGE_INTRO, PAYMENT_STATUS, PAYMENT_TYPE, hubView } from "@/lib/words";
+import { openHelp } from "@/lib/nav";
+import { PageIntro } from "@/components/PageIntro";
+import { ArrowDownLeft, HelpCircle } from "lucide-react";
 import { COUNTED_STATUSES, rangeBounds, rangeLabel, periodRange, summarize, type DayTotal } from "@/lib/period";
 import { takePaymentsPreset } from "@/lib/filters";
 import { downloadText, toCsv } from "@/lib/csv";
@@ -22,6 +26,7 @@ import { EmptyRow } from "@/components/Empty";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const STATUSES = ["matched", "unmatched", "review", "tracked_only", "ignored"];
@@ -117,7 +122,7 @@ export function Payments() {
     <Screen loading={loading || devices.loading} error={error ?? devices.error} hasData={!!data}>
       <PageHeader
         title="Transactions"
-        description={`Every payment message the phones have sent. Showing ${rangeLabel(range)} (days run 12:00 AM to 11:59 PM Bangladesh time).`}
+        description={`Showing ${rangeLabel(range)} (days run 12:00 AM to 11:59 PM Bangladesh time).`}
         actions={
           <Button variant="outline" size="sm" onClick={exportCsv} disabled={rows.length === 0}>
             <Download aria-hidden /> Download CSV
@@ -125,11 +130,13 @@ export function Payments() {
         }
       />
 
+      <PageIntro id="payments" intro={PAGE_INTRO.payments} onHelp={openHelp} />
+
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <PeriodPicker value={period} onChange={setPeriod} />
         <FilterSelect label="All phones" value={device} onChange={setDevice} options={phoneOptions} className="w-[calc(50%-0.25rem)] sm:w-48" />
         <FilterSelect
-          label="All providers"
+          label="All gateways"
           value={provider}
           onChange={setProvider}
           options={PROVIDERS.map((p) => ({ value: p, label: PROVIDER_LABEL[p] }))}
@@ -144,7 +151,7 @@ export function Payments() {
           label="All statuses"
           value={status}
           onChange={setStatus}
-          options={STATUSES.map((s) => ({ value: s, label: s.replace("_", " ") }))}
+          options={STATUSES.map((s) => ({ value: s, label: PAYMENT_STATUS[s]?.label ?? s }))}
         />
         <div className="relative w-full sm:w-64">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
@@ -153,10 +160,10 @@ export function Payments() {
       </div>
 
       <div className={`mb-5 ${STAT_GRID}`}>
-        <StatCard label="Received" value={tk(sum.received.amount)} sub={`${sum.received.n} payments`} />
-        <StatCard label="Agent Cash Out" value={tk(sum.cashOut.amount)} sub={`${sum.cashOut.n} receipts`} />
-        <StatCard label="Commission" value={tk(sum.commission)} sub="from these receipts" />
-        <StatCard label="Transactions" value={String(nTx)} sub={status === ALL ? "held for review not counted" : `status: ${status.replace("_", " ")}`} />
+        <StatCard label="Payments in" value={tk(sum.received.amount)} sub={`${sum.received.n} payments to your numbers`} />
+        <StatCard label="Customer cash-outs" value={tk(sum.cashOut.amount)} sub={`${sum.cashOut.n} through your agent numbers`} />
+        <StatCard label="Commission earned" value={tk(sum.commission)} sub="the wallet's commission on those cash-outs" />
+        <StatCard label="SMS counted" value={String(nTx)} sub={status === ALL ? "\"Needs a decision\" and Ignored are not counted" : `only: ${PAYMENT_STATUS[status]?.label ?? status}`} />
       </div>
 
       {/* Wide screens: a table. Phones: one card per transaction. */}
@@ -167,7 +174,7 @@ export function Payments() {
               <TableHead className="w-8" />
               <TableHead>Time (BD)</TableHead>
               <TableHead>Phone</TableHead>
-              <TableHead>Provider</TableHead>
+              <TableHead>Gateway</TableHead>
               <TableHead>TrxID</TableHead>
               <TableHead className="text-right">Amount</TableHead>
               <TableHead className="hidden text-right 2xl:table-cell">Balance after</TableHead>
@@ -188,7 +195,7 @@ export function Payments() {
                       <TableCell className="max-w-44"><DeviceChip id={p.device_id} name={devices.nameOf(p.device_id)} /></TableCell>
                       <TableCell>
                         <ProviderChip provider={p.provider} />
-                        <span className="block text-xs text-muted-foreground">{TYPE_LABEL[p.txn_type] ?? p.txn_type}</span>
+                        <TypeLine type={p.txn_type} />
                       </TableCell>
                       <TableCell className="font-mono text-xs">{p.trx_id}</TableCell>
                       <TableCell className="text-right font-medium tabular">{tk(p.amount)}</TableCell>
@@ -217,7 +224,7 @@ export function Payments() {
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <ProviderChip provider={p.provider} className="font-medium" />
-                  <p className="text-xs text-muted-foreground">{TYPE_LABEL[p.txn_type] ?? p.txn_type}</p>
+                  <TypeLine type={p.txn_type} />
                 </div>
                 <p className="text-lg font-semibold tabular">{tk(p.amount)}</p>
               </div>
@@ -262,7 +269,9 @@ function Details({ p }: { p: Payment }) {
         <dd>{p.counterparty ?? "–"}</dd>
         <dt className="text-muted-foreground">Arrived</dt>
         <dd>{when(p.received_at)}</dd>
-        <dt className="text-muted-foreground">Balance check</dt>
+        <dt className="text-muted-foreground" title="What the PayTrace column in Admin Hub's Transactions Stream shows for this TrxID">Admin Hub sees</dt>
+        <dd><HubBadge status={p.status} /></dd>
+        <dt className="text-muted-foreground" title={GENUINE_HINT}>Looks genuine? <HelpCircle className="inline h-3 w-3 align-[-1px]" aria-hidden /></dt>
         <dd><ChainBadge status={p.chain_status} delta={p.balance_delta} /></dd>
         {p.review_reason ? (
           <>
@@ -273,5 +282,26 @@ function Details({ p }: { p: Payment }) {
       </dl>
       <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-3 text-xs">{p.raw_message}</pre>
     </div>
+  );
+}
+
+const GENUINE_HINT =
+  "Every real SMS prints the wallet's balance, so real messages form a chain a forger cannot predict. \"Yes\" means this one fits the chain. \"Can't tell\" usually means a cash-in or send-money happened in between (those send no SMS).";
+
+/** The word Admin Hub's own PayTrace column shows for this SMS, so the team sees the same word in both apps. */
+function HubBadge({ status }: { status: string }) {
+  const w = hubView(status);
+  return <Badge tone={w.tone} title={w.meaning} className="font-mono text-[10px] font-semibold">{w.label}</Badge>;
+}
+
+/** What kind of SMS, with an arrow for money coming in. All kinds here are money INTO a wallet; the arrow is there so
+ *  the team never has to wonder which way it went. */
+function TypeLine({ type }: { type: string }) {
+  const w = PAYMENT_TYPE[type];
+  return (
+    <span className="flex items-center gap-1 text-xs text-muted-foreground" title={w?.meaning}>
+      {w?.direction === "in" ? <ArrowDownLeft className="h-3 w-3 text-status-ok" aria-label="money in" /> : null}
+      {w?.label ?? TYPE_LABEL[type] ?? type}
+    </span>
   );
 }

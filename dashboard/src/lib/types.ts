@@ -1,4 +1,5 @@
 import type { DeviceInfo } from "@/lib/deviceHealth";
+import { PAYMENT_TYPE } from "@/lib/words";
 
 export const PROVIDERS = ["bkash", "nagad", "rocket", "upay"] as const;
 export type Provider = (typeof PROVIDERS)[number];
@@ -12,12 +13,8 @@ export const PROVIDER_LABEL: Record<string, string> = {
   usdt_trc20: "USDT (TRC20)",
 };
 
-export const TYPE_LABEL: Record<string, string> = {
-  payment_received: "Payment received",
-  send_money_received: "Send Money received",
-  cash_out: "Agent Cash Out",
-  unknown: "Unknown",
-};
+/** Plain words for each kind of SMS, from lib/words.ts (one place for every page). */
+export const TYPE_LABEL: Record<string, string> = Object.fromEntries(Object.entries(PAYMENT_TYPE).map(([k, v]) => [k, v.label]));
 
 export interface Payment {
   id: string;

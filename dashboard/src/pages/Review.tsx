@@ -3,6 +3,8 @@ import { must, sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { reviewReasonText } from "@/lib/reasons";
 import { type Order, type Payment } from "@/lib/types";
+import { PAGE_INTRO, PAYMENT_STATUS } from "@/lib/words";
+import { openHelp } from "@/lib/nav";
 import { useDevices } from "@/hooks/useDevices";
 import { DeviceChip } from "@/components/DeviceChip";
 import { ProviderChip } from "@/components/ProviderChip";
@@ -10,15 +12,24 @@ import { useQuery } from "@/hooks/useQuery";
 import { Screen } from "@/components/Screen";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PageHeader } from "@/components/PageHeader";
+import { PageIntro } from "@/components/PageIntro";
 import { CircleCheck } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Confirm } from "@/components/Confirm";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+/** Needs a decision. Two groups, kept apart on purpose (owner 2026-11-03: the team could not tell what was a problem):
+ *
+ *  1. "Needs a decision" (status review): arrived, did not match, a PERSON must credit or ignore it.
+ *  2. "Received, no order" (status unmatched): arrived, nothing was waiting for it. NOT a problem. Listed below only so it
+ *     can be matched by hand if an order turns up later.
+ *
+ *  Everything a card shows is worded for someone who has never seen the database. */
 export function Review() {
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState<Record<string, string>>({});
+  const [showNoOrder, setShowNoOrder] = useState(false);
   const devices = useDevices();
 
   const { data, error, loading, refresh } = useQuery(
@@ -54,106 +65,134 @@ export function Review() {
     }
   }
 
-  const payments = data?.payments ?? [];
+  const all = data?.payments ?? [];
   const orders = data?.orders ?? [];
+  const decide = all.filter((p) => p.status === "review");
+  const noOrder = all.filter((p) => p.status === "unmatched");
+
+  const card = (p: Payment) => {
+    const choice = picked[p.id] ?? "";
+    const order = orders.find((o) => o.id === choice);
+    // A held Cash Out receipt can only pay a deposit that asked for Cash Out (the database refuses the rest).
+    const choices = p.txn_type === "cash_out" ? orders.filter((o) => o.wallet_method === "cash_out") : orders;
+    const why = reviewReasonText(p.review_reason);
+    return (
+      <Card key={p.id} className="flex flex-col gap-3 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <ProviderChip provider={p.provider} className="font-medium" />
+            <p className="mt-0.5 text-xs text-muted-foreground">{when(p.occurred_at ?? p.received_at)}</p>
+          </div>
+          <p className="whitespace-nowrap text-xl font-semibold tabular">{tk(p.amount)}</p>
+        </div>
+
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
+          <dt className="text-muted-foreground">Receipt no. (TrxID)</dt>
+          <dd className="font-mono text-xs leading-5">{p.trx_id}</dd>
+          <dt className="text-muted-foreground">Arrived on phone</dt>
+          <dd className="min-w-0"><DeviceChip id={p.device_id} name={devices.nameOf(p.device_id)} /></dd>
+          <dt className="text-muted-foreground">Sent from</dt>
+          <dd>{p.counterparty ?? "–"}</dd>
+        </dl>
+
+        <div className="rounded-lg bg-muted/60 p-3 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge status={p.status} />
+            <span className="font-medium">{p.status === "review" ? "Why it is held:" : "Nothing was waiting for it."}</span>
+          </div>
+          <p className="mt-1 text-muted-foreground">
+            {p.status === "review"
+              ? (why ?? "It did not match any order exactly.")
+              : "The money is yours and is counted in the totals. Match it only if you know which order it was for."}
+          </p>
+        </div>
+
+        <div className="mt-auto flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <Select value={choice} onValueChange={(v) => setPicked((s) => ({ ...s, [p.id]: v }))}>
+            <SelectTrigger className="w-full sm:w-64" aria-label={`Order for ${p.trx_id}`}>
+              <SelectValue placeholder="Which order was this for?" />
+            </SelectTrigger>
+            <SelectContent>
+              {choices.length === 0 ? (
+                <SelectItem value="none" disabled>
+                  No open orders right now
+                </SelectItem>
+              ) : (
+                choices.map((o) => (
+                  <SelectItem key={o.id} value={o.id}>
+                    {o.order_no} · {tk(o.expected_amount)}
+                    {o.customer_name ? ` · ${o.customer_name}` : ""}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+          <div className="flex items-center gap-2">
+            <Confirm
+              title="Credit this payment to the order?"
+              description={`${tk(p.amount)} (receipt ${p.trx_id}) will be credited to ${order?.order_no ?? "the chosen order"} and the order will turn Paid. This cannot be undone.`}
+              confirmLabel="Credit it"
+              disabled={!choice || choice === "none"}
+              onConfirm={() => act(p.id, () => sb.rpc("manual_match", { p_payment_id: p.id, p_order_id: choice }))}
+            >
+              <Button size="sm" disabled={!choice || choice === "none"} title="Credit this money to the order you picked">
+                Credit to order
+              </Button>
+            </Confirm>
+            {p.status === "review" ? (
+              <Confirm
+                title="Ignore this payment?"
+                description="It will never be credited to any order and will not count in the totals. The SMS stays on the Transactions page, marked Ignored, and Admin Hub shows it as UNVERIFIED."
+                confirmLabel="Ignore it"
+                onConfirm={() => act(p.id, () => sb.rpc("ignore_payment", { p_payment_id: p.id }))}
+              >
+                <Button size="sm" variant="outline" title="This money belongs to no order">
+                  Ignore
+                </Button>
+              </Confirm>
+            ) : null}
+          </div>
+          {failed[p.id] ? <span className="text-xs text-destructive">{failed[p.id]}</span> : null}
+        </div>
+      </Card>
+    );
+  };
 
   return (
     <Screen loading={loading} error={error} hasData={!!data}>
-      <PageHeader
-        title="Review"
-        description="Payments held for a person to decide: wrong amount, a different payer number, an expired order, or a format the system does not fully trust yet. Nothing here has been credited."
-      />
-      {payments.length === 0 ? (
+      <PageHeader title="Review" description={decide.length === 0 ? "Payments held for review." : `${decide.length} held for review, waiting for you. Admin Hub shows each as HELD FOR REVIEW until you decide.`} />
+      <PageIntro id="review" intro={PAGE_INTRO.review} onHelp={openHelp} />
+
+      {decide.length === 0 ? (
         <Card className="p-8 text-center">
           <CircleCheck className="mx-auto mb-2 h-6 w-6 text-status-ok" aria-hidden />
-          <p className="font-medium">Nothing is waiting for a decision</p>
-          <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">Held payments appear here, and you are messaged on Telegram when one does.</p>
+          <p className="font-medium">Nothing is held for review</p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+            When a payment arrives that does not match any order, it appears here and you are messaged on Telegram.
+          </p>
         </Card>
       ) : (
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-2">
-          {payments.map((p) => {
-            const choice = picked[p.id] ?? "";
-            const order = orders.find((o) => o.id === choice);
-            // A held Cash Out receipt can only pay a deposit that asked for Cash Out (the database refuses the rest).
-            const choices = p.txn_type === "cash_out" ? orders.filter((o) => o.wallet_method === "cash_out") : orders;
-            return (
-              <Card key={p.id} className="flex flex-col gap-3 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <ProviderChip provider={p.provider} className="font-medium" />
-                    <p className="mt-0.5 text-xs text-muted-foreground">{when(p.occurred_at ?? p.received_at)}</p>
-                  </div>
-                  <p className="whitespace-nowrap text-xl font-semibold tabular">{tk(p.amount)}</p>
-                </div>
-
-                <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
-                  <dt className="text-muted-foreground">TrxID</dt>
-                  <dd className="font-mono text-xs leading-5">{p.trx_id}</dd>
-                  <dt className="text-muted-foreground">Phone</dt>
-                  <dd className="min-w-0"><DeviceChip id={p.device_id} name={devices.nameOf(p.device_id)} /></dd>
-                  <dt className="text-muted-foreground">From</dt>
-                  <dd>{p.counterparty ?? "–"}</dd>
-                </dl>
-
-                <div className="flex flex-wrap items-start gap-2">
-                  <StatusBadge status={p.status} />
-                  {p.review_reason ? <p className="min-w-0 flex-1 text-sm text-muted-foreground">{reviewReasonText(p.review_reason)}</p> : null}
-                </div>
-
-                <div className="mt-auto flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:flex-wrap sm:items-center">
-                  <Select value={choice} onValueChange={(v) => setPicked((s) => ({ ...s, [p.id]: v }))}>
-                    <SelectTrigger className="w-full sm:w-64" aria-label={`Order for ${p.trx_id}`}>
-                      <SelectValue placeholder="Match to order…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {choices.length === 0 ? (
-                        <SelectItem value="none" disabled>
-                          No open orders
-                        </SelectItem>
-                      ) : (
-                        choices.map((o) => (
-                          <SelectItem key={o.id} value={o.id}>
-                            {o.order_no} · {tk(o.expected_amount)}
-                            {o.customer_name ? ` · ${o.customer_name}` : ""}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  <div className="flex items-center gap-2">
-                    <Confirm
-                      title="Credit this payment to the order?"
-                      description={`${p.trx_id} (${tk(p.amount)}) will be credited to ${
-                        order?.order_no ?? "the chosen order"
-                      }. This cannot be undone.`}
-                      confirmLabel="Credit it"
-                      disabled={!choice || choice === "none"}
-                      onConfirm={() =>
-                        act(p.id, () => sb.rpc("manual_match", { p_payment_id: p.id, p_order_id: choice }))
-                      }
-                    >
-                      <Button size="sm" disabled={!choice || choice === "none"}>
-                        Match
-                      </Button>
-                    </Confirm>
-                    <Confirm
-                      title="Ignore this payment?"
-                      description="It will never be credited to an order. The record stays in the Payments list."
-                      confirmLabel="Ignore it"
-                      onConfirm={() => act(p.id, () => sb.rpc("ignore_payment", { p_payment_id: p.id }))}
-                    >
-                      <Button size="sm" variant="outline">
-                        Ignore
-                      </Button>
-                    </Confirm>
-                  </div>
-                  {failed[p.id] ? <span className="text-xs text-destructive">{failed[p.id]}</span> : null}
-                </div>
-              </Card>
-            );
-          })}
-        </div>
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-2">{decide.map(card)}</div>
       )}
+
+      {noOrder.length > 0 ? (
+        <section className="mt-8">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <div>
+              <h3 className="text-base font-semibold">
+                Received, no order <span className="text-muted-foreground">({noOrder.length})</span>
+              </h3>
+              <p className="text-sm text-muted-foreground" title={PAYMENT_STATUS.unmatched.meaning}>
+                Not a problem. Money that arrived when no order was waiting. It is already counted; match one only if you know its order.
+              </p>
+            </div>
+            <Button size="sm" variant="ghost" onClick={() => setShowNoOrder((v) => !v)} aria-expanded={showNoOrder}>
+              {showNoOrder ? "Hide" : "Show"}
+            </Button>
+          </div>
+          {showNoOrder ? <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-2">{noOrder.map(card)}</div> : null}
+        </section>
+      ) : null}
     </Screen>
   );
 }
