@@ -347,6 +347,14 @@ On the dashboard's **Phones** page each approved phone has a box called **What t
 
 The phone follows the switch within about 30 seconds and the box tells you when it has. The **Check balance** buttons are on the same page. These switches no longer exist in the phone app, so nobody can change them by mistake there. Phones need the new app build to follow the switch; until then they keep their old on-phone switches.
 
+## Wallet numbers and SIMs in the phone app (2026-11-03)
+
+In the app's Settings, under "Your wallets", tap bKash, Nagad or Rocket, type that wallet's number and press **Save and find its SIM**. The app asks the phone which SIM has that number (first Android's own record, then the operator's "my number" code on each SIM) and chooses SIM 1 or SIM 2 by itself. If it cannot tell, it says so and you pick the SIM yourself. The dashboard's Phones page then shows, under Phone health, which number is bKash, Nagad and Rocket on each phone and which SIM it is in.
+
+## Cash Out, Cash In and B2B per wallet (2026-11-03)
+
+Each phone's card on the Phones page has a table per wallet for the chosen day (12:00 AM to 11:59 PM Bangladesh time): Received and Cash Out came in; Cash In and B2B went out. Hover a heading to see what is counted. Two honest limits: a cash-in sends no SMS, so only cash-ins PayTrace knows about are counted (told from the dashboard, or reported by a partner and verified); and only Rocket's B2B message is recognised so far.
+
 ## Lock the phone app's Settings with an admin code (2026-11-03)
 
 The phone app's Settings tab holds the saved wallet PINs, the SIM choice and the keep-alive options (the balance and send-money switches are on the dashboard). An admin code stops anyone from changing them by mistake.
