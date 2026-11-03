@@ -62,7 +62,9 @@ sealed class SimFind {
  *  Android passes it to the app, unlike a wallet menu). The person can always pick by hand instead. */
 object SimFinder {
     private const val ANSWER_MS = 25_000L
-    private val main = Handler(Looper.getMainLooper())
+    // Lazy on purpose: the pure helpers (match, hide) are unit tested on a plain JVM, where Android's Looper does not exist,
+    // and an eager Handler here made the whole object fail to load there (build 137).
+    private val main by lazy { Handler(Looper.getMainLooper()) }
     private val running = AtomicBoolean(false)
 
     /** Pure: the slot whose number equals the wanted one. */
