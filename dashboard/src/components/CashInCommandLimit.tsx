@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 /** The daily allowance for cash-ins the DASHBOARD asks a phone to make (the Phones page, each phone's "Cash in from this
  *  phone"). Nothing to do with the partner's own cash-in jobs above.
  *
- *  It starts at 0, which switches the whole thing off. One command can never be more than 10,000 Tk whatever is set here:
+ *  It starts at 0, which switches the whole thing off. One command is between 100 and 50,000 Tk whatever is set here:
  *  that cap is written into the database itself, and the phone checks it again. */
 export function CashInCommandLimit() {
   const [limit, setLimit] = useState<number | null>(null);
@@ -50,7 +50,7 @@ export function CashInCommandLimit() {
           How much each phone may send in one day when YOU ask it to from the Phones page. {limit === 0
             ? "It is 0 now, which means no cash-in can be asked for at all."
             : `It is ${tk(limit ?? 0)} a day per phone now.`}
-          {" "}One cash-in can never be more than {tk(10000)}, and the phone must also have its own cash-in switch turned on.
+          {" "}One cash-in is between {tk(100)} and {tk(50000)} and can only go to a saved cash-in number, and the phone must also be allowed to send money (Phones page).
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <input

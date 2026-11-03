@@ -1,4 +1,4 @@
-import { commandLine, errorText, isLive, type PhoneCommand, cashInSummary, looksLikeANumber, CASH_IN_AMOUNTS, MOST_PER_CASH_IN, PHONE_ACTIONS, PHONE_ACTION_KINDS, isPhoneAction, actionLine, traceOf, walletScreens } from "../dashboard/src/lib/phoneCommands.ts";
+import { commandLine, errorText, isLive, type PhoneCommand, cashInSummary, looksLikeANumber, CASH_IN_AMOUNTS, MOST_PER_CASH_IN, LEAST_PER_CASH_IN, parseCashInAmount, numberLabel, PHONE_ACTIONS, PHONE_ACTION_KINDS, isPhoneAction, actionLine, traceOf, walletScreens } from "../dashboard/src/lib/phoneCommands.ts";
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, extra?: unknown) {
@@ -48,7 +48,22 @@ test("a cash-in is described in full, so nothing is sent on a glance", () => {
   assert.ok(!looksLikeANumber("0170663075"));
   assert.ok(!looksLikeANumber("11706630756"));
   assert.ok(!looksLikeANumber(""));
-  assert.ok(CASH_IN_AMOUNTS.every((a) => a > 0 && a <= MOST_PER_CASH_IN));
+  assert.ok(CASH_IN_AMOUNTS.every((a) => a >= LEAST_PER_CASH_IN && a <= MOST_PER_CASH_IN));
+  assert.equal(LEAST_PER_CASH_IN, 100);
+  assert.equal(MOST_PER_CASH_IN, 50000);
+  // An exact typed amount: commas, Bangla digits and paisa are fine; outside the bounds or junk is not.
+  assert.equal(parseCashInAmount("5,000"), 5000);
+  assert.equal(parseCashInAmount("৫০০০"), 5000);
+  assert.equal(parseCashInAmount("2500.50"), 2500.5);
+  assert.equal(parseCashInAmount("100"), 100);
+  assert.equal(parseCashInAmount("50000"), 50000);
+  assert.equal(parseCashInAmount("99"), null);
+  assert.equal(parseCashInAmount("50001"), null);
+  assert.equal(parseCashInAmount("12.345"), null);
+  assert.equal(parseCashInAmount("abc"), null);
+  assert.equal(parseCashInAmount(""), null);
+  assert.equal(numberLabel({ id: "x", provider: "bkash", number: "01706630756", label: "Shop", enabled: true }), "Shop · 01706630756");
+  assert.equal(numberLabel({ id: "x", provider: "bkash", number: "01706630756", label: null, enabled: true }), "01706630756");
 
   const done: PhoneCommand = {
     id: "1", kind: "cashin", provider: "bkash", status: "done",

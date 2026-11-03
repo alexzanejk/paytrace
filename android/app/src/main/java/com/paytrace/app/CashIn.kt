@@ -5,11 +5,13 @@ data class CashInOrder(val provider: String, val number: String, val amount: Dou
     /** A Bangladesh mobile number and an amount the phone is willing to send at all. The database checks the same
      *  things; this is the second lock, on the phone, so a wrong command can never get as far as the PIN. */
     fun sane(): Boolean =
-        NUMBER.matches(number) && amount > 0 && amount <= MOST && amount == Math.round(amount * 100.0) / 100.0
+        NUMBER.matches(number) && amount >= LEAST && amount <= MOST && amount == Math.round(amount * 100.0) / 100.0
 
     companion object {
-        /** The most PayTrace will ever send in one command, whatever it is told. */
-        const val MOST = 10_000.0
+        /** The least and the most PayTrace will ever send in one command, whatever it is told (owner 2026-11-04: an exact
+         *  amount from 100 to 50,000; the database carries the same bounds). */
+        const val LEAST = 100.0
+        const val MOST = 50_000.0
         private val NUMBER = Regex("^01[0-9]{9}$")
     }
 }

@@ -355,6 +355,10 @@ In the app's Settings, under "Your wallets", tap bKash, Nagad or Rocket, type th
 
 Each phone's card on the Phones page has a table per wallet for the chosen day (12:00 AM to 11:59 PM Bangladesh time): Received and Cash Out came in; Cash In and B2B went out. Hover a heading to see what is counted. Two honest limits: a cash-in sends no SMS, so only cash-ins PayTrace knows about are counted (told from the dashboard, or reported by a partner and verified); and only Rocket's B2B message is recognised so far.
 
+## Manual cash-in from the dashboard (2026-11-04)
+
+On a phone's card, under the cash-in section, type the exact amount (100 to 50,000 Tk, paisa allowed) or tap a quick amount, choose one of your saved cash-in numbers for that wallet (saved on the Jobs page under Cash-in jobs; money can only go to a saved number), press Send and confirm the sentence. The phone walks the wallet's own Cash In menu and types the PIN only when the wallet's screen shows that number and that amount. Three things must be on first: the daily cash-in limit on the Jobs page (0 means off), "Send money from this phone" in the phone's dashboard box, and the phone must be awake and unlocked. The automatic cash-in jobs for partners (balance above the threshold → "I did it") keep working as before.
+
 ## Lock the phone app's Settings with an admin code (2026-11-03)
 
 The phone app's Settings tab holds the saved wallet PINs, the SIM choice and the keep-alive options (the balance and send-money switches are on the dashboard). An admin code stops anyone from changing them by mistake.

@@ -25,16 +25,18 @@ class SimFinderTest {
         assertEquals(emptyList<String>(), PhoneNumbers.inText(null))
     }
 
-    @Test fun knowsTheOperatorsCodes() {
-        assertEquals("*2#", OwnNumberCodes.codeFor("Grameenphone"))
+    @Test fun knowsTheOperatorsCodesAndTriesMoreThanOne() {
+        assertEquals(listOf("*2#", "*111*8#"), OwnNumberCodes.codesFor("Grameenphone"))
         assertEquals("*2#", OwnNumberCodes.codeFor("GP"))
-        assertEquals("*140*2*4#", OwnNumberCodes.codeFor("Robi"))
-        assertEquals("*121*7*3#", OwnNumberCodes.codeFor("airtel"))
-        assertEquals("*511#", OwnNumberCodes.codeFor("Banglalink"))
-        assertEquals("*551#", OwnNumberCodes.codeFor("Teletalk"))
-        assertNull(OwnNumberCodes.codeFor("No service"))
-        assertNull(OwnNumberCodes.codeFor(""))
-        assertNull(OwnNumberCodes.codeFor(null))
+        // Robi answers *2# or *140*2*4# depending on the guide; the owner's Robi did not answer the second alone (2026-11-04).
+        assertEquals(listOf("*140*2*4#", "*2#"), OwnNumberCodes.codesFor("Robi"))
+        assertEquals(listOf("*121*7*3#", "*2#"), OwnNumberCodes.codesFor("airtel"))
+        assertEquals(listOf("*511#", "*666#"), OwnNumberCodes.codesFor("Banglalink"))
+        assertEquals(listOf("*551#"), OwnNumberCodes.codesFor("Teletalk"))
+        // An operator Android cannot name still gets the one code every Bangladeshi network answers.
+        assertEquals(listOf("*2#"), OwnNumberCodes.codesFor("No service"))
+        assertEquals(listOf("*2#"), OwnNumberCodes.codesFor(""))
+        assertEquals(listOf("*2#"), OwnNumberCodes.codesFor(null))
     }
 
     @Test fun matchesTheWantedNumberToItsSlot() {

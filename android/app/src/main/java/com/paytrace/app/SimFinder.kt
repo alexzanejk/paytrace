@@ -30,22 +30,26 @@ object PhoneNumbers {
     }
 }
 
-/** The operator's own "what is my number" USSD code, chosen from the carrier name Android reports for a SIM. These codes are
- *  from general knowledge (GP *2#, Robi *140*2*4#, Airtel *121*7*3#, Banglalink *511#, Teletalk *551#) and have not been tried
- *  on the owner's phones; a code that answers with anything but a number simply finds nothing. Unknown carrier = no code,
- *  so PayTrace never dials a guess into a SIM it cannot name. */
+/** The operator's own "what is my number" USSD codes, in the order to try them, chosen from the carrier name Android
+ *  reports for a SIM. From public guides (none official): GP *2# then *111*8#; Robi *2# or *140*2*4#; Airtel *121*7*3#
+ *  then *2#; Banglalink *511# then *666#; Teletalk *551#. *2# is a read-only "my number" code on every Bangladeshi
+ *  operator, so an operator Android cannot name gets that one alone. A code that answers with anything but a number
+ *  simply finds nothing and the next one is tried; the person can always pick the SIM by hand instead. */
 object OwnNumberCodes {
-    fun codeFor(carrier: String?): String? {
-        val c = carrier?.lowercase()?.trim() ?: return null
+    fun codesFor(carrier: String?): List<String> {
+        val c = carrier?.lowercase()?.trim().orEmpty()
         return when {
-            c.contains("grameen") || c == "gp" || c.startsWith("gp ") -> "*2#"
-            c.contains("robi") -> "*140*2*4#"
-            c.contains("airtel") -> "*121*7*3#"
-            c.contains("banglalink") || c == "bl" -> "*511#"
-            c.contains("teletalk") -> "*551#"
-            else -> null
+            c.contains("grameen") || c == "gp" || c.startsWith("gp ") -> listOf("*2#", "*111*8#")
+            c.contains("robi") -> listOf("*140*2*4#", "*2#")
+            c.contains("airtel") -> listOf("*121*7*3#", "*2#")
+            c.contains("banglalink") || c == "bl" -> listOf("*511#", "*666#")
+            c.contains("teletalk") -> listOf("*551#")
+            else -> listOf("*2#")
         }
     }
+
+    /** The first code to try. */
+    fun codeFor(carrier: String?): String = codesFor(carrier).first()
 }
 
 /** What the finder learned about each SIM slot: the number if any way gave one. */
@@ -61,7 +65,8 @@ sealed class SimFind {
  *  then, SIM by SIM, the operator's own "my number" code sent as a direct USSD request (its answer closes the session, so
  *  Android passes it to the app, unlike a wallet menu). The person can always pick by hand instead. */
 object SimFinder {
-    private const val ANSWER_MS = 25_000L
+    private const val ANSWER_MS = 20_000L
+    private const val NEXT_CODE_PAUSE_MS = 2_500L
     // Lazy on purpose: the pure helpers (match, hide) are unit tested on a plain JVM, where Android's Looper does not exist,
     // and an eager Handler here made the whole object fail to load there (build 137).
     private val main by lazy { Handler(Looper.getMainLooper()) }
@@ -112,31 +117,43 @@ object SimFinder {
         fun next() {
             val info = queue.removeFirstOrNull() ?: run { done(SimFind.NotFound(seen)); return }
             val carrier = info.carrierName?.toString().orEmpty()
-            val code = OwnNumberCodes.codeFor(carrier)
-            if (code == null) { note("SIM ${info.simSlotIndex + 1}: no known 'my number' code for ${carrier.ifEmpty { "this operator" }}"); next(); return }
-            val finished = AtomicBoolean(false)
-            fun got(number: String?, why: String) {
-                if (!finished.compareAndSet(false, true)) return
-                val i = seen.indexOfFirst { it.slot == info.simSlotIndex }
-                if (i >= 0) seen[i] = seen[i].copy(number = number)
-                note("SIM ${info.simSlotIndex + 1}: " + (number?.let { "the operator says " + hide(it) } ?: why))
-                if (number == want) done(SimFind.Found(info.simSlotIndex, carrier)) else next()
-            }
-            note("SIM ${info.simSlotIndex + 1}: asking ${carrier} with $code")
-            try {
-                @Suppress("MissingPermission")
-                tm.createForSubscriptionId(info.subscriptionId).sendUssdRequest(code, object : TelephonyManager.UssdResponseCallback() {
-                    override fun onReceiveUssdResponse(t: TelephonyManager, request: String, response: CharSequence) {
-                        got(PhoneNumbers.inText(response.toString()).firstOrNull(), "the answer had no number")
+            val codes = OwnNumberCodes.codesFor(carrier)
+            val tm1 = try { tm.createForSubscriptionId(info.subscriptionId) } catch (e: Exception) { tm }
+            fun tryCode(i: Int) {
+                if (i >= codes.size) { note("SIM ${info.simSlotIndex + 1}: none of its codes gave a number"); next(); return }
+                val code = codes[i]
+                val finished = AtomicBoolean(false)
+                fun got(number: String?, why: String) {
+                    if (!finished.compareAndSet(false, true)) return
+                    if (number != null) {
+                        val k = seen.indexOfFirst { it.slot == info.simSlotIndex }
+                        if (k >= 0) seen[k] = seen[k].copy(number = number)
+                        note("SIM ${info.simSlotIndex + 1}: ${carrier.ifEmpty { "the operator" }} says " + hide(number))
+                        if (number == want) done(SimFind.Found(info.simSlotIndex, carrier)) else next()
+                    } else {
+                        note("SIM ${info.simSlotIndex + 1}: $code gave nothing ($why)")
+                        // The network keeps a short session after an answer; a breath before the next code.
+                        main.postDelayed({ tryCode(i + 1) }, NEXT_CODE_PAUSE_MS)
                     }
-                    override fun onReceiveUssdResponseFailed(t: TelephonyManager, request: String, failureCode: Int) {
-                        got(null, "the phone reported failure code $failureCode")
-                    }
-                }, main)
-                main.postDelayed({ got(null, "no answer in ${ANSWER_MS / 1000} seconds") }, ANSWER_MS)
-            } catch (e: Exception) {
-                got(null, "could not send: " + e.javaClass.simpleName)
+                }
+                note("SIM ${info.simSlotIndex + 1}: asking ${carrier.ifEmpty { "the operator" }} with $code")
+                try {
+                    @Suppress("MissingPermission")
+                    tm1.sendUssdRequest(code, object : TelephonyManager.UssdResponseCallback() {
+                        override fun onReceiveUssdResponse(t: TelephonyManager, request: String, response: CharSequence) {
+                            val text = response.toString()
+                            got(PhoneNumbers.inText(text).firstOrNull(), "the answer had no number: " + text.replace(Regex("\\s+"), " ").take(60))
+                        }
+                        override fun onReceiveUssdResponseFailed(t: TelephonyManager, request: String, failureCode: Int) {
+                            got(null, "failure code $failureCode")
+                        }
+                    }, main)
+                    main.postDelayed({ got(null, "no answer in ${ANSWER_MS / 1000} seconds") }, ANSWER_MS)
+                } catch (e: Exception) {
+                    got(null, "could not send: " + e.javaClass.simpleName)
+                }
             }
+            tryCode(0)
         }
         next()
     }
