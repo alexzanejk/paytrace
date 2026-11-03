@@ -14,6 +14,8 @@ export interface PhoneCommand {
   amount?: number | null;
   to_number?: string | null;
   trx_id?: string | null;
+  /** The wallet's screens (statement), and for a failed run the phone's step log (see traceOf). */
+  screens?: string[] | null;
 }
 
 /** The wallets a phone can be asked to work with. Rocket joined on 2026-11-02 from the owner's own recordings. */
@@ -50,7 +52,7 @@ const ERROR_TEXT: Record<string, string> = {
   ussd_failed: "The network did not answer the code. The phone did not try again. Check the Nagad SMS, then try again later.",
   timeout: "The phone did not answer in time.",
   no_answer_after_pin: "The PIN was entered but no balance came back. The phone did not try the PIN again. Check the Nagad SMS, then try again later.",
-  unexpected_screen: "The Nagad menu looked different from what PayTrace expects, so it stopped. Nothing was sent.",
+  unexpected_screen: "The wallet's menu looked different from what PayTrace expects, so it stopped. Nothing was sent.",
   too_many_steps: "The Nagad menu took too many steps, so it stopped.",
   no_input_box: "PayTrace could not use the phone's menu box.",
   no_send_button: "PayTrace could not use the phone's menu box.",
@@ -70,7 +72,20 @@ const ERROR_TEXT: Record<string, string> = {
   failed: "It did not work.",
 };
 
-export const errorText = (code: string | null): string => (code ? ERROR_TEXT[code] ?? ERROR_TEXT.failed : ERROR_TEXT.failed);
+/** The reason in words. With [wallet] ("bKash") the text names that wallet instead of "the wallet". */
+export const errorText = (code: string | null, wallet?: string): string => {
+  const t = code ? ERROR_TEXT[code] ?? ERROR_TEXT.failed : ERROR_TEXT.failed;
+  return wallet ? t.replace("The wallet's menu", `The ${wallet} menu`) : t;
+};
+
+/** The phone's own step log of a failed run rides along as a "screen" that starts with this line (never the PIN). */
+export const TRACE_MARK = "What the phone saw:";
+export const traceOf = (screens: string[] | null | undefined): string | null => {
+  const t = (screens ?? []).find((s) => s.startsWith(TRACE_MARK));
+  return t ? t.slice(TRACE_MARK.length).trim() : null;
+};
+/** The wallet's screens without the step log. */
+export const walletScreens = (screens: string[] | null | undefined): string[] => (screens ?? []).filter((s) => !s.startsWith(TRACE_MARK));
 
 /** One line for the phone card. [money] formats a number as taka. */
 export function commandLine(c: PhoneCommand | null, money: (n: number) => string, when: (t: string) => string, label = "Nagad"): string {
@@ -89,8 +104,8 @@ export function commandLine(c: PhoneCommand | null, money: (n: number) => string
     case "cancelled":
     case "failed":
       return cashIn
-        ? `The cash-in of ${c.amount == null ? "–" : money(c.amount)} at ${when(c.finished_at ?? c.created_at)} did not go through. ${errorText(c.error)}`
-        : `Last check ${when(c.finished_at ?? c.created_at)} did not work. ${errorText(c.error)}`;
+        ? `The cash-in of ${c.amount == null ? "–" : money(c.amount)} at ${when(c.finished_at ?? c.created_at)} did not go through. ${errorText(c.error, label)}`
+        : `Last check ${when(c.finished_at ?? c.created_at)} did not work. ${errorText(c.error, label)}`;
   }
 }
 

@@ -76,6 +76,18 @@ class StatementTest {
         assertEquals(UssdAction.Fail("wallet_refused"), g.onScreen("Service is not available at the moment"))
     }
 
+    @Test fun anUnknownAnswerAfterThePinIsKeptAsTheResult() {
+        // Nagad's statement wording has never been seen. Whatever comes after the PIN is the answer: keep it word for word.
+        val f = StatementFlow(UssdProviders.BKASH, null, pin)
+        f.onScreen(menu); f.onScreen(myBkash); f.onScreen(askPin)
+        val a = f.onScreen("Your mini statement will be sent by SMS shortly.")
+        assertEquals(UssdAction.Done(null, null, listOf("Your mini statement will be sent by SMS shortly.")), a)
+        // The same when one entry was asked for and the list never came.
+        val g = StatementFlow(UssdProviders.BKASH, 3, pin)
+        g.onScreen(menu); g.onScreen(myBkash); g.onScreen(askPin)
+        assertEquals(UssdAction.Done(null, null, listOf("No transaction found.")), g.onScreen("No transaction found."))
+    }
+
     @Test fun theContinueQuestionIsAnsweredNoBeforeTheMenu() {
         val f = StatementFlow(UssdProviders.BKASH, null, pin)
         assertEquals(UssdAction.Reply("2"), f.onScreen("Do you want to continue?\n1 - Yes\n2 - No"))

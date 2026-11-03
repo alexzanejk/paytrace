@@ -1,1 +1,1 @@
-Phone commands from the dashboard: balance check, cash-in and the wallet's own statement. Rocket added beside bKash and Nagad. The phone now wakes its own screen for a command (take the screen lock off the payment phones). Clearer messages when a command cannot run.
+Settings can be locked with an admin code. Balance-check and send-money switches are now on the dashboard. Each wallet's number is saved on the phone and the app finds its SIM. A statement answer the app cannot read is kept and shown on the dashboard, and a failed command now shows what the phone saw.

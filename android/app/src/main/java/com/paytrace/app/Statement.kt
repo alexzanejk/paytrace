@@ -110,7 +110,10 @@ class StatementFlow(
     }
 
     private fun onList(clean: String): UssdAction {
-        if (!StatementRead.lists(clean)) return UssdAction.Fail("unexpected_screen")
+        // The PIN is in, so this screen is the wallet's answer even when it is not the list PayTrace knows (Nagad's wording
+        // has never been seen; bKash may word an error its own way). Keep it and finish: the dashboard shows the raw text
+        // and says it could not read it. Failing here threw the one screen that explains the failure away (2026-11-04).
+        if (!StatementRead.lists(clean)) { collected.add(clean); return UssdAction.Done(null, null, collected.toList()) }
         collected.add(clean)
         pages++
         if (item == null) {

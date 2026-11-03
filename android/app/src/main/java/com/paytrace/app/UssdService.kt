@@ -49,7 +49,7 @@ object UssdText {
         "ussd_failed" -> "The wallet answered, but Android does not pass that kind of answer on to an app. PayTrace has moved this phone to the Dialer way, which reads the phone's own menu. Try the check again."
         "timeout" -> "The phone did not answer in time. Try again."
         "no_answer_after_pin" -> "The PIN was entered but no balance came back. PayTrace did not try the PIN again. Check the Nagad SMS, then try again later."
-        "unexpected_screen" -> "The Nagad menu looked different from what PayTrace expects, so it stopped. Nothing was sent."
+        "unexpected_screen" -> "The wallet's menu looked different from what PayTrace expects, so it stopped. Nothing was sent."
         "too_many_steps" -> "The menu took too many steps, so it stopped."
         "no_input_box", "no_send_button" -> "PayTrace could not use the phone's menu box."
         "sim_not_found" -> "Could not pick the SIM. Check the SIM number in settings."
@@ -921,9 +921,13 @@ object UssdCommands {
                 val j = JSONObject().put("action", "command_result").put("id", id).put("ok", o.ok).put("kind", kind)
                 if (o.balance != null) j.put("balance", o.balance)
                 if (o.trx != null) j.put("trx_id", o.trx)
-                if (o.screens.isNotEmpty()) {
+                // The wallet's screens, and on a failure the run's own step log too (never the PIN), so the dashboard can
+                // show what the phone saw instead of only an error code (owner 2026-11-04: "Open" failing with no clue why).
+                val shown = ArrayList(o.screens.take(11))
+                if (!o.ok && o.trace.isNotBlank()) shown.add("What the phone saw:\n" + o.trace)
+                if (shown.isNotEmpty()) {
                     val arr = org.json.JSONArray()
-                    o.screens.take(12).forEach { arr.put(it.take(2000)) }
+                    shown.take(12).forEach { arr.put(it.take(2000)) }
                     j.put("screens", arr)
                 }
                 if (o.error != null) j.put("error", o.error)
