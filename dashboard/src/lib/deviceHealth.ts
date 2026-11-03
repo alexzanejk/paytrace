@@ -23,6 +23,9 @@ export interface DeviceInfo {
   notifications?: boolean;
   battery_exempt?: boolean;
   setup_complete?: boolean;
+  ussd_allowed?: boolean;
+  cashin_allowed?: boolean;
+  admin_code_set?: boolean;
   push_ready?: boolean;
   keepalive_test?: "pass" | "fail" | "short";
   keepalive_test_at?: string;
@@ -75,6 +78,41 @@ export function blockingProblems(info: DeviceInfo | null | undefined): string[] 
 
 /** Everything a phone reports that needs attention, in words the owner can act on. Empty when all is well.
  *  Includes the blocking problems plus ones that are worth fixing but are not losing payments right now. */
+export interface SettingsLine {
+  text: string;
+  /** ok = good, warn = worth a look, idle = just a fact. Never red: none of these stops payments being captured. */
+  tone: "ok" | "warn" | "idle";
+  hint: string;
+}
+
+/** The guarded switches on the phone, in words (owner 2026-11-03: these must be admin-only and must not go off by
+ *  mistake). Shown on the Phones page so a switch that was turned off, or a phone with no admin code, is SEEN. An older
+ *  app build reports none of the three fields, and then nothing is said rather than something wrong. */
+export function settingsLines(info: DeviceInfo | null | undefined): SettingsLine[] {
+  if (!info) return [];
+  const out: SettingsLine[] = [];
+  if (info.admin_code_set === true) {
+    out.push({ text: "Settings locked", tone: "ok", hint: "An admin code protects the balance-check and send-money switches, the wallet PINs and the server address on this phone." });
+  } else if (info.admin_code_set === false) {
+    out.push({
+      text: "Settings not protected: set an admin code in the app",
+      tone: "warn",
+      hint: "On the phone: Settings, the first card. Until then anyone holding it can switch the balance-check or send-money switch, change a wallet PIN or change the server address.",
+    });
+  }
+  if (info.ussd_allowed === false) {
+    out.push({ text: "Balance checks OFF on the phone", tone: "warn", hint: "The phone refuses every balance check, statement and cash-in from the dashboard until its switch is turned on (needs the admin code)." });
+  } else if (info.ussd_allowed === true) {
+    out.push({ text: "Balance checks on", tone: "idle", hint: "The phone accepts balance-check and statement requests from the dashboard." });
+  }
+  if (info.cashin_allowed === true) {
+    out.push({ text: "Sending money ON", tone: "idle", hint: "The phone will make a cash-in when the dashboard asks (still limited by the daily limit on the Jobs page and the Tk 10,000 cap per cash-in)." });
+  } else if (info.cashin_allowed === false) {
+    out.push({ text: "Sending money off", tone: "idle", hint: "The phone refuses every cash-in from the dashboard, whatever it asks." });
+  }
+  return out;
+}
+
 export function infoProblems(info: DeviceInfo | null | undefined): string[] {
   if (!info) return [];
   const out = blockingProblems(info);

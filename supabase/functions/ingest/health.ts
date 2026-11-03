@@ -15,6 +15,9 @@ export interface DeviceInfo {
   notifications?: boolean; // notifications allowed (the app's always-on notice needs them)
   battery_exempt?: boolean; // Android's battery saver is told to leave the app alone
   setup_complete?: boolean; // every permission and setting the app requires is in place
+  ussd_allowed?: boolean; // the phone's own switch: may the dashboard ask it for a balance, statement or other wallet menu read
+  cashin_allowed?: boolean; // the phone's own switch: may the dashboard make it send money. Off unless the owner turned it on
+  admin_code_set?: boolean; // an admin code protects those switches (the code itself is never sent)
   wake_count?: number; // wake-up pushes this phone has received
   last_wake_at?: string; // when the latest one arrived
   push_ready?: boolean; // the phone has a Firebase push address, so the server can wake it
@@ -63,6 +66,12 @@ export function cleanInfo(body: Record<string, unknown>, now: Date = new Date())
   if (batteryExempt !== undefined) info.battery_exempt = batteryExempt;
   const setupComplete = asBool(body.setup_complete);
   if (setupComplete !== undefined) info.setup_complete = setupComplete;
+  const ussdAllowed = asBool(body.ussd_allowed);
+  if (ussdAllowed !== undefined) info.ussd_allowed = ussdAllowed;
+  const cashinAllowed = asBool(body.cashin_allowed);
+  if (cashinAllowed !== undefined) info.cashin_allowed = cashinAllowed;
+  const adminCodeSet = asBool(body.admin_code_set);
+  if (adminCodeSet !== undefined) info.admin_code_set = adminCodeSet;
   const wakes = asCount(body.wake_count, 1_000_000);
   if (wakes !== undefined) info.wake_count = wakes;
   // The phone sends the time as milliseconds since 1970; only a believable one is kept.

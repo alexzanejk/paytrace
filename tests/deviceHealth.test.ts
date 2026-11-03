@@ -1,5 +1,5 @@
 import {
-  blockingProblems, agoText, deviceHealth, infoProblems, minutesSince, OFFLINE_AFTER_SEC, ALERT_AFTER_MIN,
+  blockingProblems, agoText, deviceHealth, infoProblems, minutesSince, settingsLines, OFFLINE_AFTER_SEC, ALERT_AFTER_MIN,
 } from "../dashboard/src/lib/deviceHealth.ts";
 import { readFileSync } from "node:fs";
 
@@ -67,6 +67,16 @@ check("failed sends are not a red-banner problem either", blockingProblems({ fai
 check("sms permission and monitoring are red-banner problems", blockingProblems({ sms_permission: false, monitoring: false }).length === 2);
 check("blocking problems come first in the full list", infoProblems({ sms_permission: false, inbox_permission: false, failed: 2 })[0].startsWith("SMS permission"));
 check("no report: no blocking problems", blockingProblems(null).length === 0);
+
+// The guarded switches shown on the Phones page (2026-11-03).
+const texts = (i: Parameters<typeof settingsLines>[0]) => settingsLines(i).map((l) => l.text);
+check("an older app build reports none of them, so nothing is said", settingsLines({ battery: 80 }).length === 0 && settingsLines(null).length === 0 && settingsLines(undefined).length === 0);
+check("a protected phone says its settings are locked, in green", settingsLines({ admin_code_set: true })[0]?.text === "Settings locked" && settingsLines({ admin_code_set: true })[0]?.tone === "ok");
+check("an unprotected phone says so, amber, and how to fix it", settingsLines({ admin_code_set: false })[0]?.tone === "warn" && settingsLines({ admin_code_set: false })[0]?.hint.includes("Settings, the first card"));
+check("balance checks switched off is an amber line", settingsLines({ ussd_allowed: false })[0]?.text === "Balance checks OFF on the phone" && settingsLines({ ussd_allowed: false })[0]?.tone === "warn");
+check("balance checks on is just a fact", settingsLines({ ussd_allowed: true })[0]?.tone === "idle");
+check("sending money is stated both ways, neither red", texts({ cashin_allowed: true }).includes("Sending money ON") && texts({ cashin_allowed: false }).includes("Sending money off") && settingsLines({ cashin_allowed: true, ussd_allowed: true, admin_code_set: false }).every((l) => l.tone !== ("bad" as never)));
+check("none of the guarded switches is a red-banner problem or an infoProblem", blockingProblems({ ussd_allowed: false, cashin_allowed: true, admin_code_set: false }).length === 0 && infoProblems({ ussd_allowed: false, cashin_allowed: true, admin_code_set: false }).length === 0);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

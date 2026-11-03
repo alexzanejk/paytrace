@@ -338,6 +338,18 @@ Deposit orders use Admin Hub's own approval words: **Waiting**, **Paid**, **Held
 
 Admin Hub has an English / 中文 switch; PayTrace is English only for now (your choice on 2026-11-03). A matching 中文 switch can be added later.
 
+## Lock the phone app's Settings with an admin code (2026-11-03)
+
+The phone app's Settings tab holds the switches that matter most: whether the dashboard may ask this phone for a balance or statement, whether it may send money, the saved wallet PINs and the keep-alive options. An admin code stops anyone from changing them by mistake.
+
+1. On each payment phone open PayTrace, go to **Settings**, and find the **Admin code** card at the top. Choose a code of 6 to 12 digits and type it twice. Easy codes such as 111111 or 123456 are refused.
+2. From then on Settings is read-only. A short summary shows what is ON or OFF. To change anything, type the code under **Unlock**. It stays open for 5 minutes, and closes at once when you leave the Settings tab.
+3. After five wrong tries the app makes you wait 5 minutes, and the wait doubles with every further five wrong tries (at most 6 hours).
+4. Keep the code in a password manager. **It is not the wallet PIN** and must be different from it.
+5. If you forget the code: Android settings > Apps > PayTrace > Storage > **Clear data**, then pair the phone again and re-enter its wallet PINs. There is no remote reset.
+6. The lock does not stop someone from uninstalling the app or clearing its data. It only protects against accidental changes.
+7. The dashboard's **Phones** page shows each phone's state: "Settings locked", "Settings not protected: set an admin code in the app", "Balance checks OFF on the phone" and "Sending money ON". A phone on an older app build shows none of these.
+
 ## Step 9: App updates inside the app
 
 After this is set up, every new build is published automatically, and each phone shows **"Update available"** at the top of the app. The partner taps **Update now**,

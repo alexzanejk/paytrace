@@ -113,6 +113,11 @@ object Sender {
         o.put("notifications", Setup.notificationsOn(ctx))
         o.put("battery_exempt", Setup.batteryExempt(ctx))
         o.put("setup_complete", Setup.missing(ctx, s).isEmpty())
+        // The switches that must not be changed by whoever holds the phone, and whether they are protected. The dashboard
+        // shows them so a switch that was turned off, or a phone with no admin code, is seen rather than discovered.
+        o.put("ussd_allowed", s.ussdAllowed)
+        o.put("cashin_allowed", s.cashInAllowed)
+        o.put("admin_code_set", AdminLock.isSet(ctx))
         o.put("push_ready", s.pushToken.isNotEmpty())
         o.put("wake_count", s.wakeCount)
         if (s.lastWakeAt > 0) o.put("last_wake_at", s.lastWakeAt)

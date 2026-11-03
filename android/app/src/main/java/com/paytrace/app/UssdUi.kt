@@ -67,6 +67,17 @@ fun UssdCard(settings: AppSettings, tick: Int) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // What is switched on is always visible; changing any of it needs the admin code (owner 2026-11-03: these
+            // must not be switched off, or on, by whoever is holding the phone).
+            val editable = AdminLock.canEdit(ctx)
+            LockedSummary(settings, tick)
+            if (!editable) {
+                Text(
+                    "Only the owner can change these. Unlock the important settings with the admin code at the top of this screen.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 UssdProviders.all.forEach { p ->
                     FilterChip(selected = provider == p, onClick = { provider = p }, label = { Text(UssdProviders.label(p)) })
@@ -268,8 +279,28 @@ fun UssdCard(settings: AppSettings, tick: Int) {
                 TextButton(onClick = { details = !details }) { Text(if (details) "Hide what happened" else "Show what happened (send this if it fails)") }
                 if (details) Text(steps, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
             }
+            }
         }
     }
+}
+
+/** The state of the guarded switches, readable by anyone, changeable only with the admin code. */
+@Composable
+private fun LockedSummary(settings: AppSettings, tick: Int) {
+    val ctx = LocalContext.current
+    val pins = remember(tick) { UssdProviders.all.map { it to UssdSetup.pinSaved(ctx, it) } }
+    val running = UssdSession.connected()
+    fun onOff(v: Boolean) = if (v) "ON" else "OFF"
+    Text("Balance checks from the dashboard: ${onOff(settings.ussdAllowed)}", style = MaterialTheme.typography.bodyMedium)
+    Text("Sending money from this phone: ${onOff(settings.cashInAllowed)}", style = MaterialTheme.typography.bodyMedium)
+    Text(
+        "Wallet PINs saved: " + pins.joinToString(", ") { (p, saved) -> UssdProviders.label(p) + (if (saved) " ✓" else " –") },
+        style = MaterialTheme.typography.bodyMedium,
+    )
+    Text(
+        "Accessibility service: " + if (running) "running ✓" else "not running (tell the owner if balance checks fail)",
+        style = MaterialTheme.typography.bodyMedium,
+    )
 }
 
 private fun parseLast(json: String, label: String): String? {
