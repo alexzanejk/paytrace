@@ -38,7 +38,7 @@ data class UssdOutcome(
 object UssdText {
     fun error(code: String?): String = when (code) {
         null, "" -> ""
-        "not_allowed" -> "The switch on this phone is off, so nothing was done."
+        "not_allowed" -> "Balance checks are switched off for this phone on the dashboard, so nothing was done."
         "no_accessibility" -> "PayTrace is not switched on in Accessibility settings."
         "accessibility_not_running" -> "Accessibility says PayTrace is switched on, but the phone never actually started it, so nothing was watching the screen. Switch PayTrace OFF and then ON again in Settings, Accessibility, Downloaded apps. On Xiaomi/Redmi also allow \"Display pop-up windows while running in the background\"."
         "no_call_permission" -> "The phone-call permission is missing."
@@ -59,7 +59,7 @@ object UssdText {
         "unsupported" -> "This phone's app does not know that command yet. Update the app."
         "phone_locked" -> "This phone has a screen lock (PIN, pattern or fingerprint). Android does not let any app open a locked phone, so the wallet's menu cannot be reached. Unlock the phone and try again, or take the screen lock off this phone."
         "wallet_refused" -> "The wallet itself said no (for example the amount is under its minimum, or the PIN was wrong). Nothing was sent."
-        "cash_in_off" -> "Cash-in is switched off on this phone. Turn it on above."
+        "cash_in_off" -> "Sending money is switched off for this phone on the dashboard."
         "bad_cash_in" -> "The amount or the number was not something this phone will send. Nothing was sent."
         "confirm_does_not_match" -> "The wallet's own screen did not show that number and that amount, so PayTrace stopped before the PIN. NOTHING was sent."
         "bad_entry" -> "That is not a statement entry PayTrace can ask for."
@@ -866,6 +866,8 @@ object UssdRunner {
 object UssdCommands {
     fun onReply(ctx: Context, body: String?) {
         if (body == null) return
+        // What the owner allowed on the dashboard is applied first, so a command that arrives in the same reply is judged by it.
+        RemoteSwitches.apply(ctx, body)
         val cmd = try { JSONObject(body).optJSONObject("command") } catch (e: Exception) { null } ?: return
         val id = cmd.optString("id")
         if (id.isBlank()) return

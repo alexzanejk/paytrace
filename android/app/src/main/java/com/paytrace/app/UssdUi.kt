@@ -17,7 +17,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -25,7 +24,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -45,25 +43,23 @@ fun UssdCard(settings: AppSettings, tick: Int) {
     val ctx = LocalContext.current
     var provider by remember { mutableStateOf(UssdProviders.NAGAD) }
     val label = UssdProviders.label(provider)
-    var allowed by remember { mutableStateOf(settings.ussdAllowed) }
     var slot by remember(provider) { mutableStateOf(settings.ussdSlotOf(provider)) }
     var pin by remember(provider) { mutableStateOf("") }
     var pinSaved by remember(provider) { mutableStateOf(UssdSetup.pinSaved(ctx, provider)) }
-    var running by remember { mutableStateOf(false) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
 
     // Read again every time the screen refreshes (tick changes), so the ticks follow what Android says.
     val accessibility = UssdSetup.accessibilityOn(ctx)
     val call = UssdSetup.callPermission(ctx)
-    val last = remember(tick, running, provider) { parseLast(settings.ussdLastOf(provider), label) }
-    val steps = remember(tick, running, provider) { lastTrace(settings.ussdLastOf(provider)) }
+    val last = remember(tick, provider) { parseLast(settings.ussdLastOf(provider), label) }
+    val steps = remember(tick, provider) { lastTrace(settings.ussdLastOf(provider)) }
     var details by remember { mutableStateOf(false) }
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Balance check from the dashboard", style = MaterialTheme.typography.titleSmall)
             Text(
-                "When the owner asks, this phone asks the wallet for its balance and reads the answer. It never sends money. Choose the wallet, then set it up once, in this order:",
+                "When the owner asks on the dashboard, this phone asks the wallet for its balance and reads the answer. Choose the wallet, then set it up once, in this order:",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -199,28 +195,15 @@ fun UssdCard(settings: AppSettings, tick: Int) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                    Text("4. Let the dashboard check the balance", style = MaterialTheme.typography.bodyMedium)
-                    Text("Off means the dashboard's request is refused on this phone.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Switch(checked = allowed, onCheckedChange = { allowed = it; settings.ussdAllowed = it })
-            }
-
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                    Text("5. Let the dashboard send money from this phone", style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        "Off means the dashboard cannot make this phone cash in, whatever it asks. The balance check above is not affected.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                var cashIn by remember { mutableStateOf(settings.cashInAllowed) }
-                Switch(checked = cashIn, onCheckedChange = { cashIn = it; settings.cashInAllowed = it })
-            }
+            // "Let the dashboard check the balance" and "Let the dashboard send money from this phone" are NOT here any more
+            // (owner 2026-11-03): the owner switches them on the dashboard's Phones page, so they cannot be changed by mistake
+            // on a phone. This phone just follows (RemoteSwitches). The rules below stay as they were.
             Text(
-                "Even when it is on, this phone sends only what the dashboard asks for, at most Tk 10,000 at a time, and it " +
+                "4. Whether the dashboard may check the balance or make this phone send money is switched on the dashboard (Phones page), not here.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                "Even when sending money is on, this phone sends only what the dashboard asks for, at most Tk 10,000 at a time, and it " +
                     "stops without typing the PIN unless the wallet's own screen shows that number and that amount.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -263,17 +246,7 @@ fun UssdCard(settings: AppSettings, tick: Int) {
                 OutlinedButton(onClick = { ScreenWake.openPopupSetting(ctx) }) { Text("Open other permissions") }
             }
 
-            Text("Test it now, right here:", style = MaterialTheme.typography.bodyMedium)
-            Button(
-                enabled = !running,
-                onClick = {
-                    running = true
-                    UssdRunner.run(ctx, provider) { outcome ->
-                        UssdCommands.remember(ctx, provider, outcome)
-                        running = false
-                    }
-                },
-            ) { Text(if (running) "Checking… keep the screen on" else "Check $label balance now") }
+            // "Check balance now" is a dashboard button only (owner 2026-11-03). What the last dashboard check found is shown here.
             if (last != null) Text(last, style = MaterialTheme.typography.bodyMedium)
             if (steps.isNotBlank()) {
                 TextButton(onClick = { details = !details }) { Text(if (details) "Hide what happened" else "Show what happened (send this if it fails)") }
@@ -291,8 +264,8 @@ private fun LockedSummary(settings: AppSettings, tick: Int) {
     val pins = remember(tick) { UssdProviders.all.map { it to UssdSetup.pinSaved(ctx, it) } }
     val running = UssdSession.connected()
     fun onOff(v: Boolean) = if (v) "ON" else "OFF"
-    Text("Balance checks from the dashboard: ${onOff(settings.ussdAllowed)}", style = MaterialTheme.typography.bodyMedium)
-    Text("Sending money from this phone: ${onOff(settings.cashInAllowed)}", style = MaterialTheme.typography.bodyMedium)
+    Text("Balance checks (set on the dashboard): ${onOff(settings.ussdAllowed)}", style = MaterialTheme.typography.bodyMedium)
+    Text("Sending money (set on the dashboard): ${onOff(settings.cashInAllowed)}", style = MaterialTheme.typography.bodyMedium)
     Text(
         "Wallet PINs saved: " + pins.joinToString(", ") { (p, saved) -> UssdProviders.label(p) + (if (saved) " ✓" else " –") },
         style = MaterialTheme.typography.bodyMedium,

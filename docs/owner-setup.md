@@ -338,9 +338,18 @@ Deposit orders use Admin Hub's own approval words: **Waiting**, **Paid**, **Held
 
 Admin Hub has an English / 中文 switch; PayTrace is English only for now (your choice on 2026-11-03). A matching 中文 switch can be added later.
 
+## Balance checks and sending money are switched on the dashboard (2026-11-03)
+
+On the dashboard's **Phones** page each approved phone has a box called **What the dashboard may do with this phone**:
+
+- **Check the balance and read the statement**: ON by default. It only reads.
+- **Send money from this phone**: OFF by default. It also needs a daily limit above zero on the Jobs page.
+
+The phone follows the switch within about 30 seconds and the box tells you when it has. The **Check balance** buttons are on the same page. These switches no longer exist in the phone app, so nobody can change them by mistake there. Phones need the new app build to follow the switch; until then they keep their old on-phone switches.
+
 ## Lock the phone app's Settings with an admin code (2026-11-03)
 
-The phone app's Settings tab holds the switches that matter most: whether the dashboard may ask this phone for a balance or statement, whether it may send money, the saved wallet PINs and the keep-alive options. An admin code stops anyone from changing them by mistake.
+The phone app's Settings tab holds the saved wallet PINs, the SIM choice and the keep-alive options (the balance and send-money switches are on the dashboard). An admin code stops anyone from changing them by mistake.
 
 1. On each payment phone open PayTrace, go to **Settings**, and find the **Admin code** card at the top. Choose a code of 6 to 12 digits and type it twice. Easy codes such as 111111 or 123456 are refused.
 2. From then on Settings is read-only. A short summary shows what is ON or OFF. To change anything, type the code under **Unlock**. It stays open for 5 minutes, and closes at once when you leave the Settings tab.

@@ -22,6 +22,7 @@ import { WALLETS } from "@/lib/phoneCommands";
 import { StatementSection } from "@/components/StatementSection";
 import { PhoneActions } from "@/components/PhoneActions";
 import { CashInSection } from "@/components/CashInSection";
+import { PhonePermissions } from "@/components/PhonePermissions";
 import { AppVersionCard, VersionChip } from "@/components/AppVersionCard";
 import { GROUP_CODE, GroupChoice } from "@/components/GroupChoice";
 import { CommissionCard } from "@/components/CommissionCard";
@@ -415,9 +416,10 @@ function DeviceCard({
       {d.status === "approved" ? (
         <div className="flex flex-col gap-2">
           <PhoneActions deviceId={d.id} />
-          {WALLETS.map((w) => <BalanceCheck key={w} deviceId={d.id} provider={w} />)}
-          <CashInSection deviceId={d.id} />
-          <StatementSection deviceId={d.id} />
+          <PhonePermissions device={d} onChanged={onChanged} />
+          {d.allow_balance !== false ? WALLETS.map((w) => <BalanceCheck key={w} deviceId={d.id} provider={w} />) : null}
+          {d.allow_cashin === true ? <CashInSection deviceId={d.id} /> : null}
+          {d.allow_balance !== false ? <StatementSection deviceId={d.id} /> : null}
         </div>
       ) : null}
       {showHealth ? <DeviceDetails info={d.info} /> : null}

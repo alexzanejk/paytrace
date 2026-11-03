@@ -39,7 +39,7 @@ export const isLive = (c: Pick<PhoneCommand, "status"> | null | undefined): bool
 export const POLL_MS = 3000;
 
 const ERROR_TEXT: Record<string, string> = {
-  not_allowed: "The switch on that phone is off. Turn it on in the app: Settings, Nagad balance check.",
+  not_allowed: "Balance checks are switched off for that phone. Turn them on in its card under \"What the dashboard may do\".",
   no_accessibility: "PayTrace is not switched on in that phone's Accessibility settings.",
   accessibility_not_running: "That phone says PayTrace is switched on in Accessibility, but it never actually started it, so nothing was watching the screen. On the phone: Settings, Accessibility, Downloaded apps, switch PayTrace OFF and ON again. On Xiaomi/Redmi also allow \"Display pop-up windows while running in the background\".",
   no_call_permission: "That phone has not allowed phone calls for PayTrace.",
@@ -57,7 +57,7 @@ const ERROR_TEXT: Record<string, string> = {
   sim_not_found: "The phone could not pick the Nagad SIM. Check the SIM number in the app's settings.",
   dial_failed: "The phone could not start the code.",
   unsupported: "That phone's app is too old for this. Update the app.",
-  cash_in_off: "Cash-in is switched off on that phone. Turn it on in the app: Settings, Balance check.",
+  cash_in_off: "Sending money is switched off for that phone. Turn it on in its card under \"What the dashboard may do\".",
   bad_cash_in: "The phone refused the amount or the number. Nothing was sent.",
   confirm_does_not_match: "The wallet's own screen did not show this number and this amount, so the phone stopped before the PIN. NOTHING was sent.",
   wallet_refused: "The wallet itself said no (for example the amount is under its minimum, or the PIN was wrong). Nothing was sent.",
