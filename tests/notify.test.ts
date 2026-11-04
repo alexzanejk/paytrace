@@ -1,6 +1,7 @@
 import {
-  testMessage, clean, duration, makeNotifier, problemMessage, reasonText, recoveredMessage, reviewMessage, silentMessage, taka,
+  testMessage, clean, duration, makeNotifier, problemMessage, reasonText, recoveredMessage, reviewMessage, silentMessage, taka, unreadMessage,
 } from "../supabase/functions/ingest/notify.ts";
+import { answerText as gwAnswerText, webhookFailingMessage } from "../supabase/functions/gateway/notify.ts";
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, extra?: unknown) {
@@ -77,6 +78,14 @@ check("problem: sms permission off", problemMessage({ name: "P", code: "C", prob
 
 check("test message says alerts are working", testMessage().includes("Alerts are working"));
 check("test message is plain text with no links", !/https?:\/\//.test(testMessage()));
+
+const unread = unreadMessage({ provider: "nagad", reason: "nagad: unrecognized header", dashboardUrl: "https://d.example" });
+check("unread SMS alert names the wallet and the reason", unread.includes("Nagad") && unread.includes("unrecognized header") && unread.includes("Run the parser again") && unread.endsWith("/#/logs"));
+check("unread SMS alert without a provider", unreadMessage({ provider: null, reason: "x", dashboardUrl: "https://d" }).includes("Unknown wallet"));
+const hook = webhookFailingMessage({ site: "777bajii", event: "deposit.expired", orderRef: "SHOP-1", attempts: 3, status: "400", gaveUp: false, dashboardUrl: "https://d.example" });
+check("webhook alert, still trying", hook.includes("777bajii") && hook.includes("\"expired\" message for order SHOP-1 failed 3 times") && hook.includes("HTTP 400") && hook.includes("keeps trying"));
+check("webhook alert, given up", webhookFailingMessage({ site: "s", event: "deposit.paid", orderRef: "o", attempts: 8, status: "405", gaveUp: true, dashboardUrl: "https://d" }).includes("stopped trying"));
+check("gateway answer words", gwAnswerText("timeout").includes("8 seconds") && gwAnswerText("502").includes("site's own error"));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

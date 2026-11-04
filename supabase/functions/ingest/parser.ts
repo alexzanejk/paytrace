@@ -9,7 +9,7 @@ export type TxnType = "payment_received" | "send_money_received" | "cash_out" | 
  *  it for a customer; in: an agent did it for this wallet); payment = a merchant/bill payment from the wallet; bill = a
  *  utility bill; loan = a bKash digital loan repayment. All of them move the balance, so they are stored to keep the
  *  balance chain whole, and none of them can ever credit an order. */
-export type FlowKind = "b2b" | "cash_in" | "payment" | "bill" | "loan";
+export type FlowKind = "b2b" | "cash_in" | "cash_out" | "payment" | "bill" | "loan";
 
 export interface Parsed {
   provider: Provider;
@@ -123,6 +123,10 @@ function parseBkash(text: string): ParseResult {
   } else if ((m = text.match(new RegExp(`Cash\\s*In\\s+Tk\\s*${NUM}\\s+to\\s+([\\dXx*]+)\\s+successful`, "i")))) {
     // The AGENT's own cash-in receipt (real sample 2026-11-04): money LEFT the agent wallet. Never a customer payment.
     txnType = "transfer_out"; flow = "cash_in"; amount = num(m[1]); who = m[2];
+  } else if ((m = text.match(new RegExp(`Cash\\s*Out\\s+Tk\\s*${NUM}\\s+to\\s+([\\dXx*]+)\\s+successful`, "i")))) {
+    // The wallet's OWN cash-out at an agent ("Cash Out Tk 7,000.00 to 01704241450 successful. Fee Tk 129.50 ..."; 10 real
+    // messages in the log by 2026-11-04): money LEFT this wallet. Never a customer payment.
+    txnType = "transfer_out"; flow = "cash_out"; amount = num(m[1]); who = m[2];
   } else if ((m = text.match(new RegExp(`Cash\\s*In\\s+Tk\\s*${NUM}\\s+from\\s+([\\dXx*]+)\\s+successful`, "i")))) {
     // Money put INTO this wallet by an agent (real sample 2026-11-04). Held for a person: it could be a customer who paid at
     // an agent counter, or the owner's own top-up; it is never credited by itself.

@@ -117,6 +117,13 @@ check("bkash agent cash-in is outgoing money, never a customer payment", p?.txnT
 check("bkash agent cash-in amount, balance, trx, time", p?.amount === 200 && p?.balance === 6806.69 && p?.trxId === "DK46191BOA" && p?.occurredAt === "2026-11-04T11:08:00+06:00");
 check("bkash agent cash-in auto-detected without hint", parsed(bkashCashIn)?.provider === "bkash");
 check("rocket b2b names its kind", parsed(rocketB2B, "rocket")?.flowKind === "b2b");
+// ---- the wallet's OWN cash-out at an agent (real sample 2026-11-04, 10 in the log): money LEFT the wallet ----
+const bkashOwnCashOut = "Cash Out Tk 7,000.00 to 01704241450 successful. Fee Tk 129.50. Balance Tk 5,961.98. TrxID DK491M7LTT at 04/11/2026 15:15";
+p = parsed(bkashOwnCashOut, "bkash");
+check("bkash own cash-out parsed", !!p, parseSms(bkashOwnCashOut, "bkash"));
+check("bkash own cash-out is outgoing money, never a customer payment", p?.txnType === "transfer_out" && p?.flowKind === "cash_out");
+check("bkash own cash-out amount, fee, balance, trx", p?.amount === 7000 && p?.fee === 129.5 && p?.balance === 5961.98 && p?.trxId === "DK491M7LTT");
+check("a customer's Cash Out FROM a number is still a receipt", parsed("Cash Out Tk 500.00 from 01711111111 successful. Fee Tk 0.00. Balance Tk 6,461.98. TrxID DK4ABCDEFG at 04/11/2026 15:20", "bkash")?.txnType === "cash_out");
 check("unknown b2b layout is never read as customer money", parseSms("B2B: Something odd A/C: ***238 Tk500.00 Balance: Tk900.00 TxnId: ABC1234567", "rocket").kind === "failed");
 
 // ---- Layouts that used to fail to parse (real samples from the owner's phones, 2026-10-17 to 2026-11-04). Each is money

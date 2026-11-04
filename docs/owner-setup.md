@@ -595,3 +595,37 @@ amount; the confirm box says so before you press it. Orders can no longer be cha
 login: *Cancel* on Deposit orders goes through its own checked step, and only a matched payment can ever make an order paid.
 
 A payment SMS that prints no balance is now held like a broken chain (every real receipt prints one), and the phone check decides it.
+
+## When a website rejects PayTrace's result messages (2026-11-04)
+
+Every time a deposit is paid, held, expired or cancelled, PayTrace sends the website a signed result message (the
+"webhook"). If the site's server answers with an error, PayTrace tries again 7 more times over about a day, then stops.
+
+What is new:
+- **Websites page, under each site's result address:** "Last 7 days: N delivered, N given up, N still trying", and a
+  list of the messages that failed, each with the site's answer in plain words (for example "HTTP 400, the site
+  rejected the message as bad request") and a **Retry** button. **Retry all** re-queues every failed message of that site.
+  PayTrace sends again within a minute.
+- **Telegram:** you get one message when a site has failed 3 times in a row (about 20 minutes of trying) and one when
+  PayTrace gives up, at most once an hour per site.
+
+What to do: show the answer to the site's developer. 400 and 405 usually mean the address is wrong or the site's code
+does not accept the message; 401 or 403 means the wrong signing secret; "could not connect" means the site is down.
+Press Retry once it is fixed. Nothing about the order itself changes: the money is credited in PayTrace either way,
+only the site's own record was missing the result.
+
+## An SMS PayTrace could not read (2026-11-04)
+
+Sometimes a wallet sends a message in a layout PayTrace has not seen before. Such a message is kept on the **Activity
+log** page as "parse failed" with its full text. It is not counted and leaves a gap in the balance chain, which can make
+the next real payment look suspicious.
+
+What is new:
+- **Telegram:** one message per wallet type at most every 6 hours when this happens, with the reason.
+- **Activity log → "parse failed":** a **Run again** button on each row, and **Run the parser again on all unread
+  (30 days)** at the top. After a PayTrace update that teaches the reader the new layout, press it: each message goes
+  through exactly the same path as a live SMS (sender check, balance chain, matching). The row then says what came of it:
+  "Stored now", "Already stored", or "Still cannot be read".
+
+Messages logged before 4 November 2026 did not keep the sender ID or the phone. Running them again stores them under
+"Unknown phone" and trusts that the phone's own filter let them through (it only forwards the four wallet sender IDs).

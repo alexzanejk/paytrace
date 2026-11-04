@@ -61,6 +61,32 @@ export function reasonText(reason: string | null | undefined): string {
   return hit ? hit[1] : clean(reason, 80);
 }
 
+/** A website's result address keeps failing: sent at the 3rd failed try (about 20 minutes of trying) and when PayTrace
+ *  gives up (8 tries, about a day), at most once an hour per website. Before this the failures were silent (audit 2026-11-04). */
+export function webhookFailingMessage(p: { site: string; event: string; orderRef: string; attempts: number; status: string; gaveUp: boolean; dashboardUrl: string }): string {
+  const what = p.event.replace(/^deposit\./, "");
+  return [
+    p.gaveUp ? "⚠️ A website is not receiving its result messages (PayTrace has stopped trying)" : "⚠️ A website is rejecting its result messages",
+    `${clean(p.site, 40)}: the "${clean(what, 20)}" message for order ${clean(p.orderRef, 40)} failed ${p.attempts} time${p.attempts === 1 ? "" : "s"} (last answer: ${answerText(p.status)}).`,
+    p.gaveUp ? "The site was never told this order's result. Press Retry on the Websites page once its developer has fixed the address." : "PayTrace keeps trying for about a day. The site's developer should check the result address.",
+    `${p.dashboardUrl}/#/WEBSITES_TAB`,
+  ].join("\n").replace("WEBSITES_TAB", "api");
+}
+
+/** The site's answer in plain words. */
+export function answerText(status: string): string {
+  const s = clean(status, 20);
+  if (s === "timeout") return "no answer within 8 seconds";
+  if (s === "unreachable") return "could not connect";
+  const n = Number(s);
+  if (n === 400) return "HTTP 400, the site rejected the message as bad request";
+  if (n === 401 || n === 403) return `HTTP ${n}, the site refused it (wrong secret or blocked)`;
+  if (n === 404) return "HTTP 404, the address does not exist";
+  if (n === 405) return "HTTP 405, the address does not accept POST";
+  if (n >= 500) return `HTTP ${n}, the site's own error`;
+  return `HTTP ${s}`;
+}
+
 /** The customer typed a TrxID whose payment is held (or became held by the typing): same wording as the ingest alert. */
 export function heldClaimMessage(p: { provider: string; amount: number; trxId: string; reason: string | null; dashboardUrl: string }): string {
   return [
