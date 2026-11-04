@@ -8,6 +8,8 @@ import { EmptyRow } from "@/components/Empty";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { rerunLine, rerunParser } from "@/lib/reparse";
 
 const ALL = "all";
 const KINDS = [
@@ -18,6 +20,9 @@ const KINDS = [
   "claim",
   "manual_match",
   "parse_failed",
+  "parse_failed_alerted",
+  "parse_rerun",
+  "webhooks_retried",
   "ignored",
   "rejected_sender",
   "balance_unconfirmed",
@@ -35,8 +40,10 @@ const KINDS = [
 
 export function Logs() {
   const [kind, setKind] = useState(ALL);
+  const [running, setRunning] = useState<number | "all" | null>(null);
+  const [runNote, setRunNote] = useState("");
 
-  const { data, error, loading } = useQuery(
+  const { data, error, loading, refresh } = useQuery(
     async () => {
       let q = sb.from("events").select("*").order("at", { ascending: false }).limit(200);
       if (kind !== ALL) q = q.eq("kind", kind);
@@ -47,6 +54,15 @@ export function Logs() {
   );
 
   const rows = data ?? [];
+
+  async function rerun(id?: number) {
+    setRunning(id ?? "all");
+    setRunNote("");
+    const out = await rerunParser(id);
+    setRunning(null);
+    setRunNote(out.message);
+    refresh();
+  }
 
   return (
     <Screen loading={loading} error={error} hasData={!!data}>
@@ -65,8 +81,14 @@ export function Logs() {
           </SelectContent>
         </Select>
         <p className="text-sm text-muted-foreground">
-          “parse failed” rows hold the original SMS text, so the reader can be fixed.
+          “parse failed” rows hold the original SMS text, so the reader can be fixed. After an update, “Run again” reads them with the reader as it is now.
         </p>
+        {kind === "parse_failed" ? (
+          <Button size="sm" variant="outline" onClick={() => void rerun()} disabled={running !== null}>
+            {running === "all" ? "Running…" : "Run the parser again on all unread (30 days)"}
+          </Button>
+        ) : null}
+        {runNote ? <p className="text-sm">{runNote}</p> : null}
       </div>
       <Table>
         <TableHeader>
@@ -100,6 +122,14 @@ export function Logs() {
                 <TableCell>{e.provider ? (PROVIDER_LABEL[e.provider] ?? e.provider) : "–"}</TableCell>
                 <TableCell className="max-w-md whitespace-normal break-words font-mono text-xs text-muted-foreground">
                   {JSON.stringify(e.detail)}
+                  {e.kind === "parse_failed" ? (
+                    <div className="mt-1 flex flex-wrap items-center gap-2 font-sans">
+                      <Button size="sm" variant="outline" onClick={() => void rerun(e.id)} disabled={running !== null}>
+                        {running === e.id ? "Running…" : "Run again"}
+                      </Button>
+                      {rerunLine(e.detail) ? <span className="text-foreground">{rerunLine(e.detail)}</span> : null}
+                    </div>
+                  ) : null}
                 </TableCell>
               </TableRow>
             ))

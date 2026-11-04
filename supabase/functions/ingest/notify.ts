@@ -141,6 +141,17 @@ export function problemMessage(p: { name: string; code: string; problem: Problem
   ].join("\n");
 }
 
+/** An SMS from a provider could not be read by the parser. Sent at most once per wallet type every 6 hours. */
+export function unreadMessage(p: { provider: string | null; reason: string; dashboardUrl: string }): string {
+  return [
+    "⚠️ An SMS could not be read",
+    `${p.provider ? (PROVIDER[p.provider] ?? clean(p.provider, 20)) : "Unknown wallet"}: ${clean(p.reason, 100)}`,
+    "It was NOT counted and leaves a gap in the balance chain. The text is on the Activity log page (“parse failed”).",
+    "After the next PayTrace update, press “Run the parser again” there to recover it.",
+    `${p.dashboardUrl}/#/logs`,
+  ].join("\n");
+}
+
 export const testMessage = () =>
   [
     "✅ PayTrace test message",

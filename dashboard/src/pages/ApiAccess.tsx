@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import type { OutboxRow } from "@/lib/webhooks";
 import { BookOpen, ChevronDown, ExternalLink, KeyRound, Plus, ShieldAlert } from "lucide-react";
 import { must, sb } from "@/lib/supabase";
 import { when } from "@/lib/format";
@@ -34,6 +35,21 @@ export function ApiAccess() {
       ) as SiteKey[],
     [],
     { refreshMs: 15000 },
+  );
+
+  // Result messages of the last 7 days, for every site at once (admins may read these columns only).
+  const { data: outbox } = useQuery(
+    async () =>
+      must(
+        await sb
+          .from("webhook_outbox")
+          .select("id,order_id,event,created_at,attempts,delivered_at,gave_up_at,last_status,next_attempt_at,orders(api_key_id,merchant_order_id,order_no)")
+          .gte("created_at", new Date(Date.now() - 7 * 864e5).toISOString())
+          .order("created_at", { ascending: false })
+          .limit(500),
+      ) as unknown as OutboxRow[],
+    [],
+    { refreshMs: 30000 },
   );
 
   const [name, setName] = useState("");
@@ -173,7 +189,7 @@ export function ApiAccess() {
           {active.length === 0 ? (
             <Card className="p-6 text-center text-sm text-muted-foreground">No website yet. Add one above.</Card>
           ) : (
-            active.map((k) => <SiteCard key={k.id} site={k} onChanged={refresh} onRevoke={() => void revoke(k)} />)
+            active.map((k) => <SiteCard key={k.id} site={k} outbox={outbox ?? []} onChanged={refresh} onRevoke={() => void revoke(k)} />)
           )}
           {revokeError ? <p className="text-sm text-destructive">{revokeError}</p> : null}
           <p className="text-xs text-muted-foreground">

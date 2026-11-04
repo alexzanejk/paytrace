@@ -20,7 +20,7 @@
 // Crediting is never done here: it goes through the database's claim_order / reconcile_payment, same as every other payment.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import { extractKey, isCrypto, isUuid, normalizeGroup, normalizeTrx, parseDeposit, parseGroupCode, signWebhook, submitState, type DepositRequest } from "./logic.ts";
-import { heldClaimMessage, makeNotifier } from "./notify.ts";
+import { heldClaimMessage, makeNotifier, webhookFailingMessage } from "./notify.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
@@ -224,7 +224,16 @@ async function sendOne(row: { id: number; url: string; secret: string; event: st
   } catch (e) {
     status = e instanceof DOMException && e.name === "TimeoutError" ? "timeout" : "unreachable";
   }
-  await db.rpc("gw_webhook_result", { p_id: row.id, p_ok: ok, p_status: status });
+  // Records the try and says whether the owner should hear about it (3rd failure, or given up; once an hour per site).
+  const { data: r, error } = await db.rpc("gw_webhook_result2", { p_id: row.id, p_ok: ok, p_status: status });
+  if (error) { await db.rpc("gw_webhook_result", { p_id: row.id, p_ok: ok, p_status: status }); return; }
+  const res = (r ?? {}) as { alert?: boolean; gave_up?: boolean; attempts?: number; site_name?: string; order_ref?: string };
+  if (res.alert) {
+    await notify.send(webhookFailingMessage({
+      site: res.site_name ?? "a website", event: row.event, orderRef: res.order_ref ?? "?", attempts: Number(res.attempts ?? 0),
+      status, gaveUp: res.gave_up === true, dashboardUrl: DASHBOARD_URL,
+    }));
+  }
 }
 
 /** Closes unpaid orders and sends every waiting result message. Safe to call at any time and as often as you like. */

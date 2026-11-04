@@ -13,7 +13,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import { parseSms, senderMatchesProvider, type Provider } from "./parser.ts";
 import { cleanInfo, healthProblem, type DeviceInfo } from "./health.ts";
-import { confirmedMessage, makeNotifier, notConfirmedMessage, problemMessage, recoveredMessage, reviewMessage, testMessage } from "./notify.ts";
+import { confirmedMessage, makeNotifier, notConfirmedMessage, problemMessage, recoveredMessage, reviewMessage, testMessage, unreadMessage } from "./notify.ts";
 import { readStatementLines } from "./statement.ts";
 import { runWatchdog } from "./watchdog.ts";
 import { runWake } from "./wake.ts";
@@ -22,7 +22,7 @@ import { corsHeaders } from "./cors.ts";
 
 // Supabase's runtime lets work finish after the response is sent. Absent when run elsewhere (tests).
 // How each kind of outgoing money is labelled in payments.review_reason (shown on the dashboard, counted by device_day_flows).
-const OUT_REASON: Record<string, string> = { b2b: "b2b_transfer_out", cash_in: "cash_in_sent", payment: "payment_sent", bill: "bill_paid", loan: "loan_repaid" };
+const OUT_REASON: Record<string, string> = { b2b: "b2b_transfer_out", cash_in: "cash_in_sent", cash_out: "cash_out_sent", payment: "payment_sent", bill: "bill_paid", loan: "loan_repaid" };
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 const defer = (p: Promise<unknown>) => {
@@ -231,6 +231,62 @@ async function startWalletCheck(paymentId: string): Promise<void> {
   if (r?.command_id && r.device_id) defer(wakeDevice(r.device_id));
 }
 
+/** Tells the owner that an SMS could not be read, at most once per wallet type every 6 hours (an unknown layout tends
+ *  to repeat). Before this (audit 2026-11-04) such messages sat only in the log, unseen, each one a hole in the balance chain. */
+async function alertUnread(provider: string | null, reason: string): Promise<void> {
+  try {
+    if (!notify.enabled) return;
+    const since = new Date(Date.now() - 6 * 3600_000).toISOString();
+    let q = db.from("events").select("id", { count: "exact", head: true }).eq("kind", "parse_failed_alerted").gte("at", since);
+    q = provider ? q.eq("provider", provider) : q.is("provider", null);
+    const { count } = await q;
+    if ((count ?? 0) > 0) return;
+    await log("parse_failed_alerted", provider, { reason });
+    await notify.send(unreadMessage({ provider, reason, dashboardUrl: DASHBOARD_URL }));
+  } catch {
+    // an alert must never touch the message path
+  }
+}
+
+/** The owner's "Run the parser again": reads logged messages that could not be read before with the parser as it is NOW.
+ *  Body {"event_id": N} for one, or nothing for every unread message of the last 30 days that has not been stored since
+ *  (at most 50 a call). Each goes through the same path as a live SMS (sender check, balance chain, matching); the log
+ *  row gets rerun_at / rerun_result / rerun_payment_id. Admins only. */
+async function reparse(authHeader: string, body: Record<string, unknown>): Promise<Response> {
+  const denied = await adminCheck(authHeader);
+  if (denied) return denied;
+  const one = body.event_id == null ? null : Number(body.event_id);
+  if (one !== null && !Number.isInteger(one)) return json({ success: false, message: "bad event_id" }, 400);
+  let q = db.from("events").select("id,at,provider,detail").eq("kind", "parse_failed").order("at", { ascending: true });
+  q = one !== null ? q.eq("id", one) : q.gte("at", new Date(Date.now() - 30 * 864e5).toISOString()).limit(400);
+  const { data: events, error } = await q;
+  if (error) return json({ success: false, message: "could not read the log" }, 500);
+  const todo = (events ?? []).filter((e) => {
+    const det = (e.detail ?? {}) as Record<string, unknown>;
+    return one !== null || !["stored", "duplicate", "ignored"].includes(String(det.rerun_result ?? ""));
+  }).slice(0, 50);
+  const results: { id: number; result: string; status?: string | null }[] = [];
+  for (const e of todo) {
+    const det = (e.detail ?? {}) as Record<string, unknown>;
+    const raw = typeof det.raw === "string" ? det.raw : "";
+    const senderId = typeof det.sender_id === "string" ? det.sender_id : "";
+    const dev = typeof det.device_id === "string" && /^[0-9a-f-]{36}$/i.test(det.device_id) ? det.device_id : null;
+    let result = "no_text", status: string | null = null, paymentId: string | null = null;
+    if (raw) {
+      const res = await storeSms({ raw, hint: (e.provider ?? "").toLowerCase(), senderId, deviceId: dev, rerun: true, legacyTrusted: !senderId });
+      const out = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      status = typeof out.status === "string" ? out.status : null;
+      paymentId = typeof out.payment_id === "string" ? out.payment_id : null;
+      result = out.duplicate === true ? "duplicate" : paymentId ? "stored" : out.ignored === true ? "ignored"
+        : out.parsed === false ? "still_unreadable" : res.status === 403 ? "sender_rejected" : "failed";
+    }
+    await db.from("events").update({ detail: { ...det, rerun_at: new Date().toISOString(), rerun_result: result, rerun_status: status, rerun_payment_id: paymentId } }).eq("id", e.id);
+    results.push({ id: Number(e.id), result, status });
+  }
+  if (results.length) await log("parse_rerun", null, { count: results.length, stored: results.filter((r) => r.result === "stored").length, one: one !== null });
+  return json({ success: true, results });
+}
+
 async function handle(req: Request): Promise<Response> {
   // ---- read payload (POST json or GET query) ----
   let body: Record<string, unknown> = {};
@@ -275,6 +331,7 @@ async function handle(req: Request): Promise<Response> {
   const authHeader = (req.headers.get("authorization") ?? "").trim();
   if (req.method === "POST" && body.action === "test_alert") return await testAlert(authHeader);
   if (req.method === "POST" && body.action === "test_wake") return await testWake(authHeader, String(body.device_id ?? ""));
+  if (req.method === "POST" && body.action === "reparse") return await reparse(authHeader, body);
   const deviceKey = authHeader.match(/^Device\s+(\S{32,200})$/i)?.[1];
   let deviceId: string | null = null;
   let device: { id: string; name: string; pair_code: string; info: DeviceInfo | null; allow_balance: boolean; allow_cashin: boolean } | null = null;
@@ -472,23 +529,36 @@ async function handle(req: Request): Promise<Response> {
   }
 
   if (!raw) return json({ success: false, message: "raw_message required" }, 400);
+  return await storeSms({ raw, hint, senderId, deviceId });
+}
 
+/** One SMS to read and store. `rerun`: the owner pressed "Run the parser again" on a message that could not be read
+ *  before (nothing is logged twice and no alert is sent); `legacyTrusted`: that message was logged before the sender ID
+ *  was kept, and it came from a paired phone, which only forwards the four provider sender IDs in the first place. */
+type SmsSource = { raw: string; hint: string; senderId: string; deviceId: string | null; rerun?: boolean; legacyTrusted?: boolean };
+
+async function storeSms(src: SmsSource): Promise<Response> {
+  const { raw, hint, senderId, deviceId } = src;
   // ---- parse on the server (so parser fixes never need an app update) ----
   const result = parseSms(raw, hint);
   if (result.kind === "ignored") {
-    await log("ignored", hint || null, { reason: result.reason, raw });
+    if (!src.rerun) await log("ignored", hint || null, { reason: result.reason, raw });
     return json({ success: true, message: "ignored: not a payment", ignored: true });
   }
   if (result.kind === "failed") {
-    await log("parse_failed", hint || null, { reason: result.reason, raw });
+    if (!src.rerun) {
+      // The sender and the phone are kept so the message can be read again once the parser knows its layout.
+      await log("parse_failed", hint || null, { reason: result.reason, raw, sender_id: senderId || null, device_id: deviceId });
+      defer(alertUnread(hint || null, result.reason));
+    }
     // success:true so the app stops retrying; the text is kept in the log for review
-    return json({ success: true, message: "stored for review: could not parse", parsed: false });
+    return json({ success: true, message: "stored for review: could not parse", parsed: false, reason: result.reason });
   }
   const d = result.data;
 
   // ---- sender must really be the provider's SMS ID (blocks look-alike texts from normal numbers).
   //      Required, not optional: a payload without one cannot be shown to be genuine. ----
-  if (!senderMatchesProvider(senderId, d.provider as Provider)) {
+  if (!senderMatchesProvider(senderId, d.provider as Provider) && !(src.rerun && src.legacyTrusted && !senderId)) {
     await log("rejected_sender", d.provider, { sender_id: senderId || null, trx_id: d.trxId });
     return json({ success: false, message: "sender not recognized" }, 403);
   }
@@ -575,7 +645,7 @@ async function handle(req: Request): Promise<Response> {
     return json({ success: false, message: "could not save" }, 500); // app will retry
   }
 
-  await log("created", d.provider, { trx_id: d.trxId, type: d.txnType, amount: d.amount, device_id: deviceId, chain: chainStatus }, inserted.id);
+  await log("created", d.provider, { trx_id: d.trxId, type: d.txnType, amount: d.amount, device_id: deviceId, chain: chainStatus, ...(src.rerun ? { rerun: true } : {}) }, inserted.id);
 
   // ---- try to match to an order that already claimed this TrxID ----
   let matchResult = status;

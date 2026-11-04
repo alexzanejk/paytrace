@@ -12,6 +12,7 @@ const PLAIN: [string, string][] = [
   ["paid_before_order", "Paid before the order was created, so it may be an older receipt (someone else's, or a reused one)"],
   ["cash_in_received", "Money came IN by Cash In from an agent. If a customer paid this way at an agent counter, credit it to their order; if it is your own top-up, ignore it"],
   ["b2b_received", "e-money your distributor sent to the agent wallet (B2B). Not a customer payment; kept only so the balance adds up"],
+  ["cash_out_sent", "A cash-out this wallet made at an agent: money LEFT the wallet. Not a customer payment; kept so the balance adds up"],
   ["payment_sent", "A merchant payment made from the wallet. Not a customer payment; kept so the balance adds up"],
   ["bill_paid", "A bill paid from the wallet. Not a customer payment; kept so the balance adds up"],
   ["loan_repaid", "A bKash loan repayment from the wallet. Not a customer payment; kept so the balance adds up"],

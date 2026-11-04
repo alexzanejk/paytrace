@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { WebhookPanel } from "@/components/WebhookPanel";
+import type { OutboxRow } from "@/lib/webhooks";
 import { Eye, EyeOff, Globe, KeyRound } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import { when } from "@/lib/format";
@@ -93,7 +95,7 @@ function KeyReveal({ siteId, hasSecret }: { siteId: string; hasSecret: boolean }
 }
 
 /** One website that uses PayTrace: its key, where its payment results go, how its result page looks, and what to send its developer. */
-export function SiteCard({ site, onChanged, onRevoke }: { site: SiteKey; onChanged: () => void; onRevoke: () => void }) {
+export function SiteCard({ site, outbox = [], onChanged, onRevoke }: { site: SiteKey; outbox?: OutboxRow[]; onChanged: () => void; onRevoke: () => void }) {
   const [url, setUrl] = useState("");
   const [hookBusy, setHookBusy] = useState(false);
   const [hookNote, setHookNote] = useState("");
@@ -203,6 +205,7 @@ export function SiteCard({ site, onChanged, onRevoke }: { site: SiteKey; onChang
           ) : null}
         </div>
         {hookNote ? <p className="text-xs text-muted-foreground">{hookNote}</p> : null}
+        {site.webhook_url ? <WebhookPanel siteId={site.id} rows={outbox} onChanged={onChanged} /> : null}
         {secret ? (
           <div className="grid gap-2 rounded-lg border border-primary p-3">
             <p className="text-sm font-medium">Signing secret (shown once)</p>
