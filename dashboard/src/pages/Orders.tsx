@@ -122,7 +122,8 @@ export function Orders({ settings }: { settings: Settings | null }) {
         description={`${o.order_no} will no longer accept a payment. If the customer pays anyway, the money goes to Needs a decision.`}
         confirmLabel="Cancel order"
         onConfirm={async () => {
-          await sb.from("orders").update({ status: "cancelled" }).eq("id", o.id).in("status", ["pending", "review"]);
+          const { error } = await sb.rpc("cancel_order", { p_order: o.id });
+          if (error) setNote(error.message);
           refresh();
         }}
       >

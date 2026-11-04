@@ -24,6 +24,7 @@ export function developerInstructions(key?: string): string {
     "- transaction_id: required. Spaces and lower case are tidied for you.",
     '- provider: optional. "bkash", "nagad", "rocket" or "upay". Send it whenever you know it.',
     "- amount: optional. The amount the customer says they paid. If you send it, you get amount_matches back.",
+    "- used / used_for: present when the payment already paid an order; used_for is the order_id that site sent. Credit nothing unless it is this very order.",
     "",
     "ANSWERS",
     '200 {"found": false}                                   -> show UNVERIFIED',

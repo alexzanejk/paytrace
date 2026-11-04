@@ -5,6 +5,7 @@
 //   {"transaction_id": "ABC123XYZ9", "provider": "bkash", "amount": 500}     provider and amount are optional
 //   -> 200 {"found": false}
 //   -> 200 {"found": true, "provider": "bkash", "amount": 500, "currency": "BDT", "amount_matches": true}
+//   -> 200 {..., "used": true, "used_for": "SHOP-1001"}   the payment already paid that order: never credit it again
 //
 // Read-only: it never changes anything. It returns the provider and amount of a found transaction (the owner chose
 // this, so a submitted ID can be checked against the amount the customer claims) and nothing else: no phone numbers,
@@ -73,5 +74,8 @@ Deno.serve(async (req) => {
   const amount = Number(data.amount);
   const out: Record<string, unknown> = { found: true, provider: data.provider, amount, currency: "BDT" };
   if (claimed !== undefined) out.amount_matches = amountsEqual(claimed, amount);
+  // Already credited to an order (migration 054): the caller must not credit it again. used_for is the website's own
+  // order reference (what it sent as order_id), so it can tell its own order from somebody else's.
+  if (data.used === true) { out.used = true; out.used_for = String(data.used_for ?? "order").slice(0, 100); }
   return json(out);
 });
