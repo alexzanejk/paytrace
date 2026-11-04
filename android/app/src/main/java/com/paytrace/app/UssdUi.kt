@@ -86,6 +86,16 @@ fun UssdCard(settings: AppSettings, tick: Int) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
+                if (AccessibilityHeal.allowed(ctx)) {
+                    Text(
+                        "This phone mends this by itself: within about 30 seconds it switches the service off and on again, which is " +
+                            "exactly what fixes it by hand (Android will not restart a service after the phone killed the app). " +
+                            "If it stays red, do the steps below.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedButton(onClick = { AccessibilityRepair.now(ctx) }) { Text("Repair now") }
+                }
                 Text(
                     "Try in this order. 1) Accessibility settings: switch PayTrace OFF and then ON again. " +
                         "2) If that does not help, this is the \"restricted settings\" block that Redmi and OnePlus put on apps " +
@@ -111,7 +121,14 @@ fun UssdCard(settings: AppSettings, tick: Int) {
                 }
             }
             if (AccessibilityHeal.allowed(ctx)) Text(
-                "This phone can switch it back on by itself after an app update.",
+                "This phone can switch it back on by itself after an app update, and switch it off and on again when the phone " +
+                    "has killed it (" + settings.a11yRepairs + " repairs so far).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            val repairLog = remember(tick) { settings.a11yRepairLog }
+            if (repairLog.isNotBlank()) Text(
+                "Self-repair log:\n" + repairLog,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -369,6 +386,8 @@ private fun LockedSummary(settings: AppSettings, tick: Int) {
         "Accessibility service: " + if (running) "running ✓" else "not running (tell the owner if balance checks fail)",
         style = MaterialTheme.typography.bodyMedium,
     )
+    val lastRepair = settings.a11yRepairLog.lines().firstOrNull { it.isNotBlank() }
+    if (lastRepair != null) Text("Last self-repair: $lastRepair", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 private fun parseLast(json: String, label: String): String? {

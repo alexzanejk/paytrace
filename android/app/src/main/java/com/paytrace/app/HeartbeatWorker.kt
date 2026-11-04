@@ -44,6 +44,8 @@ class HeartbeatWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
             val s = AppSettings(ctx)
             // An app update switches PayTrace off in Accessibility settings; where this phone allows it, put it back.
             try { AccessibilityHeal.heal(ctx) } catch (e: Exception) { }
+            // The phone killed PayTrace and Android will not restart the service by itself: where allowed, switch it off and on.
+            try { AccessibilityRepair.check(ctx) } catch (e: Exception) { }
             // Not asked to join yet (or removed): the app's own screen handles pairing.
             val waiting = s.deviceStatus == "pending" || s.deviceStatus == "approved"
             if (s.serverUrl.isBlank() || !(waiting || s.secret.isNotBlank())) return
