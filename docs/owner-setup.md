@@ -585,3 +585,13 @@ message either way. On Review, each held payment shows what the phone found and 
 For this to work the phone needs what every dashboard command needs: balance checks allowed on the Phones page, the wallet PIN
 saved in the app, the screen unlocked (no screen lock), and on Xiaomi/Redmi the pop-up permission. Nagad's statement has not been
 seen yet, so for Nagad only the balance step can confirm a payment for now; bKash can use both.
+
+
+## Crediting by hand, and cancelling (2026-11-04)
+
+*Credit to order* on Review now refuses a payment that arrived on a different wallet than the order (a bKash receipt cannot pay a
+Nagad order). If the amount differs from what the order asked, PayTrace credits what was really paid and tells the website that
+amount; the confirm box says so before you press it. Orders can no longer be changed by hand in the database from the dashboard
+login: *Cancel* on Deposit orders goes through its own checked step, and only a matched payment can ever make an order paid.
+
+A payment SMS that prints no balance is now held like a broken chain (every real receipt prints one), and the phone check decides it.
