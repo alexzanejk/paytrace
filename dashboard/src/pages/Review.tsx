@@ -5,6 +5,8 @@ import { reviewReasonText } from "@/lib/reasons";
 import { type Order, type Payment } from "@/lib/types";
 import { PAGE_INTRO, PAYMENT_STATUS } from "@/lib/words";
 import { openHelp } from "@/lib/nav";
+import { nudgePhone } from "@/lib/wake";
+import { walletCheckLine, type PaymentCheck } from "@/lib/walletCheck";
 import { useDevices } from "@/hooks/useDevices";
 import { DeviceChip } from "@/components/DeviceChip";
 import { ProviderChip } from "@/components/ProviderChip";
@@ -42,6 +44,11 @@ export function Review() {
           .order("received_at", { ascending: false })
           .limit(100),
       ) as Payment[];
+      // What the phone itself said about each held payment (migration 053): newest first per payment.
+      const heldIds = payments.filter((p) => p.status === "review").map((p) => p.id);
+      const checks = heldIds.length
+        ? ((await sb.from("payment_checks").select("*").in("payment_id", heldIds).order("created_at", { ascending: false }).limit(300)).data ?? []) as PaymentCheck[]
+        : [];
       const open = must(
         await sb
           .from("orders")
@@ -67,7 +74,7 @@ export function Review() {
       const late = trx.length
         ? (must(await sb.from("payments").select("*").in("trx_id", trx).in("status", ["tracked_only", "unmatched"]).limit(100)) as Payment[])
         : [];
-      return { payments, orders: [...open, ...expired], late };
+      return { payments, orders: [...open, ...expired], late, checks };
     },
     [],
     { refreshMs: 20000 },
@@ -89,6 +96,16 @@ export function Review() {
   const lateIds = new Set((data?.late ?? []).map((p) => p.id));
   const noOrder = all.filter((p) => p.status === "unmatched" && !lateIds.has(p.id));
   const late = data?.late ?? [];
+  const checksOf = (p: Payment) => (data?.checks ?? []).filter((c) => c.payment_id === p.id);
+  async function recheck(p: Payment) {
+    const { data: r, error } = await sb.rpc("recheck_payment", { p_payment: p.id });
+    if (error) return setFailed((f) => ({ ...f, [p.id]: error.message }));
+    const out = r as { error?: string; device_id?: string } | null;
+    if (out?.error) return setFailed((f) => ({ ...f, [p.id]: walletCheckLine(null, out.error) ?? String(out.error) }));
+    if (out?.device_id) nudgePhone(out.device_id);
+    setFailed((f) => ({ ...f, [p.id]: "" }));
+    refresh();
+  }
   const expiredOrderOf = (p: Payment) => orders.find((o) => o.status === "expired" && o.claimed_trx_id === p.trx_id && o.claimed_provider === p.provider) ?? null;
 
   const card = (p: Payment) => {
@@ -128,6 +145,16 @@ export function Review() {
                 ? `The customer typed this TrxID on order ${expiredOrderOf(p)?.order_no ?? ""}, which expired before the SMS arrived. If the money is real, credit it: the website is then told the deposit was paid.`
                 : "The money is yours and is counted in the totals. Match it only if you know which order it was for."}
           </p>
+          {p.status === "review" && p.review_reason === "balance_chain_mismatch" ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-border/60 pt-2">
+              <span className="text-xs text-muted-foreground">{walletCheckLine(checksOf(p)[0] ?? null) ?? "PayTrace can ask the phone to prove this payment with the wallet's live balance and statement."}</span>
+              {checksOf(p)[0]?.status !== "queued" ? (
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => void recheck(p)} title="The phone reads the wallet's live balance, then its statement. A match releases and credits this payment by itself.">
+                  Check with the wallet
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-auto flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:flex-wrap sm:items-center">

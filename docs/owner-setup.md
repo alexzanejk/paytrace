@@ -572,3 +572,16 @@ repayments are kept only so the balance adds up; they never credit anyone.
 
 On **Phones > Deposit numbers** each number shows how many orders were shown that number in the last 24 hours, how many customers typed a
 TrxID and how many paid. "Customers say they paid but nothing arrived" means the number is probably wrong or the phone is off.
+
+
+## Held payments are checked with the phone itself (2026-11-04)
+
+When a payment is held because the wallet balance in the SMS does not follow the previous message, PayTrace no longer waits for
+you. It asks the phone that received the SMS to read the wallet's live balance; if that equals the balance printed in the SMS and
+no newer message has arrived, the payment is real and is released and credited at once. If money has moved since, the phone
+fetches the wallet's own statement and PayTrace looks for an entry of that amount coming in on that day. You get a Telegram
+message either way. On Review, each held payment shows what the phone found and a **Check with the wallet** button to ask again.
+
+For this to work the phone needs what every dashboard command needs: balance checks allowed on the Phones page, the wallet PIN
+saved in the app, the screen unlocked (no screen lock), and on Xiaomi/Redmi the pop-up permission. Nagad's statement has not been
+seen yet, so for Nagad only the balance step can confirm a payment for now; bKash can use both.
