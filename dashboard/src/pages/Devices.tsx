@@ -35,7 +35,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { EmptyRow } from "@/components/Empty";
 import { useNow } from "@/hooks/useNow";
 import { deviceHealth } from "@/lib/deviceHealth";
-import { depositCoverage } from "@/lib/walletNumbers";
+import { depositCoverage, type WalletOrderStat } from "@/lib/walletNumbers";
 
 export function Devices() {
   const [failed, setFailed] = useState<Record<string, string>>({});
@@ -57,6 +57,9 @@ export function Devices() {
       const flows = must(await sb.from("device_day_flows").select("*").eq("day", day)) as FlowRow[];
       const balances = must(await sb.from("device_balances").select("*")) as DeviceBalance[];
       const wallets = must(await sb.from("device_wallets").select("*").order("created_at", { ascending: true })) as DeviceWallet[];
+      // Deposit orders per wallet in the last 24 h (view wallet_order_stats, migration 052). A missing view never stops the page.
+      const statRes = await sb.from("wallet_order_stats").select("*");
+      const walletStats = (statRes.data ?? []) as WalletOrderStat[];
       // Partner commission (added later; reading these never changes anything above).
       const rates = must(await sb.from("commission_rates").select("device_id,provider,kind,rate_pct,effective_from")) as RateRow[];
       const commission = must(await sb.from("device_commission_balance").select("*")) as CommissionBalance[];
@@ -64,7 +67,7 @@ export function Devices() {
       // The newest app version (update system). A missing table never stops the page.
       const rel = await sb.from("app_release").select("version_code,notes").limit(1);
       const release = (rel.data?.[0] ?? null) as { version_code: number; notes: string | null } | null;
-      return { devices, totals, flows, balances, wallets, rates, commission, groups, release };
+      return { devices, totals, flows, balances, wallets, walletStats, rates, commission, groups, release };
     },
     [day],
     { refreshMs: 10000 },
@@ -259,6 +262,7 @@ export function Devices() {
               flows={(data?.flows ?? []).filter((f) => f.device_id === d.id)}
               balances={(data?.balances ?? []).filter((b) => b.device_id === d.id)}
               wallets={(data?.wallets ?? []).filter((w) => w.device_id === d.id)}
+              walletStats={(data?.walletStats ?? []).filter((x) => x.device_id === d.id)}
               rates={(data?.rates ?? []).filter((r) => r.device_id === d.id)}
               commission={(data?.commission ?? []).find((c) => c.device_id === d.id)}
               newest={data?.release?.version_code || null}
@@ -282,6 +286,7 @@ function DeviceCard({
   flows,
   balances,
   wallets,
+  walletStats,
   rates,
   commission,
   newest,
@@ -297,6 +302,7 @@ function DeviceCard({
   flows: FlowRow[];
   balances: DeviceBalance[];
   wallets: DeviceWallet[];
+  walletStats: WalletOrderStat[];
   rates: RateRow[];
   commission: CommissionBalance | undefined;
   newest: number | null;
@@ -426,7 +432,7 @@ function DeviceCard({
         </TableBody>
       </Table>
 
-      <WalletsCard deviceId={d.id} wallets={wallets} reported={d.info?.wallets} defaultGroup={d.default_group ?? "main"} onChanged={onChanged} />
+      <WalletsCard deviceId={d.id} wallets={wallets} reported={d.info?.wallets} stats={walletStats} defaultGroup={d.default_group ?? "main"} onChanged={onChanged} />
 
       <CommissionCard device={d} rates={rates} balance={commission} onChanged={onChanged} />
 

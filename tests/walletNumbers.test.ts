@@ -1,4 +1,4 @@
-import { depositCoverage, normalizeBdNumber, walletSuggestions } from "../dashboard/src/lib/walletNumbers.ts";
+import { depositCoverage, normalizeBdNumber, statFor, walletStatLine, walletSuggestions } from "../dashboard/src/lib/walletNumbers.ts";
 import type { DeviceWallet } from "../dashboard/src/lib/types.ts";
 
 let pass = 0, fail = 0;
@@ -35,6 +35,16 @@ check("a switched-off number does not count, so Rocket is missing", cov.missing.
 check("an invalid live number is reported with its phone, and Nagad counts as missing", cov.invalid.length === 1 && cov.invalid[0].phone === "Xiaomi" && cov.invalid[0].number === "0183493489" && cov.missing.includes("nagad"));
 const good = depositCoverage([w("nagad", "01834934890"), w("bkash", "01704241450"), w("rocket", "01712345678")], phones);
 check("three valid live numbers mean nothing is missing or invalid", good.missing.length === 0 && good.invalid.length === 0);
+
+const st = (o: Partial<import("../dashboard/src/lib/walletNumbers.ts").WalletOrderStat>) => ({ device_id: "a", provider: "nagad", wallet_method: "cash_out", wallet_number: "01834934890", orders_24h: 0, typed_24h: 0, paid_24h: 0, held_24h: 0, ...o });
+check("no orders, no line", walletStatLine(st({})) === null && walletStatLine(null) === null);
+check("orders with nothing typed is only information", walletStatLine(st({ orders_24h: 40 }))?.tone === "info");
+check("three typed TrxIDs and nothing arrived is a warning", walletStatLine(st({ orders_24h: 40, typed_24h: 3 }))?.tone === "warn");
+check("typed and paid is fine", walletStatLine(st({ orders_24h: 40, typed_24h: 5, paid_24h: 1 }))?.tone === "info");
+check("typed and held is not the number's fault", walletStatLine(st({ orders_24h: 9, typed_24h: 3, held_24h: 1 }))?.tone === "info");
+check("the line names the counts", walletStatLine(st({ orders_24h: 2, typed_24h: 1, paid_24h: 1 }))?.text.includes("2 orders shown this number, 1 typed a TrxID, 1 paid") === true);
+const wal = w("nagad", "01834934890", "a"); (wal as { method: string }).method = "cash_out";
+check("statFor matches phone, provider and method", statFor([st({ orders_24h: 3 })], wal)?.orders_24h === 3 && statFor([st({ device_id: "b" })], wal) === null);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

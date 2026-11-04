@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Wallet } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import { PROVIDERS, PROVIDER_LABEL, type DeviceWallet, type WalletGroup } from "@/lib/types";
-import { normalizeBdNumber, walletSuggestions, type ReportedWallet } from "@/lib/walletNumbers";
+import { normalizeBdNumber, walletSuggestions, type ReportedWallet, statFor, walletStatLine, type WalletOrderStat } from "@/lib/walletNumbers";
 import { Disclosure } from "@/components/Disclosure";
 import { GROUP_CODE, GroupChoice } from "@/components/GroupChoice";
 import { ProviderChip } from "@/components/ProviderChip";
@@ -19,7 +19,7 @@ const METHOD_LABEL = { send_money: "Send Money", cash_out: "Cash Out (agent)" } 
 
 /** The wallet numbers this phone receives deposits on. The pay page shows one of these to a customer. [reported] are the
  *  numbers the phone app itself has saved (its heartbeat carries them), offered here so they are picked, not typed. */
-export function WalletsCard({ deviceId, wallets, reported, defaultGroup, onChanged }: { deviceId: string; wallets: DeviceWallet[]; reported?: ReportedWallet[]; defaultGroup: string; onChanged: () => void }) {
+export function WalletsCard({ deviceId, wallets, reported, stats, defaultGroup, onChanged }: { deviceId: string; wallets: DeviceWallet[]; reported?: ReportedWallet[]; stats?: WalletOrderStat[]; defaultGroup: string; onChanged: () => void }) {
   const [adding, setAdding] = useState(false);
   const [provider, setProvider] = useState<string>("bkash");
   const [number, setNumber] = useState("");
@@ -146,6 +146,10 @@ export function WalletsCard({ deviceId, wallets, reported, defaultGroup, onChang
                   </Button>
                 </span>
               ) : null}
+              {(() => {
+                const line = walletStatLine(statFor(stats, w));
+                return line ? <span className={`basis-full text-xs ${line.tone === "warn" ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"}`}>{line.text}</span> : null;
+              })()}
             </span>
             <span className="flex items-center gap-2 text-xs text-muted-foreground">
               <Select value={w.wallet_group ?? "main"} onValueChange={(g) => void setGroup(w.id, g)}>

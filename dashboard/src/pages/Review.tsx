@@ -42,15 +42,32 @@ export function Review() {
           .order("received_at", { ascending: false })
           .limit(100),
       ) as Payment[];
-      const orders = must(
+      const open = must(
         await sb
           .from("orders")
-          .select("id,order_no,expected_amount,customer_name,status,wallet_method")
+          .select("id,order_no,expected_amount,customer_name,status,wallet_method,claimed_trx_id,claimed_provider,expires_at")
           .in("status", ["pending", "review"])
           .order("created_at", { ascending: false })
           .limit(100),
       ) as Order[];
-      return { payments, orders };
+      // Orders that ran out of time in the last 48 h while a TrxID was typed: a late SMS can still pay them (migration 052).
+      const since = new Date(Date.now() - 48 * 3600_000).toISOString();
+      const expired = must(
+        await sb
+          .from("orders")
+          .select("id,order_no,expected_amount,customer_name,status,wallet_method,claimed_trx_id,claimed_provider,expires_at")
+          .eq("status", "expired")
+          .not("claimed_trx_id", "is", null)
+          .gte("expires_at", since)
+          .order("expires_at", { ascending: false })
+          .limit(100),
+      ) as Order[];
+      // Their payments, when the SMS did arrive: receipts (tracked_only) or unmatched money that nobody can see otherwise.
+      const trx = expired.map((o) => o.claimed_trx_id).filter((t): t is string => !!t);
+      const late = trx.length
+        ? (must(await sb.from("payments").select("*").in("trx_id", trx).in("status", ["tracked_only", "unmatched"]).limit(100)) as Payment[])
+        : [];
+      return { payments, orders: [...open, ...expired], late };
     },
     [],
     { refreshMs: 20000 },
@@ -68,10 +85,14 @@ export function Review() {
   const all = data?.payments ?? [];
   const orders = data?.orders ?? [];
   const decide = all.filter((p) => p.status === "review");
-  const noOrder = all.filter((p) => p.status === "unmatched");
+  // A late payment for an expired order is listed in its own group, not under "no order".
+  const lateIds = new Set((data?.late ?? []).map((p) => p.id));
+  const noOrder = all.filter((p) => p.status === "unmatched" && !lateIds.has(p.id));
+  const late = data?.late ?? [];
+  const expiredOrderOf = (p: Payment) => orders.find((o) => o.status === "expired" && o.claimed_trx_id === p.trx_id && o.claimed_provider === p.provider) ?? null;
 
   const card = (p: Payment) => {
-    const choice = picked[p.id] ?? "";
+    const choice = picked[p.id] ?? expiredOrderOf(p)?.id ?? "";
     const order = orders.find((o) => o.id === choice);
     // A held Cash Out receipt can only pay a deposit that asked for Cash Out (the database refuses the rest).
     const choices = p.txn_type === "cash_out" ? orders.filter((o) => o.wallet_method === "cash_out") : orders;
@@ -98,12 +119,14 @@ export function Review() {
         <div className="rounded-lg bg-muted/60 p-3 text-sm">
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={p.status} />
-            <span className="font-medium">{p.status === "review" ? "Why it is held:" : "Nothing was waiting for it."}</span>
+            <span className="font-medium">{p.status === "review" ? "Why it is held:" : lateIds.has(p.id) ? "The order had already run out of time." : "Nothing was waiting for it."}</span>
           </div>
           <p className="mt-1 text-muted-foreground">
             {p.status === "review"
               ? (why ?? "It did not match any order exactly.")
-              : "The money is yours and is counted in the totals. Match it only if you know which order it was for."}
+              : lateIds.has(p.id)
+                ? `The customer typed this TrxID on order ${expiredOrderOf(p)?.order_no ?? ""}, which expired before the SMS arrived. If the money is real, credit it: the website is then told the deposit was paid.`
+                : "The money is yours and is counted in the totals. Match it only if you know which order it was for."}
           </p>
         </div>
 
@@ -122,6 +145,7 @@ export function Review() {
                   <SelectItem key={o.id} value={o.id}>
                     {o.order_no} · {tk(o.expected_amount)}
                     {o.customer_name ? ` · ${o.customer_name}` : ""}
+                    {o.status === "expired" ? " · expired, TrxID typed" : ""}
                   </SelectItem>
                 ))
               )}
@@ -174,6 +198,20 @@ export function Review() {
       ) : (
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-2">{decide.map(card)}</div>
       )}
+
+      {late.length > 0 ? (
+        <section className="mt-8">
+          <div className="mb-3">
+            <h3 className="text-base font-semibold">
+              Paid after the order expired <span className="text-muted-foreground">({late.length})</span>
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              The SMS came after the order's time was up. The order is picked for you; press Credit to order if the payment is real.
+            </p>
+          </div>
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-2">{late.map(card)}</div>
+        </section>
+      ) : null}
 
       {noOrder.length > 0 ? (
         <section className="mt-8">

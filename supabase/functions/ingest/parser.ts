@@ -2,7 +2,14 @@
 // Pure functions, no I/O, so they can be unit tested anywhere.
 
 export type Provider = "bkash" | "nagad" | "rocket" | "upay";
-export type TxnType = "payment_received" | "send_money_received" | "cash_out" | "transfer_out" | "unknown";
+export type TxnType = "payment_received" | "send_money_received" | "cash_out" | "transfer_out" | "transfer_in" | "unknown";
+
+/** What kind of money moved, for messages that are NOT a customer paying us (transfer_out / transfer_in):
+ *  b2b = e-money between the agent and its distributor; cash_in = an agent put e-money into a wallet (out: this agent did
+ *  it for a customer; in: an agent did it for this wallet); payment = a merchant/bill payment from the wallet; bill = a
+ *  utility bill; loan = a bKash digital loan repayment. All of them move the balance, so they are stored to keep the
+ *  balance chain whole, and none of them can ever credit an order. */
+export type FlowKind = "b2b" | "cash_in" | "payment" | "bill" | "loan";
 
 export interface Parsed {
   provider: Provider;
@@ -15,9 +22,10 @@ export interface Parsed {
   counterparty: string | null;
   occurredAt: string | null; // ISO string, Bangladesh time (+06:00)
   confidence: "exact" | "generic"; // generic = format not verified against real samples
-  /** For transfer_out only: what kind of outgoing money. b2b = the agent sent e-money to its distributor (Rocket);
-   *  cash_in = the agent gave e-money to a customer (bKash sends an SMS for that, seen 2026-11-04). */
-  outKind?: "b2b" | "cash_in";
+  /** For transfer_out / transfer_in only (see FlowKind). Real samples: Rocket B2B out and in, bKash agent cash-in (out),
+   *  bKash cash-in received (in), bKash B2B Transfer (out), bKash merchant payment / bill / loan (out), Nagad B2B
+   *  Received (in), Nagad agent Cash In (out). */
+  flowKind?: FlowKind;
 }
 
 export type ParseResult =
@@ -103,6 +111,7 @@ function parseBkash(text: string): ParseResult {
   let txnType: TxnType | null = null;
   let amount: number | null = null;
   let who: string | null = null;
+  let flow: FlowKind | undefined;
 
   let m = text.match(new RegExp(`Cash\\s*Out\\s+Tk\\s*${NUM}\\s+from\\s+([\\dXx*]+)`, "i"));
   if (m) {
@@ -113,11 +122,26 @@ function parseBkash(text: string): ParseResult {
     txnType = "send_money_received"; amount = num(m[1]); who = m[2];
   } else if ((m = text.match(new RegExp(`Cash\\s*In\\s+Tk\\s*${NUM}\\s+to\\s+([\\dXx*]+)\\s+successful`, "i")))) {
     // The AGENT's own cash-in receipt (real sample 2026-11-04): money LEFT the agent wallet. Never a customer payment.
-    txnType = "transfer_out"; amount = num(m[1]); who = m[2];
+    txnType = "transfer_out"; flow = "cash_in"; amount = num(m[1]); who = m[2];
+  } else if ((m = text.match(new RegExp(`Cash\\s*In\\s+Tk\\s*${NUM}\\s+from\\s+([\\dXx*]+)\\s+successful`, "i")))) {
+    // Money put INTO this wallet by an agent (real sample 2026-11-04). Held for a person: it could be a customer who paid at
+    // an agent counter, or the owner's own top-up; it is never credited by itself.
+    txnType = "transfer_in"; flow = "cash_in"; amount = num(m[1]); who = m[2];
+  } else if ((m = text.match(new RegExp(`B2B\\s+Transfer\\s+Tk\\s*${NUM}\\s+to\\s+([\\dXx*]+)\\s+successful`, "i")))) {
+    // e-money sent to the distributor (real sample 2026-11-04).
+    txnType = "transfer_out"; flow = "b2b"; amount = num(m[1]); who = m[2];
+  } else if ((m = text.match(new RegExp(`Payment(?:\\s+of)?\\s+Tk\\s*${NUM}\\s+to\\s+(.+?)\\s+(?:is\\s+)?successful`, "i")))) {
+    // A merchant payment from the wallet ("Payment Tk 589.00 to 01... successful. Ref 12." / "Payment of Tk 829.00 to Doctime Limited-RM... is successful.").
+    txnType = "transfer_out"; flow = "payment"; amount = num(m[1]); who = m[2].slice(0, 40);
+  } else if (/Bill\s+successfully\s+paid/i.test(text) && (m = text.match(new RegExp(`Amount\\s*:\\s*Tk\\s*${NUM}`, "i")))) {
+    txnType = "transfer_out"; flow = "bill"; amount = num(m[1]); who = pick(text, /Biller\s*:\s*([^\n]+)/i)?.slice(0, 40) ?? null;
+  } else if ((m = text.match(new RegExp(`Loan\\s+Repayment\\s+of\\s+Tk\\s*${NUM}\\s+is\\s+successful`, "i")))) {
+    txnType = "transfer_out"; flow = "loan"; amount = num(m[1]); who = null;
   }
   if (!txnType || amount == null) return { kind: "failed", reason: "bkash: unrecognized message layout" };
 
-  const trx = pick(text, /TrxID\s+([A-Z0-9]{6,})/i);
+  // "TrxID DK46191BOA" in most messages, "TrxID: DK4..." in the bill receipt.
+  const trx = pick(text, /TrxID\s*:?\s*([A-Z0-9]{6,})/i);
   if (!trx) return { kind: "failed", reason: "bkash: no TrxID" };
 
   return {
@@ -127,14 +151,14 @@ function parseBkash(text: string): ParseResult {
       txnType,
       trxId: trx.toUpperCase(),
       amount,
-      fee: num(pick(text, new RegExp(`Fee\\s+Tk\\s*${NUM}`, "i"))) ?? 0,
+      fee: num(pick(text, new RegExp(`Fee\\s*:?\\s*Tk\\s*${NUM}`, "i"))) ?? 0,
       // bKash SMS does not state agent commission; the balance chain recovers it on the server.
       commission: 0,
-      balance: num(pick(text, new RegExp(`Balance\\s+Tk\\s*${NUM}`, "i"))),
+      balance: num(pick(text, new RegExp(`Balance\\s*:?\\s*Tk\\s*${NUM}`, "i"))),
       counterparty: who,
       occurredAt: parseDate(text),
       confidence: "exact",
-      ...(txnType === "transfer_out" ? { outKind: "cash_in" as const } : {}),
+      ...(flow ? { flowKind: flow } : {}),
     },
   };
 }
@@ -142,13 +166,19 @@ function parseBkash(text: string): ParseResult {
 function parseNagad(text: string): ParseResult {
   const header = text.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? "";
   let txnType: TxnType | null = null;
-  if (/cash\s*out/i.test(header)) txnType = "cash_out";
+  let flow: FlowKind | undefined;
+  // The two agent-side layouts come FIRST: "B2B Received." also contains the word "received" and must never be read as
+  // a customer's Send Money (real samples 2026-11-04: 17 of them in 14 days, each one a hole in the balance chain).
+  if (/^B2B\s+Received/i.test(header)) { txnType = "transfer_in"; flow = "b2b"; }
+  else if (/^Cash\s*In\s+Successful/i.test(header)) { txnType = "transfer_out"; flow = "cash_in"; }
+  else if (/cash\s*out/i.test(header)) txnType = "cash_out";
   else if (/payment\s+received/i.test(header)) txnType = "payment_received";
   else if (/money\s+received|received/i.test(header)) txnType = "send_money_received";
   if (!txnType) return { kind: "failed", reason: "nagad: unrecognized header" };
 
   const amount = num(pick(text, new RegExp(`^\\s*Amount\\s*:\\s*Tk\\.?\\s*${NUM}`, "im")));
-  const trx = pick(text, /^\s*Txn\s?ID\s*:\s*([A-Z0-9]{6,})/im);
+  // "TxnID:" in customer receipts, "TrxID:" in the B2B Received message.
+  const trx = pick(text, /^\s*T(?:xn|rx)\s?ID\s*:\s*([A-Z0-9]{6,})/im);
   if (amount == null || !trx) return { kind: "failed", reason: "nagad: missing amount or TxnID" };
 
   return {
@@ -160,10 +190,12 @@ function parseNagad(text: string): ParseResult {
       amount,
       fee: num(pick(text, new RegExp(`^\\s*Fee\\s*:\\s*Tk\\.?\\s*${NUM}`, "im"))) ?? 0,
       commission: num(pick(text, new RegExp(`^\\s*Comm(?:ission)?\\s*:\\s*Tk\\.?\\s*${NUM}`, "im"))) ?? 0,
-      balance: num(pick(text, new RegExp(`^\\s*Balance\\s*:\\s*Tk\\.?\\s*${NUM}`, "im"))),
+      // "Balance:" in customer receipts, "Bal:" in the B2B Received message.
+      balance: num(pick(text, new RegExp(`^\\s*Bal(?:ance)?\\s*:\\s*Tk\\.?\\s*${NUM}`, "im"))),
       counterparty: pick(text, /^\s*(?:Customer|Sender|From)\s*:\s*([\dXx*+\-]+)/im),
       occurredAt: parseDate(text),
       confidence: "exact",
+      ...(flow ? { flowKind: flow } : {}),
     },
   };
 }
@@ -175,8 +207,15 @@ function parseNagad(text: string): ParseResult {
 // B2B outgoing (owner's real sample): the AGENT sends e-money to the distributor (DSO). Not a customer payment:
 //   "B2B: Cash-Out to A/C: ***238 Tk1,040.00, Your A/C Balance: Tk16.18.TxnId: 7096347555 Date:28-OCT-26 12:49:03 pm."
 // The balance FALLS by the amount, so the server keeps it only to keep the balance chain right.
+// B2B incoming (real sample 2026-11-01): the distributor sent e-money to the agent. Money IN, but never a customer payment:
+//   "B2B: Cash-In from A/C: ***238 Tk500.00, Your A/C Balance: Tk546.59.TxnId: 7103... Date:01-NOV-26 11:14:45 pm."
 function parseRocketB2B(text: string): ParseResult | null {
-  const m = text.match(new RegExp(`B2B\\s*:?\\s*Cash[\\s-]*Out\\s+to\\s+A/C\\s*:?\\s*([*\\dXx]+)\\s+Tk\\.?\\s*${NUM}`, "i"));
+  let incoming = false;
+  let m = text.match(new RegExp(`B2B\\s*:?\\s*Cash[\\s-]*Out\\s+to\\s+A/C\\s*:?\\s*([*\\dXx]+)\\s+Tk\\.?\\s*${NUM}`, "i"));
+  if (!m) {
+    m = text.match(new RegExp(`B2B\\s*:?\\s*Cash[\\s-]*In\\s+from\\s+A/C\\s*:?\\s*([*\\dXx]+)\\s+Tk\\.?\\s*${NUM}`, "i"));
+    incoming = true;
+  }
   if (!m) return null;
   const amount = num(m[2]);
   if (amount == null) return null;
@@ -186,7 +225,7 @@ function parseRocketB2B(text: string): ParseResult | null {
     kind: "parsed",
     data: {
       provider: "rocket",
-      txnType: "transfer_out",
+      txnType: incoming ? "transfer_in" : "transfer_out",
       trxId: trx.toUpperCase(),
       amount,
       fee: num(pick(text, new RegExp(`Fee\\s*:?\\s*Tk\\.?\\s*${NUM}`, "i"))) ?? 0,
@@ -195,7 +234,7 @@ function parseRocketB2B(text: string): ParseResult | null {
       counterparty: m[1],
       occurredAt: parseDate(text),
       confidence: "exact",
-      outKind: "b2b",
+      flowKind: "b2b",
     },
   };
 }

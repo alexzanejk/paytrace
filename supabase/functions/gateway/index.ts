@@ -2,7 +2,7 @@
 //
 // Website servers (Authorization: Bearer <key from the dashboard's API access page>):
 //   POST /functions/v1/gateway/create-deposit  {"amount":500,"order_id":"SHOP-1001","provider":"bkash","method":"cash_out"?,"return_url":"https://..."?,
-//                                                "expires_in_minutes":15?,"customer_name"?,"customer_phone"?}
+//                                                "expires_in_minutes":40?,"customer_name"?,"customer_phone"?}   (20 to 60, default 40)
 //        -> {"tracking_number","pay_url","status","expires_at"}     (the same order_id returns the same order)
 //        optional "group": a wallet group such as "dvw9166" (max 24 characters); unknown, switched-off or offline groups fall back to "main".
 //        provider "usdt_bep20" or "usdt_trc20": amount is still in taka; the answer has crypto {chain, asset, amount (USDT to send), address}.
@@ -20,6 +20,7 @@
 // Crediting is never done here: it goes through the database's claim_order / reconcile_payment, same as every other payment.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import { extractKey, isCrypto, isUuid, normalizeGroup, normalizeTrx, parseDeposit, parseGroupCode, signWebhook, submitState, type DepositRequest } from "./logic.ts";
+import { heldClaimMessage, makeNotifier } from "./notify.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
@@ -35,6 +36,8 @@ const PAY_ORIGIN = new URL(PAY_URL).origin;
 const LEGACY_ORIGIN = "https://paytrace.ashkawser54.workers.dev";
 const PAY_ORIGINS = [...new Set([DASHBOARD_ORIGIN, PAY_ORIGIN, LEGACY_ORIGIN])];
 const MERCHANT_LIMIT_PER_MINUTE = 120; // per key
+// Telegram (optional, the same two secrets the ingest function uses). Off = no message, nothing else changes.
+const notify = makeNotifier({ token: Deno.env.get("TELEGRAM_BOT_TOKEN"), chatId: Deno.env.get("TELEGRAM_CHAT_ID") });
 
 const json = (body: unknown, status = 200, extra: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store", ...extra } });
@@ -185,6 +188,14 @@ async function paySubmit(body: Record<string, unknown>): Promise<Response> {
   const state = submitState(result);
   // A match may have just queued a result message for the website: send it now instead of waiting for the minute timer.
   if (state === "paid" || state === "review") defer(deliver());
+  // Held on the customer's own TrxID entry: tell the owner (the ingest function only messages holds it sees itself).
+  const hold = data?.hold;
+  if (state === "review" && hold && typeof hold === "object") {
+    defer(notify.send(heldClaimMessage({
+      provider: String(hold.provider ?? ""), amount: Number(hold.amount ?? 0), trxId: String(hold.trx_id ?? trx),
+      reason: typeof hold.reason === "string" ? hold.reason : null, dashboardUrl: DASHBOARD_URL,
+    })));
+  }
   return json({ state });
 }
 

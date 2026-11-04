@@ -554,3 +554,21 @@ a phone does not, it moves itself to the dialer way as before. Try the check onc
 
 **Change the wallet PINs after testing.** The dialled code, with the PIN in it, is written into the phone's log by the phone
 itself, and the recordings made during the tests show it too.
+
+
+## Late payments and the Review page (2026-11-04)
+
+Deposit orders now stay open for 40 minutes (sites can ask for up to 60). If a customer's SMS arrives after the order's time ran out,
+PayTrace still credits it for up to 24 hours, as long as the payment was made while the order was open. A payment that was made
+*before* the order existed is held with the reason "paid before the order was created" (an old receipt, maybe somebody else's).
+
+On **Review** there is a new group, **Paid after the order expired**: the order is already picked; press *Credit to order* if the
+payment is real. Orders that expired up to 48 hours ago can also be chosen in the order list. When you *Ignore* a held payment,
+the order it was holding is cancelled and the website is told.
+
+Two more kinds of message now reach Review: a bKash "Cash In ... from" (money put INTO your wallet by an agent: credit it if a customer
+paid at an agent counter, ignore it if it was your own top-up). B2B transfers, agent cash-ins, bill and merchant payments and loan
+repayments are kept only so the balance adds up; they never credit anyone.
+
+On **Phones > Deposit numbers** each number shows how many orders were shown that number in the last 24 hours, how many customers typed a
+TrxID and how many paid. "Customers say they paid but nothing arrived" means the number is probably wrong or the phone is off.

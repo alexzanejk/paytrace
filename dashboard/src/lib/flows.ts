@@ -33,7 +33,7 @@ export const FLOW_WORDS: Record<FlowKind, { label: string; meaning: string }> = 
   },
   b2b_out: {
     label: "B2B",
-    meaning: "Money the agent sent to its distributor. Only Rocket's B2B receipt is recognised so far; bKash and Nagad B2B messages have never been seen.",
+    meaning: "Money the agent sent to its distributor. Rocket's and bKash's B2B-out receipts are recognised; a Nagad B2B-out message has never been seen (Nagad's B2B Received, money coming in, is read and kept apart).",
   },
 };
 
