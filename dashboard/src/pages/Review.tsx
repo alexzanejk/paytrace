@@ -181,7 +181,9 @@ export function Review() {
           <div className="flex items-center gap-2">
             <Confirm
               title="Credit this payment to the order?"
-              description={`${tk(p.amount)} (receipt ${p.trx_id}) will be credited to ${order?.order_no ?? "the chosen order"} and the order will turn Paid. This cannot be undone.`}
+              description={`${tk(p.amount)} (receipt ${p.trx_id}) will be credited to ${order?.order_no ?? "the chosen order"} and the order will turn Paid.${
+                order && Number(order.expected_amount) !== Number(p.amount) ? ` The order asked for ${tk(order.expected_amount)}: the website will be told ${tk(p.amount)} was paid.` : ""
+              } This cannot be undone.`}
               confirmLabel="Credit it"
               disabled={!choice || choice === "none"}
               onConfirm={() => act(p.id, () => sb.rpc("manual_match", { p_payment_id: p.id, p_order_id: choice }))}
