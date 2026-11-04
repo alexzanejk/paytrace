@@ -69,7 +69,9 @@ neutral (`X-Webhook-Signature`, `X-Webhook-Event`, user-agent `Deposit-Webhook/1
 ## Webhook
 
 `POST` JSON `{"event":"deposit.paid","data":{"tracking_number","order_id","status","amount","currency","provider","trx_id","paid_at"}}`.
-Events: `deposit.paid`, `deposit.review`, `deposit.expired`, `deposit.cancelled`. Header
+Events: `deposit.paid`, `deposit.review`, `deposit.expired`, `deposit.cancelled`. Order of events is not final: a payment SMS that
+arrives up to 24 hours after `deposit.expired` turns the order paid (`deposit.paid` follows), and a held payment turns it `deposit.review`;
+a site must accept a later `paid` after an `expired`. Header
 `X-Webhook-Signature: t=<unix seconds>,v1=<hex>` where `v1` is HMAC-SHA256 of `"<t>.<raw body>"` with the key's signing secret
 (shown once on the Websites page when the address is first saved). Answer any 2xx. Failures are retried 1 min, 5 min, 15 min,
 1 h, 3 h, 6 h, 12 h (8 tries). A message can arrive twice; handle by `order_id`.
@@ -89,7 +91,7 @@ not a recognised one. The owner sees it in Review and can approve it by hand.
 
 ## Limits
 
-Orders: amount 500 to 50000 taka with at most 2 decimals (owner's limits, `gw_create_deposit`, migration 017); expiry 3 to 60 minutes (default 15). A claimed order gets 10 extra minutes
+Orders: amount 500 to 50000 taka with at most 2 decimals (owner's limits, `gw_create_deposit`, migration 017); expiry default 40 minutes, at most 60, a value under 20 is raised to 20 (was 3 to 60 / default 15 until 2026-11-04, when the live data showed paid deposits taking 31 minutes on average). A claimed order gets 10 extra minutes
 for a late SMS. 5 TrxID attempts per order. 120 website API calls per minute per key. Withdrawals are not built yet.
 
 ## Result page looks

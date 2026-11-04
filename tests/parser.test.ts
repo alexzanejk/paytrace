@@ -109,7 +109,51 @@ check("rocket b2b account masked", p?.counterparty === "***238");
 check("rocket b2b noon time 12:49 pm stays 12:49", p?.occurredAt === "2026-10-28T12:49:03+06:00", p?.occurredAt);
 check("rocket b2b trusted layout", p?.confidence === "exact");
 check("rocket b2b auto-detected without hint", parsed(rocketB2B)?.provider === "rocket");
-check("unknown b2b layout is never read as customer money", parseSms("B2B: Cash-In from A/C: ***238 Tk500.00 Balance: Tk900.00 TxnId: ABC1234567", "rocket").kind === "failed");
+// ---- bKash AGENT cash-in receipt (real sample 2026-11-04): the agent gave e-money to a customer, money LEFT the wallet ----
+const bkashCashIn = "Cash In Tk 200.00 to 0161XXXX190 successful. Fee Tk 0.00. Balance Tk 6,806.69. TrxID DK46191BOA at 04/11/2026 11:08";
+p = parsed(bkashCashIn, "bkash");
+check("bkash agent cash-in parsed", !!p, parseSms(bkashCashIn, "bkash"));
+check("bkash agent cash-in is outgoing money, never a customer payment", p?.txnType === "transfer_out" && p?.flowKind === "cash_in");
+check("bkash agent cash-in amount, balance, trx, time", p?.amount === 200 && p?.balance === 6806.69 && p?.trxId === "DK46191BOA" && p?.occurredAt === "2026-11-04T11:08:00+06:00");
+check("bkash agent cash-in auto-detected without hint", parsed(bkashCashIn)?.provider === "bkash");
+check("rocket b2b names its kind", parsed(rocketB2B, "rocket")?.flowKind === "b2b");
+check("unknown b2b layout is never read as customer money", parseSms("B2B: Something odd A/C: ***238 Tk500.00 Balance: Tk900.00 TxnId: ABC1234567", "rocket").kind === "failed");
+
+// ---- Layouts that used to fail to parse (real samples from the owner's phones, 2026-10-17 to 2026-11-04). Each is money
+// moving on the agent's own side; none may ever be read as a customer payment. ----
+const nagadB2BIn = "B2B Received. \nAmount: Tk 5000.00\nSender: 013****7088\nTrxID: 769BQCVS\nBal: Tk 5015.94\n04/11/2026 13:52";
+p = parsed(nagadB2BIn, "nagad");
+check("nagad B2B Received parsed", !!p, parseSms(nagadB2BIn, "nagad"));
+check("nagad B2B Received is incoming transfer, NOT send money", p?.txnType === "transfer_in" && p?.flowKind === "b2b");
+check("nagad B2B Received amount, trx (TrxID:), balance (Bal:), sender, time",
+  p?.amount === 5000 && p?.trxId === "769BQCVS" && p?.balance === 5015.94 && p?.counterparty === "013****7088" && p?.occurredAt === "2026-11-04T13:52:00+06:00", p);
+const nagadCashInOut = "Cash In Successful.\nAmount: Tk 100.00\nCustomer: 016****9601\nTxnID: 768QVSLN\nComm: Tk 0.39\nBalance: Tk 17200.42\n01/11/2026 16:56";
+p = parsed(nagadCashInOut, "nagad");
+check("nagad agent Cash In parsed", !!p, parseSms(nagadCashInOut, "nagad"));
+check("nagad agent Cash In is outgoing money with its commission", p?.txnType === "transfer_out" && p?.flowKind === "cash_in" && p?.commission === 0.39 && p?.amount === 100);
+check("nagad customer Cash Out still reads as cash_out", parsed(nagadCashOut, "nagad")?.txnType === "cash_out");
+
+const bkashCashInFrom = "Cash In Tk 540.00 from 01712345678 successful. Fee Tk 0.00. Balance Tk 3,883.93. TrxID DK4ABCDEF1 at 04/11/2026 01:22. Download App: https://bKa.sh/8app";
+p = parsed(bkashCashInFrom, "bkash");
+check("bkash Cash In FROM an agent is incoming transfer", p?.txnType === "transfer_in" && p?.flowKind === "cash_in" && p?.amount === 540 && p?.balance === 3883.93);
+const bkashB2B = "B2B Transfer Tk 7,000.00 to 01812345678 successful. Fee Tk 0.00. Balance Tk 7.49. TrxID DK4B2BXYZ1 at 04/11/2026 14:02";
+p = parsed(bkashB2B, "bkash");
+check("bkash B2B Transfer is outgoing b2b", p?.txnType === "transfer_out" && p?.flowKind === "b2b" && p?.amount === 7000 && p?.balance === 7.49);
+const bkashPay1 = "Payment Tk 589.00 to 01912345678 successful. Ref 12. Fee Tk 0.00. Balance Tk 0.98. TrxID DK2PAY00001 at 02/11/2026 23:10";
+const bkashPay2 = "Payment of Tk 829.00 to Doctime Limited-RM12345 is successful. Balance Tk 924.82. TrxID DKIPAY00002 at 18/10/2026 10:11";
+check("bkash merchant payment (short form) is outgoing", parsed(bkashPay1, "bkash")?.flowKind === "payment" && parsed(bkashPay1, "bkash")?.amount === 589);
+check("bkash merchant payment (long form) is outgoing", parsed(bkashPay2, "bkash")?.flowKind === "payment" && parsed(bkashPay2, "bkash")?.balance === 924.82);
+const bkashBill = "Bill successfully paid.\nBiller: BREBPrepaid \nMMYYYY/Contact: 01712345678\nA/C: 12345678 \nAmount: Tk 500.00 \nFee: Tk 10.00 \nTrxID: DKJBILL0001 at 19/10/2026 10:06";
+p = parsed(bkashBill, "bkash");
+check("bkash bill is outgoing with fee, TrxID after a colon, no balance", p?.flowKind === "bill" && p?.amount === 500 && p?.fee === 10 && p?.trxId === "DKJBILL0001" && p?.balance === null, p);
+const bkashLoan = "Your Digital Loan Repayment of Tk 1,751.48 is successful. Balance Tk 31,148.52. TrxID DK1LOAN0001 at 01/11/2026 13:24.";
+p = parsed(bkashLoan, "bkash");
+check("bkash loan repayment is outgoing", p?.flowKind === "loan" && p?.amount === 1751.48 && p?.balance === 31148.52);
+check("bkash customer payment still reads as payment_received", parsed("You have received payment Tk 500.00 from 01712345678. Fee Tk 0.00. Balance Tk 1,000.00. TrxID DKRECV00001 at 01/11/2026 10:00", "bkash")?.txnType === "payment_received");
+const rocketB2BIn = "B2B: Cash-In from A/C: ***238 Tk500.00, Your A/C Balance: Tk546.59.TxnId: 7103456789 Date:01-NOV-26 11:14:45 pm.";
+p = parsed(rocketB2BIn, "rocket");
+check("rocket B2B Cash-In is incoming b2b", p?.txnType === "transfer_in" && p?.flowKind === "b2b" && p?.amount === 500 && p?.balance === 546.59 && p?.trxId === "7103456789");
+check("rocket mini-statement SMS still fails (no balance, no single amount)", parseSms("7103456789 Dr Tk500.00; 7103456790 Dr Tk20.00; 7103456791 Cr Tk.09", "rocket").kind === "failed");
 
 // A Rocket message in an unknown layout still falls back to the cautious reader.
 const rocketOther = "Your Rocket account received Tk 300.00. TxnId: 6891223763. Balance Tk 100.00";

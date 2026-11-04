@@ -27,12 +27,13 @@ export const FLOW_WORDS: Record<FlowKind, { label: string; meaning: string }> = 
   cash_in: {
     label: "Cash In",
     meaning:
-      "Money the agent SENT OUT to a personal number. A cash-in sends no SMS, so only the ones PayTrace knows about are here: " +
-      "cash-ins told from this dashboard that finished, and partner-reported cash-ins that were verified or accepted.",
+      "Money the agent SENT OUT to a customer's wallet. bKash sends an SMS for an agent cash-in and those are counted. Nagad and Rocket " +
+      "send no SMS for one, so for them only the cash-ins PayTrace knows about are here: cash-ins told from this dashboard that finished, " +
+      "and partner-reported cash-ins that were verified or accepted.",
   },
   b2b_out: {
     label: "B2B",
-    meaning: "Money the agent sent to its distributor. Only Rocket's B2B receipt is recognised so far; bKash and Nagad B2B messages have never been seen.",
+    meaning: "Money the agent sent to its distributor. Rocket's and bKash's B2B-out receipts are recognised; a Nagad B2B-out message has never been seen (Nagad's B2B Received, money coming in, is read and kept apart).",
   },
 };
 

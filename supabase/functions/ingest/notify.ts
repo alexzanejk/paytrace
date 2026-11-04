@@ -69,6 +69,8 @@ const REASONS: [string, string][] = [
   ["unrecognized_type", "could not tell what kind of payment this is"],
   ["unverified_format", "the message format is not confirmed yet"],
   ["balance_chain_mismatch", "the account balance does not follow the previous message, so it could be a fake SMS"],
+  ["paid_before_order", "it was paid before the order was created, so it may be an older receipt"],
+  ["cash_in_received", "money came in by Cash In from an agent; a customer may have paid at an agent counter, or it is your own top-up"],
 ];
 
 export function reasonText(reason: string | null | undefined): string {

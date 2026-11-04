@@ -50,8 +50,8 @@ const COPY: Record<number, Record<Lang, Copy>> = {
 };
 
 const LABELS: Record<Lang, Record<string, string>> = {
-  bn: { amount: "পরিমাণ", via: "মাধ্যম", trx: "TrxID", shop: "দোকান", status: "অবস্থা", change: "TrxID বদলান", back: "এখনই ফিরে যান", returning: "আপনাকে ফেরত নেওয়া হচ্ছে…", s1: "জমা হয়েছে", s2: "যাচাই", s3: "নিশ্চিত", c1: "TrxID পাওয়া গেছে", c2: "পরিমাণ মেলানো", c3: "ওয়ালেট নিশ্চিত", receipt: "পেমেন্ট রসিদ", paid: "পরিশোধিত", hold: "অপেক্ষমাণ", exp: "মেয়াদ শেষ", st_checking: "যাচাই হচ্ছে", st_paid: "নিশ্চিত", st_review: "যাচাইয়ে", st_expired: "মেয়াদ শেষ" },
-  en: { amount: "Amount", via: "Via", trx: "TrxID", shop: "Shop", status: "Status", change: "Change TrxID", back: "Go back now", returning: "Taking you back…", s1: "Submitted", s2: "Verifying", s3: "Confirmed", c1: "TrxID received", c2: "Matching the amount", c3: "Confirming the wallet", receipt: "Payment receipt", paid: "PAID", hold: "ON HOLD", exp: "EXPIRED", st_checking: "Verifying", st_paid: "Confirmed", st_review: "In review", st_expired: "Expired" },
+  bn: { amount: "পরিমাণ", via: "মাধ্যম", trx: "TrxID", shop: "দোকান", status: "অবস্থা", change: "TrxID বদলান", back: "এখনই ফিরে যান", returning: "আপনাকে ফেরত নেওয়া হচ্ছে…", s1: "জমা হয়েছে", s2: "যাচাই", s3: "নিশ্চিত", c1: "TrxID জমা দেওয়া হয়েছে", c2: "পরিমাণ মেলানো", c3: "ওয়ালেট নিশ্চিত", receipt: "পেমেন্ট রসিদ", paid: "পরিশোধিত", hold: "অপেক্ষমাণ", exp: "মেয়াদ শেষ", st_checking: "যাচাই হচ্ছে", st_paid: "নিশ্চিত", st_review: "যাচাইয়ে", st_expired: "মেয়াদ শেষ" },
+  en: { amount: "Amount", via: "Via", trx: "TrxID", shop: "Shop", status: "Status", change: "Change TrxID", back: "Go back now", returning: "Taking you back…", s1: "Submitted", s2: "Verifying", s3: "Confirmed", c1: "TrxID submitted", c2: "Matching the amount", c3: "Confirming the wallet", receipt: "Payment receipt", paid: "PAID", hold: "ON HOLD", exp: "EXPIRED", st_checking: "Verifying", st_paid: "Confirmed", st_review: "In review", st_expired: "Expired" },
 };
 
 const CONFETTI = ["#f97316", "#22c55e", "#3b82f6", "#eab308", "#ec4899", "#8b5cf6"];

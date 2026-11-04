@@ -66,3 +66,39 @@ export function depositCoverage(wallets: DeviceWallet[], phones: { id: string; n
   const missing = COVERED_PROVIDERS.filter((p) => !live.some((w) => w.provider === p && isBdNumber(w.wallet_number)));
   return { missing: [...missing], invalid };
 }
+
+/** One row of the view wallet_order_stats: deposit orders this phone's wallet was shown for in the last 24 hours. */
+export interface WalletOrderStat {
+  device_id: string | null;
+  provider: string;
+  wallet_method: string | null;
+  wallet_number: string | null;
+  orders_24h: number;
+  typed_24h: number;
+  paid_24h: number;
+  held_24h: number;
+}
+
+export interface WalletStatLine {
+  text: string;
+  /** warn = something is probably wrong with this number; info = nothing to act on. */
+  tone: "warn" | "info";
+}
+
+/** The last 24 hours of one deposit number, in a sentence. The warning rule: customers typed a TrxID at least 3 times and
+ *  not one payment arrived, which is what a wrong number (or a dead phone) looks like. Many orders with nothing typed is
+ *  normal (people start a deposit and give up) and is only reported. */
+export function walletStatLine(stat: WalletOrderStat | null | undefined): WalletStatLine | null {
+  if (!stat || stat.orders_24h <= 0) return null;
+  const base = `Last 24 h: ${stat.orders_24h} order${stat.orders_24h === 1 ? "" : "s"} shown this number, ${stat.typed_24h} typed a TrxID, ${stat.paid_24h} paid` + (stat.held_24h ? `, ${stat.held_24h} held` : "");
+  if (stat.typed_24h >= 3 && stat.paid_24h === 0 && stat.held_24h === 0) {
+    return { text: `${base}. Customers say they paid but nothing arrived: check this number and that the phone is on.`, tone: "warn" };
+  }
+  return { text: base, tone: "info" };
+}
+
+/** The stat row for one saved deposit number (matched on phone, provider and method; the number itself may have changed). */
+export function statFor(stats: WalletOrderStat[] | null | undefined, w: DeviceWallet): WalletOrderStat | null {
+  return (stats ?? []).find((s) => s.device_id === w.device_id && s.provider === w.provider && (s.wallet_method ?? null) === w.method && (s.wallet_number === null || s.wallet_number === w.wallet_number))
+    ?? (stats ?? []).find((s) => s.device_id === w.device_id && s.provider === w.provider && (s.wallet_method ?? null) === w.method) ?? null;
+}

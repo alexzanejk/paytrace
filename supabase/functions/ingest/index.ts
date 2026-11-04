@@ -20,6 +20,9 @@ import { makePusher } from "./fcm.ts";
 import { corsHeaders } from "./cors.ts";
 
 // Supabase's runtime lets work finish after the response is sent. Absent when run elsewhere (tests).
+// How each kind of outgoing money is labelled in payments.review_reason (shown on the dashboard, counted by device_day_flows).
+const OUT_REASON: Record<string, string> = { b2b: "b2b_transfer_out", cash_in: "cash_in_sent", payment: "payment_sent", bill: "bill_paid", loan: "loan_repaid" };
+
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 const defer = (p: Promise<unknown>) => {
   if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(p);
@@ -441,8 +444,10 @@ async function handle(req: Request): Promise<Response> {
   }
 
   // ---- balance chain: a forged SMS cannot know the live account balance ----
-  // Money the agent SENT OUT (B2B to the distributor) lowers the balance: judge it as a negative amount.
+  // Money the agent SENT OUT (B2B to the distributor, a cash-in, a bill) lowers the balance: judge it as a negative amount.
+  // Money that came in on the agent's own side (B2B from the distributor, a cash-in from an agent) raises it like a payment.
   const outgoing = d.txnType === "transfer_out";
+  const incoming = d.txnType === "transfer_in";
   const { data: chain } = await db.rpc("balance_chain_check", {
     p_provider: d.provider,
     p_at: d.occurredAt ?? new Date().toISOString(),
@@ -450,6 +455,9 @@ async function handle(req: Request): Promise<Response> {
     p_amount: outgoing ? -d.amount : d.amount,
     p_fee: d.fee,
     p_commission: d.commission,
+    // Judged against THIS phone's previous message (migration 051): one phone is one wallet per provider. Null only on
+    // the old shared-secret path, where the function falls back to the provider-wide chain.
+    p_device: deviceId,
   });
   const chainStatus: string = chain?.status ?? "unverified";
   // bKash never states the agent commission; the balance does. Trust it only on a sound chain.
@@ -459,9 +467,14 @@ async function handle(req: Request): Promise<Response> {
   // ---- status rules ----
   let status = "unmatched";
   let reviewReason: string | null = null;
-  // An outgoing B2B transfer is kept (its balance keeps the chain and the phone's balance right) but is never
-  // money received: stored as type unknown, status ignored, so no total, commission, job check or lookup counts it.
-  if (outgoing) { status = "ignored"; reviewReason = "b2b_transfer_out"; }
+  // Money moving on the agent's own side (B2B either way, the agent's cash-in to a customer, a bill, a merchant payment,
+  // a loan repayment) is kept, because its balance keeps the chain and the phone's balance right, but is never money
+  // received from a customer: stored as type unknown, status ignored, so no total, commission, job check or lookup counts
+  // it. The Cash In column does count cash_in_sent. ONE exception is held instead of ignored: a cash-in that came INTO the
+  // wallet from an agent (cash_in_received) could be a customer who paid at an agent counter, so a person decides.
+  if (outgoing) { status = "ignored"; reviewReason = OUT_REASON[d.flowKind ?? "b2b"] ?? "b2b_transfer_out"; }
+  else if (incoming && d.flowKind === "cash_in") { status = "review"; reviewReason = "cash_in_received"; }
+  else if (incoming) { status = "ignored"; reviewReason = "b2b_received"; }
   else if (d.txnType === "cash_out") status = "tracked_only"; // receipts only, never credit an order
   else if (d.txnType === "unknown") { status = "review"; reviewReason = "unrecognized_type"; }
   else if (d.confidence === "generic") { status = "review"; reviewReason = "unverified_format"; }
@@ -476,7 +489,7 @@ async function handle(req: Request): Promise<Response> {
       observed_change: chain?.delta ?? null, expected_change: chain?.expected ?? null,
       held: status !== "tracked_only",
     });
-    if (status !== "tracked_only" && !outgoing) {
+    if (status !== "tracked_only" && !outgoing && !incoming) {
       status = "review";
       reviewReason = "balance_chain_mismatch";
     }
@@ -486,7 +499,7 @@ async function handle(req: Request): Promise<Response> {
   const { data: inserted, error } = await db
     .from("payments")
     .insert({
-      provider: d.provider, txn_type: outgoing ? "unknown" : d.txnType, trx_id: d.trxId,
+      provider: d.provider, txn_type: outgoing || incoming ? "unknown" : d.txnType, trx_id: d.trxId,
       amount: d.amount, fee: d.fee, commission, balance: d.balance,
       counterparty: d.counterparty, occurred_at: d.occurredAt,
       raw_message: raw, status, review_reason: reviewReason,
@@ -515,6 +528,15 @@ async function handle(req: Request): Promise<Response> {
     if (typeof r === "string") matchResult = r;
     // A deposit order just got paid or held: tell its website now instead of waiting for the minute timer.
     if (matchResult === "matched" || matchResult === "review") {
+      defer(fetch(`${SUPABASE_URL}/functions/v1/gateway/deliver`, { method: "POST", body: "{}" }).then((x) => x.body?.cancel()).catch(() => {}));
+    }
+  }
+
+  // Held on arrival while a customer had already typed this TrxID: the order must say "held" too, and its website must
+  // hear deposit.review rather than deposit.expired (migration 052). Nothing is credited here.
+  if (status === "review") {
+    const { data: heldOrder } = await db.rpc("hold_claimed_order", { p_payment_id: inserted.id });
+    if (heldOrder) {
       defer(fetch(`${SUPABASE_URL}/functions/v1/gateway/deliver`, { method: "POST", body: "{}" }).then((x) => x.body?.cancel()).catch(() => {}));
     }
   }
