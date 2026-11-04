@@ -629,3 +629,20 @@ What is new:
 
 Messages logged before 4 November 2026 did not keep the sender ID or the phone. Running them again stores them under
 "Unknown phone" and trusts that the phone's own filter let them through (it only forwards the four wallet sender IDs).
+
+## Leaked-password protection (2026-11-04, batch 4 of the audit; you switch it on)
+
+Supabase can refuse a password that has appeared in a known data breach. It is included in your Pro plan and is the
+one item of the audit that I cannot switch on from here. Steps, about one minute:
+
+1. Open supabase.com, project **paytrace-payments**.
+2. Left menu **Authentication**, then **Sign In / Providers** (on some versions: **Settings** under Authentication).
+3. Open **Email** (the password provider) and find **Prevent the use of leaked passwords** (sometimes "Password
+   security" or "Leaked password protection"). Switch it on and save.
+4. Nothing else changes. If your current password is on a breach list you will be asked to choose a new one at your
+   next sign-in; that is the feature working.
+
+Also done in batch 4 without any step for you: the database functions only the server should call were closed to
+browsers and to the public key; the gateway's timer route can no longer be hammered from outside (one run per two
+seconds for strangers, our own calls unaffected); eight indexes were added so the transaction check and the busiest
+pages stay fast as the tables grow.
