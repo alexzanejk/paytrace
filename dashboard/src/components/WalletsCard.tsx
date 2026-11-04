@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Wallet } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import { PROVIDERS, PROVIDER_LABEL, type DeviceWallet, type WalletGroup } from "@/lib/types";
+import { normalizeBdNumber, walletSuggestions, type ReportedWallet } from "@/lib/walletNumbers";
 import { Disclosure } from "@/components/Disclosure";
 import { GROUP_CODE, GroupChoice } from "@/components/GroupChoice";
 import { ProviderChip } from "@/components/ProviderChip";
@@ -16,8 +17,9 @@ export const GROUP_PATTERN = GROUP_CODE;
 
 const METHOD_LABEL = { send_money: "Send Money", cash_out: "Cash Out (agent)" } as const;
 
-/** The wallet numbers this phone receives deposits on. The pay page shows one of these to a customer. */
-export function WalletsCard({ deviceId, wallets, defaultGroup, onChanged }: { deviceId: string; wallets: DeviceWallet[]; defaultGroup: string; onChanged: () => void }) {
+/** The wallet numbers this phone receives deposits on. The pay page shows one of these to a customer. [reported] are the
+ *  numbers the phone app itself has saved (its heartbeat carries them), offered here so they are picked, not typed. */
+export function WalletsCard({ deviceId, wallets, reported, defaultGroup, onChanged }: { deviceId: string; wallets: DeviceWallet[]; reported?: ReportedWallet[]; defaultGroup: string; onChanged: () => void }) {
   const [adding, setAdding] = useState(false);
   const [provider, setProvider] = useState<string>("bkash");
   const [number, setNumber] = useState("");
@@ -27,6 +29,10 @@ export function WalletsCard({ deviceId, wallets, defaultGroup, onChanged }: { de
   const [groups, setGroups] = useState<WalletGroup[]>([{ name: "main", enabled: true }]);
   const [newGroup, setNewGroup] = useState("");
   const [phoneGroup, setPhoneGroup] = useState(defaultGroup);
+  const suggestions = walletSuggestions(reported, wallets);
+  const fromPhone = new Map(suggestions.map((x) => [x.provider, x]));
+  const notYet = suggestions.filter((x) => x.state === "missing");
+  const typed = normalizeBdNumber(number);
 
   const loadGroups = useCallback(async () => {
     const { data } = await sb.from("wallet_groups").select("name,enabled").order("name");
@@ -102,6 +108,25 @@ export function WalletsCard({ deviceId, wallets, defaultGroup, onChanged }: { de
           No number yet, so customers are never sent to this phone. Add the wallet number this phone receives money on.
         </p>
       ) : null}
+      {notYet.length > 0 ? (
+        <div className="mb-3 rounded-md border border-dashed p-2">
+          <p className="mb-1 text-xs text-muted-foreground">Saved in the phone app, not a deposit number yet. One tap adds it; say how the customer pays.</p>
+          <ul className="grid gap-1">
+            {notYet.map((x) => (
+              <li key={x.provider} className="flex flex-wrap items-center gap-2 text-sm">
+                <ProviderChip provider={x.provider} />
+                <span className="font-mono tabular">{x.number}</span>
+                <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={() => void save(x.provider, x.number, "cash_out", true)}>
+                  Add as Cash Out (agent)
+                </Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={() => void save(x.provider, x.number, "send_money", true)}>
+                  Add as Send Money
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <ul className="grid gap-2">
         {wallets.map((w) => (
           <li key={w.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
@@ -109,6 +134,18 @@ export function WalletsCard({ deviceId, wallets, defaultGroup, onChanged }: { de
               <ProviderChip provider={w.provider} />
               <span className="font-mono tabular">{w.wallet_number}</span>
               <Badge tone="idle">{METHOD_LABEL[w.method]}</Badge>
+              {!normalizeBdNumber(w.wallet_number) ? (
+                <span className="text-xs text-destructive">Not a valid number ({w.wallet_number.length} digits): customers cannot pay to it. Add the right one below.</span>
+              ) : fromPhone.get(w.provider)?.state === "matches" ? (
+                <span className="text-xs text-emerald-700 dark:text-emerald-400">matches the phone ✓</span>
+              ) : fromPhone.get(w.provider)?.state === "differs" ? (
+                <span className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400">
+                  the phone says {fromPhone.get(w.provider)!.number}
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => void save(w.provider, fromPhone.get(w.provider)!.number, w.method, w.enabled)}>
+                    Use the phone's number
+                  </Button>
+                </span>
+              ) : null}
             </span>
             <span className="flex items-center gap-2 text-xs text-muted-foreground">
               <Select value={w.wallet_group ?? "main"} onValueChange={(g) => void setGroup(w.id, g)}>
@@ -146,8 +183,11 @@ export function WalletsCard({ deviceId, wallets, defaultGroup, onChanged }: { de
               <SelectItem value="cash_out">Customer cashes out at this agent</SelectItem>
             </SelectContent>
           </Select>
-          <Input inputMode="numeric" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="Wallet number, e.g. 01712345678" aria-label="Wallet number" className="sm:col-span-2" />
-          <Button type="submit" disabled={busy || number.replace(/\D/g, "").length < 10} className="sm:col-span-2">
+          <Input inputMode="numeric" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="Wallet number, 11 digits, e.g. 01712345678" aria-label="Wallet number" className="sm:col-span-2" />
+          {number.trim() && !typed ? (
+            <p className="text-xs text-destructive sm:col-span-2">A Bangladesh number has 11 digits and starts with 01 (you typed {number.replace(/\D/g, "").length}).</p>
+          ) : null}
+          <Button type="submit" disabled={busy || !typed} className="sm:col-span-2">
             {busy ? "Saving…" : "Save number"}
           </Button>
           <p className="text-xs text-muted-foreground sm:col-span-2">
