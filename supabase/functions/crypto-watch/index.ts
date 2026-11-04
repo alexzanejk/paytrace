@@ -69,7 +69,10 @@ async function tellWebsites() {
   if (!paid) return;
   paid = false;
   try {
-    const res = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/gateway/deliver`, { method: "POST", body: "{}", signal: AbortSignal.timeout(15_000) });
+    const res = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/gateway/deliver`, {
+      // Our own call: the service key lets it through the gateway's once-per-2-seconds gate for strangers (migration 056).
+      method: "POST", headers: { authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""}` }, body: "{}", signal: AbortSignal.timeout(15_000),
+    });
     await res.body?.cancel();
   } catch {
     // the once-a-minute delivery run sends it anyway

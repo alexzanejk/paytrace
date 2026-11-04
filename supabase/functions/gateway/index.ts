@@ -25,7 +25,8 @@ import { heldClaimMessage, makeNotifier, webhookFailingMessage } from "./notify.
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const db = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 const DASHBOARD_URL = (Deno.env.get("DASHBOARD_URL") ?? "https://paytrace.ashkawser54.workers.dev").replace(/\/+$/, "");
 const DASHBOARD_ORIGIN = new URL(DASHBOARD_URL).origin;
 // The customer pay page can live on its own address (secret PAY_URL, for example https://pay.example.com). New orders get
@@ -187,7 +188,7 @@ async function paySubmit(body: Record<string, unknown>): Promise<Response> {
   const result = String(data?.result ?? "");
   const state = submitState(result);
   // A match may have just queued a result message for the website: send it now instead of waiting for the minute timer.
-  if (state === "paid" || state === "review") defer(deliver());
+  if (state === "paid" || state === "review") defer(deliver(true));
   // Held on the customer's own TrxID entry: tell the owner (the ingest function only messages holds it sees itself).
   const hold = data?.hold;
   if (state === "review" && hold && typeof hold === "object") {
@@ -236,9 +237,16 @@ async function sendOne(row: { id: number; url: string; secret: string; event: st
   }
 }
 
-/** Closes unpaid orders and sends every waiting result message. Safe to call at any time and as often as you like. */
-async function deliver(): Promise<void> {
+/** Closes unpaid orders and sends every waiting result message. Safe to call at any time and as often as you like.
+ *  `trusted` = our own code (this function, ingest, crypto-watch with the service key). Anyone else (the pg_cron timer,
+ *  which has no secret to show, or an outsider) is let through at most once every 2 seconds (gw_deliver_gate, migration
+ *  056), so the route cannot be used to burn Edge Function time. The timer runs once a minute, so it is never held back. */
+async function deliver(trusted = false): Promise<void> {
   try {
+    if (!trusted) {
+      const { data: go } = await db.rpc("gw_deliver_gate", { p_min_gap_ms: 2000 });
+      if (go === false) return;
+    }
     await db.rpc("gw_expire_due");
     const { data } = await db.rpc("gw_claim_webhooks", { p_limit: 20 });
     await Promise.allSettled((data ?? []).map((r: { id: number; url: string; secret: string; event: string; body: unknown }) => sendOne(r)));
@@ -264,9 +272,20 @@ async function handle(req: Request): Promise<Response> {
     case "pay-order": return await payOrder(body);
     case "pay-pick": return await payPick(body);
     case "pay-submit": return await paySubmit(body);
-    case "deliver": await deliver(); return json({ ok: true });
+    case "deliver": await deliver(isOurs(req)); return json({ ok: true });
     default: return json({ error: "unknown route" }, 404);
   }
+}
+
+/** The ingest and crypto-watch functions call /deliver with the project's own service key; nobody else has it. */
+function isOurs(req: Request): boolean {
+  const h = (req.headers.get("authorization") ?? "").trim();
+  if (!h.toLowerCase().startsWith("bearer ") || !SERVICE_KEY) return false;
+  const given = h.slice(7).trim();
+  if (given.length !== SERVICE_KEY.length) return false;
+  let diff = 0;
+  for (let i = 0; i < given.length; i++) diff |= given.charCodeAt(i) ^ SERVICE_KEY.charCodeAt(i);
+  return diff === 0;
 }
 
 // Only our own addresses (dashboard, pay page, the original address) may call the pay-* routes from a browser; the website API is server to server.

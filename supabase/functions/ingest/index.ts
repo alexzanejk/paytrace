@@ -34,6 +34,8 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const INGEST_SECRET = Deno.env.get("INGEST_SECRET") ?? "";
 const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+// The gateway lets our own calls to /deliver through at once; anyone without the service key is slowed to one run per 2 s (migration 056).
+const DELIVER_AUTH = { authorization: `Bearer ${SERVICE_KEY}` };
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -210,7 +212,7 @@ async function judgeWalletCheck(commandId: string, ok: boolean, balance: number 
     if (verdict.confirmed) {
       await notify.send(confirmedMessage({ provider: pay.provider, amount: Number(pay.amount), trxId: pay.trx_id, how: chk.step, detail: verdict.detail ?? "", result: verdict.result ?? "" }));
       if (verdict.result === "matched") {
-        await fetch(`${SUPABASE_URL}/functions/v1/gateway/deliver`, { method: "POST", body: "{}" }).then((x) => x.body?.cancel()).catch(() => {});
+        await fetch(`${SUPABASE_URL}/functions/v1/gateway/deliver`, { method: "POST", headers: DELIVER_AUTH, body: "{}" }).then((x) => x.body?.cancel()).catch(() => {});
       }
     } else if (chk.step === "statement" || !verdict.next?.command_id) {
       // The last step did not settle it (or the next one could not start): the owner decides.
@@ -655,7 +657,7 @@ async function storeSms(src: SmsSource): Promise<Response> {
     if (typeof r === "string") matchResult = r;
     // A deposit order just got paid or held: tell its website now instead of waiting for the minute timer.
     if (matchResult === "matched" || matchResult === "review") {
-      defer(fetch(`${SUPABASE_URL}/functions/v1/gateway/deliver`, { method: "POST", body: "{}" }).then((x) => x.body?.cancel()).catch(() => {}));
+      defer(fetch(`${SUPABASE_URL}/functions/v1/gateway/deliver`, { method: "POST", headers: DELIVER_AUTH, body: "{}" }).then((x) => x.body?.cancel()).catch(() => {}));
     }
   }
 
@@ -664,7 +666,7 @@ async function storeSms(src: SmsSource): Promise<Response> {
   if (status === "review") {
     const { data: heldOrder } = await db.rpc("hold_claimed_order", { p_payment_id: inserted.id });
     if (heldOrder) {
-      defer(fetch(`${SUPABASE_URL}/functions/v1/gateway/deliver`, { method: "POST", body: "{}" }).then((x) => x.body?.cancel()).catch(() => {}));
+      defer(fetch(`${SUPABASE_URL}/functions/v1/gateway/deliver`, { method: "POST", headers: DELIVER_AUTH, body: "{}" }).then((x) => x.body?.cancel()).catch(() => {}));
     }
   }
   // A broken balance chain is a question for the phone, not a verdict: ask the wallet itself (live balance, then its
