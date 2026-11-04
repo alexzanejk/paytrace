@@ -109,6 +109,14 @@ check("rocket b2b account masked", p?.counterparty === "***238");
 check("rocket b2b noon time 12:49 pm stays 12:49", p?.occurredAt === "2026-10-28T12:49:03+06:00", p?.occurredAt);
 check("rocket b2b trusted layout", p?.confidence === "exact");
 check("rocket b2b auto-detected without hint", parsed(rocketB2B)?.provider === "rocket");
+// ---- bKash AGENT cash-in receipt (real sample 2026-11-04): the agent gave e-money to a customer, money LEFT the wallet ----
+const bkashCashIn = "Cash In Tk 200.00 to 0161XXXX190 successful. Fee Tk 0.00. Balance Tk 6,806.69. TrxID DK46191BOA at 04/11/2026 11:08";
+p = parsed(bkashCashIn, "bkash");
+check("bkash agent cash-in parsed", !!p, parseSms(bkashCashIn, "bkash"));
+check("bkash agent cash-in is outgoing money, never a customer payment", p?.txnType === "transfer_out" && p?.outKind === "cash_in");
+check("bkash agent cash-in amount, balance, trx, time", p?.amount === 200 && p?.balance === 6806.69 && p?.trxId === "DK46191BOA" && p?.occurredAt === "2026-11-04T11:08:00+06:00");
+check("bkash agent cash-in auto-detected without hint", parsed(bkashCashIn)?.provider === "bkash");
+check("rocket b2b names its kind", parsed(rocketB2B, "rocket")?.outKind === "b2b");
 check("unknown b2b layout is never read as customer money", parseSms("B2B: Cash-In from A/C: ***238 Tk500.00 Balance: Tk900.00 TxnId: ABC1234567", "rocket").kind === "failed");
 
 // A Rocket message in an unknown layout still falls back to the cautious reader.

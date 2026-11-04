@@ -27,8 +27,9 @@ export const FLOW_WORDS: Record<FlowKind, { label: string; meaning: string }> = 
   cash_in: {
     label: "Cash In",
     meaning:
-      "Money the agent SENT OUT to a personal number. A cash-in sends no SMS, so only the ones PayTrace knows about are here: " +
-      "cash-ins told from this dashboard that finished, and partner-reported cash-ins that were verified or accepted.",
+      "Money the agent SENT OUT to a customer's wallet. bKash sends an SMS for an agent cash-in and those are counted. Nagad and Rocket " +
+      "send no SMS for one, so for them only the cash-ins PayTrace knows about are here: cash-ins told from this dashboard that finished, " +
+      "and partner-reported cash-ins that were verified or accepted.",
   },
   b2b_out: {
     label: "B2B",

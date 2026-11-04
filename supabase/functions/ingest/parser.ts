@@ -15,6 +15,9 @@ export interface Parsed {
   counterparty: string | null;
   occurredAt: string | null; // ISO string, Bangladesh time (+06:00)
   confidence: "exact" | "generic"; // generic = format not verified against real samples
+  /** For transfer_out only: what kind of outgoing money. b2b = the agent sent e-money to its distributor (Rocket);
+   *  cash_in = the agent gave e-money to a customer (bKash sends an SMS for that, seen 2026-11-04). */
+  outKind?: "b2b" | "cash_in";
 }
 
 export type ParseResult =
@@ -108,6 +111,9 @@ function parseBkash(text: string): ParseResult {
     txnType = "payment_received"; amount = num(m[1]); who = m[2];
   } else if ((m = text.match(new RegExp(`You have received\\s+Tk\\s*${NUM}\\s+from\\s+([\\dXx*]+)`, "i")))) {
     txnType = "send_money_received"; amount = num(m[1]); who = m[2];
+  } else if ((m = text.match(new RegExp(`Cash\\s*In\\s+Tk\\s*${NUM}\\s+to\\s+([\\dXx*]+)\\s+successful`, "i")))) {
+    // The AGENT's own cash-in receipt (real sample 2026-11-04): money LEFT the agent wallet. Never a customer payment.
+    txnType = "transfer_out"; amount = num(m[1]); who = m[2];
   }
   if (!txnType || amount == null) return { kind: "failed", reason: "bkash: unrecognized message layout" };
 
@@ -128,6 +134,7 @@ function parseBkash(text: string): ParseResult {
       counterparty: who,
       occurredAt: parseDate(text),
       confidence: "exact",
+      ...(txnType === "transfer_out" ? { outKind: "cash_in" as const } : {}),
     },
   };
 }
@@ -188,6 +195,7 @@ function parseRocketB2B(text: string): ParseResult | null {
       counterparty: m[1],
       occurredAt: parseDate(text),
       confidence: "exact",
+      outKind: "b2b",
     },
   };
 }

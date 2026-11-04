@@ -450,6 +450,9 @@ async function handle(req: Request): Promise<Response> {
     p_amount: outgoing ? -d.amount : d.amount,
     p_fee: d.fee,
     p_commission: d.commission,
+    // Judged against THIS phone's previous message (migration 051): one phone is one wallet per provider. Null only on
+    // the old shared-secret path, where the function falls back to the provider-wide chain.
+    p_device: deviceId,
   });
   const chainStatus: string = chain?.status ?? "unverified";
   // bKash never states the agent commission; the balance does. Trust it only on a sound chain.
@@ -459,9 +462,10 @@ async function handle(req: Request): Promise<Response> {
   // ---- status rules ----
   let status = "unmatched";
   let reviewReason: string | null = null;
-  // An outgoing B2B transfer is kept (its balance keeps the chain and the phone's balance right) but is never
-  // money received: stored as type unknown, status ignored, so no total, commission, job check or lookup counts it.
-  if (outgoing) { status = "ignored"; reviewReason = "b2b_transfer_out"; }
+  // Outgoing money (a B2B transfer to the distributor, or the agent's own cash-in to a customer) is kept, because its
+  // balance keeps the chain and the phone's balance right, but is never money received: stored as type unknown,
+  // status ignored, so no total, commission, job check or lookup counts it. The Cash In column does count cash_in_sent.
+  if (outgoing) { status = "ignored"; reviewReason = d.outKind === "cash_in" ? "cash_in_sent" : "b2b_transfer_out"; }
   else if (d.txnType === "cash_out") status = "tracked_only"; // receipts only, never credit an order
   else if (d.txnType === "unknown") { status = "review"; reviewReason = "unrecognized_type"; }
   else if (d.confidence === "generic") { status = "review"; reviewReason = "unverified_format"; }
