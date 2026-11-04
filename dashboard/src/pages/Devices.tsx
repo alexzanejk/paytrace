@@ -2,7 +2,7 @@ import { useState } from "react";
 import { BatteryMedium, BellRing, ChevronLeft, ChevronRight, Check, HeartPulse, ListOrdered, Pencil, Smartphone, X } from "lucide-react";
 import { must, sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
-import { PROVIDERS, type Device, type DeviceBalance, type DeviceWallet } from "@/lib/types";
+import { PROVIDER_LABEL, PROVIDERS, type Device, type DeviceBalance, type DeviceWallet } from "@/lib/types";
 import { addDays, dayLabel, dhakaDay, groupSummary, summarize, type DayTotal } from "@/lib/period";
 import { openPaymentsWith } from "@/lib/filters";
 import { infoProblems } from "@/lib/deviceHealth";
@@ -35,6 +35,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { EmptyRow } from "@/components/Empty";
 import { useNow } from "@/hooks/useNow";
 import { deviceHealth } from "@/lib/deviceHealth";
+import { depositCoverage } from "@/lib/walletNumbers";
 
 export function Devices() {
   const [failed, setFailed] = useState<Record<string, string>>({});
@@ -85,6 +86,8 @@ export function Devices() {
   const devices = data?.devices ?? [];
   const pending = devices.filter((d) => d.status === "pending");
   const approved = devices.filter((d) => d.status === "approved");
+  // What the pay page can hand out right now: a wallet with no live valid number, or a live number that is not a real number.
+  const coverage = depositCoverage(data?.wallets ?? [], devices);
   const totals = data?.totals ?? [];
   const perDevice = groupSummary(totals, (r) => r.device_id ?? "none");
   const fleet = summarize(totals);
@@ -221,6 +224,21 @@ export function Devices() {
         </section>
       ) : null}
 
+      {coverage.missing.length > 0 || coverage.invalid.length > 0 ? (
+        <Card className="border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100" role="status">
+          <p className="font-medium">Deposit numbers need attention</p>
+          <ul className="mt-1 list-disc pl-5">
+            {coverage.invalid.map((x) => (
+              <li key={x.phone + x.provider}>
+                {x.phone}: the {PROVIDER_LABEL[x.provider] ?? x.provider} number {x.number} is not a valid 11-digit number. Customers are being shown it and cannot pay. Add the right number on that phone's card (it replaces this one).
+              </li>
+            ))}
+            {coverage.missing.map((p) => (
+              <li key={p}>No live {PROVIDER_LABEL[p] ?? p} number on any connected phone: a website asking for {PROVIDER_LABEL[p] ?? p} gets no number. Add one under a phone's Deposit numbers.</li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
       {approved.length === 0 ? (
         <Card className="p-8 text-center">
           <Smartphone className="mx-auto mb-2 h-6 w-6 text-muted-foreground" aria-hidden />
@@ -408,7 +426,7 @@ function DeviceCard({
         </TableBody>
       </Table>
 
-      <WalletsCard deviceId={d.id} wallets={wallets} defaultGroup={d.default_group ?? "main"} onChanged={onChanged} />
+      <WalletsCard deviceId={d.id} wallets={wallets} reported={d.info?.wallets} defaultGroup={d.default_group ?? "main"} onChanged={onChanged} />
 
       <CommissionCard device={d} rates={rates} balance={commission} onChanged={onChanged} />
 

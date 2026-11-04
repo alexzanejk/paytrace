@@ -460,6 +460,16 @@ first. From the next app update on, PayTrace switches it back on by itself and n
 What that permission is used for: PayTrace adds **its own** balance-check service back to the Accessibility list, and
 writes no other setting. Without the permission nothing happens and the switch is flipped by hand as before.
 
+### Deposit numbers: pick them from the phone (2026-11-04)
+
+The number a customer is shown on the pay page comes from **Phones → the phone's card → Deposit numbers**, never from
+the phone app. Once a wallet's number is saved in the phone app (Settings, the wallet row), the dashboard card lists it
+under "Saved in the phone app, not a deposit number yet" with two buttons: **Add as Cash Out (agent)** or **Add as Send
+Money**. One tap and customers can be sent to it. A number must be the full 11 digits starting with 01; the page shows an
+amber "Deposit numbers need attention" box when a wallet has no live number or a saved number is not a real number
+(that is what happened on 2026-11-04: a 10-digit Nagad number was shown to 89 customers). A phone that was removed and
+paired again starts with no deposit numbers: add them on its new card.
+
 ### Xiaomi and Redmi need one more permission (2026-11-02)
 
 **Other permissions → "Display pop-up windows while running in the background".** There is a button for it on
