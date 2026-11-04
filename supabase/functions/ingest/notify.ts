@@ -95,6 +95,27 @@ export function reviewMessage(p: {
   ].join("\n");
 }
 
+/** A held payment the phone itself proved real (migration 053): it was released and matched like any other. */
+export function confirmedMessage(p: { provider: string; amount: number; trxId: string; how: string; detail: string; result: string }): string {
+  return [
+    "✅ Held payment confirmed by the wallet",
+    `${PROVIDER[p.provider] ?? clean(p.provider, 20)} ${taka(p.amount)}  ·  TrxID ${clean(p.trxId, 30)}`,
+    clean(p.detail, 200),
+    p.result === "matched" ? "The order it was for is now paid and the website has been told." : "No order was waiting for it; it is counted as received.",
+  ].join("\n");
+}
+
+/** The phone could not prove the held payment: the owner decides on Review. */
+export function notConfirmedMessage(p: { provider: string; amount: number; trxId: string; detail: string; dashboardUrl: string }): string {
+  return [
+    "⚠️ Held payment: the wallet could not confirm it",
+    `${PROVIDER[p.provider] ?? clean(p.provider, 20)} ${taka(p.amount)}  ·  TrxID ${clean(p.trxId, 30)}`,
+    clean(p.detail, 200),
+    "It stays held for you to decide.",
+    `${p.dashboardUrl}/#/review`,
+  ].join("\n");
+}
+
 export function silentMessage(p: { name: string; code: string; minutes: number; dashboardUrl: string }): string {
   return [
     "📵 A phone is offline",

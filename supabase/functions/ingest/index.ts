@@ -13,7 +13,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import { parseSms, senderMatchesProvider, type Provider } from "./parser.ts";
 import { cleanInfo, healthProblem, type DeviceInfo } from "./health.ts";
-import { makeNotifier, problemMessage, recoveredMessage, reviewMessage, testMessage } from "./notify.ts";
+import { confirmedMessage, makeNotifier, notConfirmedMessage, problemMessage, recoveredMessage, reviewMessage, testMessage } from "./notify.ts";
+import { readStatementLines } from "./statement.ts";
 import { runWatchdog } from "./watchdog.ts";
 import { runWake } from "./wake.ts";
 import { makePusher } from "./fcm.ts";
@@ -176,6 +177,60 @@ async function testWake(authHeader: string, deviceId: string): Promise<Response>
   return json({ success: true, configured: true, registered: result !== "bad_token", result });
 }
 
+/** Nudges a phone to take a command now instead of on its next 30 s beat. Fire-and-forget: the command is saved either way. */
+async function wakeDevice(deviceId: string): Promise<void> {
+  try {
+    if (!pusher.enabled) return;
+    const { data: row } = await db.from("device_push").select("token").eq("device_id", deviceId).maybeSingle();
+    if (row?.token) await pusher.wake(row.token as string);
+  } catch {
+    // never let a wake-up problem touch the payment path
+  }
+}
+
+/** Judges the phone's answer to an automatic check and tells the owner. Nothing here credits an order: the database does,
+ *  through reconcile_payment, once the wallet has vouched for the payment. */
+async function judgeWalletCheck(commandId: string, ok: boolean, balance: number | null, screens: string[] | null, err: string): Promise<void> {
+  try {
+    const { data: chk } = await db.from("payment_checks").select("id,step,payment_id").eq("command_id", commandId).eq("status", "queued").maybeSingle();
+    if (!chk) return;
+    const { data: pay } = await db.from("payments").select("provider,amount,trx_id").eq("id", chk.payment_id).maybeSingle();
+    let verdict: { confirmed?: boolean; result?: string; detail?: string; next?: { command_id?: string; device_id?: string; error?: string } } | null = null;
+    if (chk.step === "balance") {
+      const { data } = await db.rpc("payment_check_judge_balance", { p_command: commandId, p_ok: ok, p_balance: balance, p_error: ok ? null : err });
+      verdict = data;
+      if (verdict?.next?.command_id && verdict.next.device_id) await wakeDevice(verdict.next.device_id);
+    } else {
+      const lines = ok ? readStatementLines(screens) : [];
+      const { data } = await db.rpc("payment_check_judge_statement", { p_command: commandId, p_ok: ok, p_lines: lines, p_error: ok ? null : err });
+      verdict = data;
+    }
+    if (!verdict || !pay) return;
+    await log("payment_check_judged", pay.provider, { payment_id: chk.payment_id, step: chk.step, confirmed: verdict.confirmed === true, detail: verdict.detail ?? null });
+    if (verdict.confirmed) {
+      await notify.send(confirmedMessage({ provider: pay.provider, amount: Number(pay.amount), trxId: pay.trx_id, how: chk.step, detail: verdict.detail ?? "", result: verdict.result ?? "" }));
+      if (verdict.result === "matched") {
+        await fetch(`${SUPABASE_URL}/functions/v1/gateway/deliver`, { method: "POST", body: "{}" }).then((x) => x.body?.cancel()).catch(() => {});
+      }
+    } else if (chk.step === "statement" || !verdict.next?.command_id) {
+      // The last step did not settle it (or the next one could not start): the owner decides.
+      const why = verdict.detail ?? "";
+      const extra = verdict.next?.error ? ` (next step not possible: ${verdict.next.error})` : "";
+      await notify.send(notConfirmedMessage({ provider: pay.provider, amount: Number(pay.amount), trxId: pay.trx_id, detail: why + extra, dashboardUrl: DASHBOARD_URL }));
+    }
+  } catch (e) {
+    console.error("wallet check judge failed", e instanceof Error ? e.name : "error");
+  }
+}
+
+/** A held payment is a question for the phone (migration 053): start the balance step and wake the phone. */
+async function startWalletCheck(paymentId: string): Promise<void> {
+  const { data, error } = await db.rpc("payment_check_start", { p_payment: paymentId, p_step: "balance" });
+  if (error) { console.error("payment_check_start failed", error.code); return; }
+  const r = data as { command_id?: string; device_id?: string; error?: string } | null;
+  if (r?.command_id && r.device_id) defer(wakeDevice(r.device_id));
+}
+
 async function handle(req: Request): Promise<Response> {
   // ---- read payload (POST json or GET query) ----
   let body: Record<string, unknown> = {};
@@ -335,6 +390,8 @@ async function handle(req: Request): Promise<Response> {
       console.error("device_command_finish failed", rpcError.code);
       return json({ success: false, message: "could not save the result" }, 500);
     }
+    // Was this command PayTrace's own question about a held payment? Then judge the answer (migration 053).
+    defer(judgeWalletCheck(id, ok, balance, screens, error));
     return json({ success: true });
   }
 
@@ -540,6 +597,9 @@ async function handle(req: Request): Promise<Response> {
       defer(fetch(`${SUPABASE_URL}/functions/v1/gateway/deliver`, { method: "POST", body: "{}" }).then((x) => x.body?.cancel()).catch(() => {}));
     }
   }
+  // A broken balance chain is a question for the phone, not a verdict: ask the wallet itself (live balance, then its
+  // statement). Confirmed = released and matched; not confirmed = stays held and the owner is told (migration 053).
+  if (status === "review" && reviewReason === "balance_chain_mismatch") await startWalletCheck(inserted.id);
 
   // Tell the owner when a payment is being held, whether that happened on arrival or while matching.
   if (matchResult === "review") {
