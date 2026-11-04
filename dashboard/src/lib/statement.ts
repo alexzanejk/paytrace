@@ -55,8 +55,10 @@ const money = (s: string): number | null => {
 
 /** One line of the list: "1 02/11/26 Cash In -Tk -200.00". The "-Tk" is the wallet's separator, not a minus. */
 export function readRow(line: string): StatementRow | null {
+  // bKash writes "1 02/11/26 Cash In -Tk -200.00"; Nagad (first seen 2026-11-04) writes "1. 04/11/26 Cash Out Tk 500" and
+  // "3. 04/11/26 B2B Tk -8000": a dot after the number, no decimals, the sign on the amount itself.
   const m = line.trim().match(
-    /^(\d{1,2})\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s*-?\s*Tk\.?\s*(-?[\d,]+(?:\.\d{1,2})?)\s*$/i,
+    /^(\d{1,2})\.?\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s*-?\s*Tk\.?\s*(-?[\d,]+(?:\.\d{1,2})?)\s*$/i,
   );
   if (!m) return null;
   const amount = money(m[4]);
@@ -87,7 +89,7 @@ export function unreadLines(screens: string[] | null | undefined): string[] {
     for (const line of String(screen).split("\n")) {
       const t = line.trim();
       if (!t || readRow(t)) continue;
-      if (/^statement list:?$/i.test(t) || /^#\s*NEXT$/i.test(t) || /^0*\s*BACK$/i.test(t)) continue;
+      if (/^statement list:?$/i.test(t) || /^#\s*NEXT$/i.test(t) || /^0*\s*BACK$/i.test(t) || /^next page\b/i.test(t)) continue;
       out.push(t);
     }
   }

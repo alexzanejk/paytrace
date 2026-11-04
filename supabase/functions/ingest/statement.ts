@@ -4,6 +4,8 @@
 //
 // The owner's real bKash agent list: "1 02/11/26 Cash In -Tk -200.00" / "2 29/10/26 Cash Out -Tk 500.00". The "-Tk" is
 // the wallet's separator; the sign AFTER it is the wallet's own: negative = money left the wallet, positive = money came in.
+// The owner's real Nagad agent list (2026-11-04): "1. 04/11/26 Cash Out Tk 500" / "2. 04/11/26 Commission(Cash Out) Tk 2.05" /
+// "3. 04/11/26 B2B Tk -8000" / "Next Page *".
 
 export interface StatementLine {
   /** "2026-11-02" (the wallet writes 02/11/26, day first). */
@@ -32,7 +34,9 @@ function dayOf(date: string): string | null {
 }
 
 export function readLine(line: string): (StatementLine & { no: number }) | null {
-  const m = line.trim().match(/^(\d{1,2})\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s*-?\s*Tk\.?\s*(-?[\d,]+(?:\.\d{1,2})?)\s*$/i);
+  // bKash: "1 02/11/26 Cash In -Tk -200.00" ("-Tk" is a separator). Nagad (first seen 2026-11-04): "1. 04/11/26 Cash Out Tk 500",
+  // "3. 04/11/26 B2B Tk -8000", a dot after the number, no decimals, the sign on the amount.
+  const m = line.trim().match(/^(\d{1,2})\.?\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s*-?\s*Tk\.?\s*(-?[\d,]+(?:\.\d{1,2})?)\s*$/i);
   if (!m) return null;
   const signed = money(m[4]);
   const day = dayOf(m[2]);
