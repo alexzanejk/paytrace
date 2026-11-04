@@ -69,6 +69,10 @@ i = cleanInfo({ wallets: [
 check("wallet numbers are kept only when provider, 11-digit number and slot are sane", JSON.stringify(i.wallets) === JSON.stringify([{ provider: "bkash", number: "01712345678", slot: 1, found: true }]), i.wallets);
 i = cleanInfo({ wallets: "01712345678" }, at);
 check("wallets that are not a list are dropped", i.wallets === undefined);
+i = cleanInfo({ accessibility_on: true, accessibility_running: "false", accessibility_repairs: "3" }, at);
+check("the accessibility service's real state is kept: on, not running, 3 repairs", i.accessibility_on === true && i.accessibility_running === false && i.accessibility_repairs === 3, i);
+i = cleanInfo({ accessibility_on: "yes", accessibility_running: 2, accessibility_repairs: -1 }, at);
+check("an unclear accessibility state is left unknown", i.accessibility_on === undefined && i.accessibility_running === undefined && i.accessibility_repairs === undefined, i);
 i = cleanInfo({ ussd_allowed: "maybe", cashin_allowed: 1, admin_code_set: null }, at);
 check("an unclear guarded switch is left unknown, not guessed", i.ussd_allowed === undefined && i.cashin_allowed === undefined && i.admin_code_set === undefined, i);
 i = cleanInfo({ admin_code_set: true, admin_code: "483920", admin_code_hash: "v1:x" } as Record<string, unknown>, at);

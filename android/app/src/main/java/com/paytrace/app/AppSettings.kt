@@ -310,6 +310,14 @@ class AppSettings(ctx: Context) {
         if (k != null) p.edit().putString("ussd_last$k", v).apply() else ussdLast = v
     }
 
+    /** What AccessibilityRepair did, newest first (a few lines), and how many times it brought the service back. */
+    var a11yRepairLog: String
+        get() = p.getString("a11y_repair_log", "") ?: ""
+        set(v) { p.edit().putString("a11y_repair_log", v).apply() }
+    var a11yRepairs: Int
+        get() = p.getInt("a11y_repairs", 0)
+        set(v) { p.edit().putInt("a11y_repairs", v).apply() }
+
     /** The wallet's own number, typed on the phone (owner 2026-11-03), and the SIM slot the app FOUND it in (-1 = not found
      *  yet; the chosen slot is still ussdSlotOf). Numbers are not secret: customers are shown them on the pay page. */
     fun walletNumberOf(provider: String): String = p.getString("wallet_number_$provider", "") ?: ""

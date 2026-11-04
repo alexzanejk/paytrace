@@ -26,6 +26,12 @@ export interface DeviceInfo {
   ussd_allowed?: boolean;
   cashin_allowed?: boolean;
   admin_code_set?: boolean;
+  /** The accessibility service as it really is: switched on in Android's list, and actually started. A phone that killed
+   *  the app leaves it on but dead ("This service is malfunctioning"), and Android will not restart it by itself. */
+  accessibility_on?: boolean;
+  accessibility_running?: boolean;
+  /** How often the phone has switched that dead service off and on by itself (needs the one-time adb grant). */
+  accessibility_repairs?: number;
   /** Wallet numbers saved on the phone: which number is bKash, Nagad, Rocket, and which SIM each is in. */
   wallets?: { provider: string; number: string; slot: number; found: boolean }[];
   push_ready?: boolean;
@@ -106,6 +112,19 @@ export function settingsLines(info: DeviceInfo | null | undefined): SettingsLine
     out.push({ text: "Balance checks OFF on the phone", tone: "warn", hint: "The phone refuses every balance check, statement and cash-in from the dashboard until its switch is turned on (needs the admin code)." });
   } else if (info.ussd_allowed === true) {
     out.push({ text: "Balance checks on", tone: "idle", hint: "The phone accepts balance-check and statement requests from the dashboard." });
+  }
+  if (info.accessibility_on === true && info.accessibility_running === false) {
+    out.push({
+      text: "Accessibility service not running on the phone",
+      tone: "warn",
+      hint:
+        "Android's switch is on, but the phone killed PayTrace and Android does not restart the service by itself (Settings shows \"This service is malfunctioning\"). " +
+        "Balance checks, statements and cash-ins through the dialer fail until it is switched OFF and ON in Accessibility. A phone with the adb grant does that by itself within about 30 seconds; " +
+        "if this line stays, do it by hand and check the phone's battery settings (Autostart, No restrictions, pop-up windows) so it stops killing PayTrace.",
+    });
+  } else if (info.accessibility_on === true && info.accessibility_running === true) {
+    const n = info.accessibility_repairs ?? 0;
+    out.push({ text: n > 0 ? `Accessibility service running (self-repaired ${n}×)` : "Accessibility service running", tone: "ok", hint: n > 0 ? "The phone has switched the service off and on by itself after being killed, this many times. Many repairs mean the phone's battery settings still let it kill PayTrace." : "The dialer way is ready: PayTrace can read the wallet's menu on this phone." });
   }
   if (info.cashin_allowed === true) {
     out.push({ text: "Sending money ON", tone: "idle", hint: "The phone will make a cash-in when the dashboard asks (still limited by the daily limit on the Jobs page and the Tk 10,000 cap per cash-in)." });

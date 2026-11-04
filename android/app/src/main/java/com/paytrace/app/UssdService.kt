@@ -659,15 +659,12 @@ object UssdRunner {
     private const val RETRY_PAUSE_MS = 4_000L
     /** After a bKash session was opened by the direct way and could not go on, let the network drop it before the dialer way starts. */
     private const val SWITCH_PAUSE_MS = 4_000L
-    /** After switching PayTrace back on in Accessibility settings, the time Android needs to start the service. */
-    private const val HEAL_PAUSE_MS = 2_500L
 
     fun run(ctx: Context, provider: String, onFinish: (UssdOutcome) -> Unit) {
         val app = ctx.applicationContext
-        fun go() = attempt(app, provider, 1, "") { outcome -> onFinish(afterRun(app, outcome)) }
-        // An app update switches PayTrace off in Accessibility settings. Where the phone lets it, put it back first and give
-        // Android a moment to start the service before the dialer way needs it.
-        if (AccessibilityHeal.heal(app)) Handler(Looper.getMainLooper()).postDelayed({ go() }, HEAL_PAUSE_MS) else go()
+        // An app update switches PayTrace off in Accessibility settings, and a killed app leaves the service listed but dead.
+        // Where the phone lets it, mend that first and give Android a moment to start the service before the dialer way needs it.
+        AccessibilityHeal.prepare(app) { note -> attempt(app, provider, 1, note) { outcome -> onFinish(afterRun(app, outcome)) } }
     }
 
     /** A cash-in the owner asked for from the dashboard. It MOVES MONEY, so it is deliberately the plainest path there is:
@@ -686,11 +683,10 @@ object UssdRunner {
         val pin = UssdSetup.pinStore(app, order.provider).get()
         if (pin.isEmpty()) return fail("no_pin")
         if (UssdSession.active() || UssdApi.active()) return fail("busy")
-        fun go() {
-            if (!UssdSetup.accessibilityOn(app)) return fail("no_accessibility")
-            viaDialer(app, order.provider, 1, "", onFinish, s, pin, { UssdProviders.cashIn(order) { pin } }, retryable = false)
+        AccessibilityHeal.prepare(app) { note ->
+            if (!UssdSetup.accessibilityOn(app)) return@prepare fail("no_accessibility")
+            viaDialer(app, order.provider, 1, note, onFinish, s, pin, { UssdProviders.cashIn(order) { pin } }, retryable = false)
         }
-        if (AccessibilityHeal.heal(app)) Handler(Looper.getMainLooper()).postDelayed({ go() }, HEAL_PAUSE_MS) else go()
     }
 
     /** The wallet's own statement, asked for from the dashboard. Read-only: it brings back the list of recent
@@ -708,11 +704,10 @@ object UssdRunner {
         val pin = UssdSetup.pinStore(app, provider).get()
         if (pin.isEmpty()) return fail("no_pin")
         if (UssdSession.active() || UssdApi.active()) return fail("busy")
-        fun go() {
-            if (!UssdSetup.accessibilityOn(app)) return fail("no_accessibility")
-            viaDialer(app, provider, 1, "", onFinish, s, pin, { StatementFlow(provider, item) { pin } })
+        AccessibilityHeal.prepare(app) { note ->
+            if (!UssdSetup.accessibilityOn(app)) return@prepare fail("no_accessibility")
+            viaDialer(app, provider, 1, note, onFinish, s, pin, { StatementFlow(provider, item) { pin } })
         }
-        if (AccessibilityHeal.heal(app)) Handler(Looper.getMainLooper()).postDelayed({ go() }, HEAL_PAUSE_MS) else go()
     }
 
     /** A phone whose modem will not send a balance code from an app (the owner's Vivo: "failure code -1", or the network's

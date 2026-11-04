@@ -27,6 +27,9 @@ export interface DeviceInfo {
   ussd_allowed?: boolean; // the phone's own switch: may the dashboard ask it for a balance, statement or other wallet menu read
   cashin_allowed?: boolean; // the phone's own switch: may the dashboard make it send money. Off unless the owner turned it on
   admin_code_set?: boolean; // an admin code protects those switches (the code itself is never sent)
+  accessibility_on?: boolean; // PayTrace's balance-check service is switched on in the phone's Accessibility settings
+  accessibility_running?: boolean; // ...and Android has really started it (a killed app leaves it on but dead: "malfunctioning")
+  accessibility_repairs?: number; // times the phone switched that dead service off and on by itself (needs the adb grant)
   wallets?: WalletInfo[]; // the wallet numbers saved on the phone and which SIM each is in
   wake_count?: number; // wake-up pushes this phone has received
   last_wake_at?: string; // when the latest one arrived
@@ -82,6 +85,12 @@ export function cleanInfo(body: Record<string, unknown>, now: Date = new Date())
   if (cashinAllowed !== undefined) info.cashin_allowed = cashinAllowed;
   const adminCodeSet = asBool(body.admin_code_set);
   if (adminCodeSet !== undefined) info.admin_code_set = adminCodeSet;
+  const a11yOn = asBool(body.accessibility_on);
+  if (a11yOn !== undefined) info.accessibility_on = a11yOn;
+  const a11yRunning = asBool(body.accessibility_running);
+  if (a11yRunning !== undefined) info.accessibility_running = a11yRunning;
+  const a11yRepairs = asCount(body.accessibility_repairs, 1_000_000);
+  if (a11yRepairs !== undefined) info.accessibility_repairs = a11yRepairs;
   if (Array.isArray(body.wallets)) {
     const wallets: WalletInfo[] = [];
     for (const w of body.wallets.slice(0, 4)) {

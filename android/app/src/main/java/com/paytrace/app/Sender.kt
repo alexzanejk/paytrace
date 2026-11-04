@@ -119,6 +119,11 @@ object Sender {
         o.put("ussd_allowed", s.ussdAllowed)
         o.put("cashin_allowed", s.cashInAllowed)
         o.put("admin_code_set", AdminLock.isSet(ctx))
+        // The accessibility service, as it really is: Android's switch can read ON while the service is dead (the phone killed
+        // the app). The dashboard shows it, and how often this phone has mended it by itself (AccessibilityRepair).
+        o.put("accessibility_on", UssdSetup.accessibilityOn(ctx))
+        o.put("accessibility_running", UssdSession.connected())
+        o.put("accessibility_repairs", s.a11yRepairs)
         // The wallet numbers saved on this phone and which SIM each was found in (-1 = not found, the chosen slot is sent too),
         // so the dashboard can say which number is bKash, Nagad and Rocket on this phone (owner 2026-11-03).
         val wallets = JSONArray()

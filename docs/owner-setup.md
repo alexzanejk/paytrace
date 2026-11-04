@@ -475,6 +475,13 @@ of just timing out:
 
 * **Accessibility says on, but the phone never started it.** The app's card shows a red line, and a dashboard command
   gives up after six seconds saying so. Fix: Settings, Accessibility, Downloaded apps, switch PayTrace OFF and ON again.
+  **Why it happens (found on the Redmi Note 10 Pro, 2026-11-04):** Accessibility shows "This service is malfunctioning" /
+  "Not working" when the phone killed PayTrace while the service was running (MIUI stopping it in the background, a flat
+  battery). Android then refuses to restart the service until someone switches it OFF and ON. **On a phone with the adb
+  grant above, PayTrace now does that by itself** within about 30 seconds (the card says "repairs so far" and keeps a short
+  self-repair log; there is also a **Repair now** button), and the Phones page shows "Accessibility service not running"
+  while it is dead. The real fix is still to stop the phone killing PayTrace: Autostart, Battery saver "No restrictions",
+  lock the app in Recents, keep the phone charged.
 * **Android's "restricted settings" block**, which it puts on apps installed outside a store and which comes back with
   every update. Fix: PayTrace's app page, three dots at the top right, "Allow restricted settings", confirm, then
   switch it on in Accessibility again. The app's warning has a button to that page.
