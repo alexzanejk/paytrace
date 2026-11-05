@@ -8,6 +8,8 @@
 // "3. 04/11/26 B2B Tk -8000" / "Next Page *".
 
 export interface StatementLine {
+  /** The number the wallet gave the entry (1 = its newest). The ledger keeps lines in this order. */
+  no: number;
   /** "2026-11-02" (the wallet writes 02/11/26, day first). */
   day: string;
   /** Always positive. */
@@ -53,7 +55,7 @@ export function readStatementLines(screens: unknown): StatementLine[] {
       const row = readLine(line);
       if (row && !seen.has(row.no)) {
         seen.add(row.no);
-        out.push({ day: row.day, amount: row.amount, in: row.in, type: row.type });
+        out.push({ no: row.no, day: row.day, amount: row.amount, in: row.in, type: row.type });
       }
     }
   }

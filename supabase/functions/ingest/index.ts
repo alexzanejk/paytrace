@@ -13,7 +13,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import { parseSms, senderMatchesProvider, type Provider } from "./parser.ts";
 import { cleanInfo, healthProblem, type DeviceInfo } from "./health.ts";
-import { confirmedMessage, makeNotifier, notConfirmedMessage, problemMessage, recoveredMessage, reviewMessage, testMessage, unreadMessage } from "./notify.ts";
+import { b2bMessage, confirmedMessage, makeNotifier, notConfirmedMessage, problemMessage, recoveredMessage, reviewMessage, testMessage, unreadMessage } from "./notify.ts";
 import { readStatementLines } from "./statement.ts";
 import { runWatchdog } from "./watchdog.ts";
 import { runWake } from "./wake.ts";
@@ -222,6 +222,26 @@ async function judgeWalletCheck(commandId: string, ok: boolean, balance: number 
     }
   } catch (e) {
     console.error("wallet check judge failed", e instanceof Error ? e.name : "error");
+  }
+}
+
+/** Keeps the lines of a finished statement pull for the wallet ledger (migration 059) and tells the owner about any B2B
+ *  OUT that only the statement showed. Nothing here can touch the command or the payment path. */
+async function recordStatement(commandId: string, screens: string[], deviceName: string): Promise<void> {
+  try {
+    const lines = readStatementLines(screens);
+    if (lines.length === 0) return;
+    const { data, error } = await db.rpc("statement_lines_record", { p_command: commandId, p_lines: lines });
+    if (error) { console.error("statement_lines_record failed", error.code); return; }
+    const r = data as { count?: number; provider?: string; added?: { day?: string; type?: string; amount?: number | string }[] } | null;
+    for (const a of r?.added ?? []) {
+      const amount = Number(a.amount);
+      if (/b2b/i.test(String(a.type ?? "")) && Number.isFinite(amount) && amount < 0) {
+        await notify.send(b2bMessage({ direction: "out", provider: r?.provider ?? "", amount: -amount, phone: deviceName, how: "statement", day: a.day ?? null, dashboardUrl: DASHBOARD_URL }));
+      }
+    }
+  } catch (e) {
+    console.error("statement record failed", e instanceof Error ? e.name : "error");
   }
 }
 
@@ -452,6 +472,8 @@ async function handle(req: Request): Promise<Response> {
     }
     // Was this command PayTrace's own question about a held payment? Then judge the answer (migration 053).
     defer(judgeWalletCheck(id, ok, balance, screens, error));
+    // A statement list feeds the wallet ledger (migration 059).
+    if (ok && kind === "statement" && screens && screens.length > 0) defer(recordStatement(id, screens, device.name));
     return json({ success: true });
   }
 
@@ -534,7 +556,7 @@ async function handle(req: Request): Promise<Response> {
   }
 
   if (!raw) return json({ success: false, message: "raw_message required" }, 400);
-  return await storeSms({ raw, hint, senderId, deviceId, simSlot });
+  return await storeSms({ raw, hint, senderId, deviceId, simSlot, deviceName: device?.name ?? "" });
 }
 
 /** 0 or 1 (as a number or as text, for the GET setting), else null = the phone did not say. */
@@ -545,7 +567,7 @@ function simSlotOf(v: unknown): number | null {
 /** One SMS to read and store. `rerun`: the owner pressed "Run the parser again" on a message that could not be read
  *  before (nothing is logged twice and no alert is sent); `legacyTrusted`: that message was logged before the sender ID
  *  was kept, and it came from a paired phone, which only forwards the four provider sender IDs in the first place. */
-type SmsSource = { raw: string; hint: string; senderId: string; deviceId: string | null; simSlot?: number | null; rerun?: boolean; legacyTrusted?: boolean };
+type SmsSource = { raw: string; hint: string; senderId: string; deviceId: string | null; simSlot?: number | null; deviceName?: string; rerun?: boolean; legacyTrusted?: boolean };
 
 async function storeSms(src: SmsSource): Promise<Response> {
   const { raw, hint, senderId, deviceId } = src;
@@ -659,6 +681,14 @@ async function storeSms(src: SmsSource): Promise<Response> {
   }
 
   await log("created", d.provider, { trx_id: d.trxId, type: d.txnType, amount: d.amount, device_id: deviceId, chain: chainStatus, ...(src.rerun ? { rerun: true } : {}) }, inserted.id);
+
+  // B2B money moved (owner 2026-11-05): say so at once. OUT spends the owner's money; IN raises the wallet's B2B float.
+  if (!src.rerun && (reviewReason === "b2b_transfer_out" || reviewReason === "b2b_received")) {
+    defer(notify.send(b2bMessage({
+      direction: reviewReason === "b2b_transfer_out" ? "out" : "in", provider: d.provider, amount: d.amount,
+      phone: src.deviceName ?? "", how: "sms", balance: d.balance, trxId: d.trxId, dashboardUrl: DASHBOARD_URL,
+    })));
+  }
 
   // ---- try to match to an order that already claimed this TrxID ----
   let matchResult = status;

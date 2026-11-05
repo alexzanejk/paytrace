@@ -680,3 +680,28 @@ as "can't tell".
   that menu's balance or statement (it would be another account's); the Review page says so, and you decide.
 - Phones still on an older build behave exactly as before. On the day you update, the first message from each account
   is compared with the old mixed pile once and may read "can't tell" one more time; after that each account is clean.
+
+## Wallet ledger and B2B money (2026-11-05)
+
+**Wallet ledger** (new page in the menu, and "Open ledger" on each wallet of a phone's card): every transaction of one
+wallet in time order, like the wallet app's own history. Rows come from two places: the SMS PayTrace stored (exact time,
+TrxID, balance after) and the wallet's own statement (date, kind and amount only). A statement line that matches an SMS
+is shown once, marked "SMS + statement". A line the statement lists but no SMS came for is shown in amber, marked
+"Statement only (no SMS)", with a "≈" time: it sits between its neighbours in the wallet's own list, which is the right
+order even without a clock time. Pick a phone, a wallet and up to 31 days (the default is the last 3 days); CSV at the top.
+
+- **Pull statement now** asks the phone for the wallet's statement (bKash and Nagad; Rocket has no menu flow yet). The
+  phone must be awake and unlocked, as for every menu command.
+- **Pull statements by itself**: on by default, twice a day (10:00 and 22:00 Bangladesh time), for every bKash and Nagad
+  wallet on an approved phone with balance checks allowed. You can set 1 to 4 pulls a day or switch it off.
+- Nothing is deleted automatically for now; the page shows at most 31 days at a time.
+
+**B2B money** (each phone's card, "B2B money (distributor float)"): money the distributor puts into an agent wallet is
+not yours. Type the B2B amount that is in the wallet right now as the **opening**; from then on PayTrace adds every B2B
+in and takes off every B2B out by itself (from the SMS, or from the statement when no SMS comes, which is the case for
+bKash B2B in). The card shows Balance, B2B float and **Your money** (balance minus float). Both jobs (the send-money job
+and the cash-in job) now start from Your money, not from the balance.
+
+- A **B2B OUT** on any wallet sends you a Telegram message at once and shows a red line on that wallet for 24 hours. A
+  B2B in also sends a short message, because it moves the float.
+- If the float ever looks wrong, set the opening again with today's B2B amount; the count restarts from that moment.

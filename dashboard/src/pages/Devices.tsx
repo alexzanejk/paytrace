@@ -28,6 +28,8 @@ import { PhonePermissions } from "@/components/PhonePermissions";
 import { AppVersionCard, VersionChip } from "@/components/AppVersionCard";
 import { GROUP_CODE, GroupChoice } from "@/components/GroupChoice";
 import { CommissionCard } from "@/components/CommissionCard";
+import { B2BFloat } from "@/components/B2BFloat";
+import type { B2BFloatRow } from "@/lib/ledger";
 import type { CommissionBalance, RateRow } from "@/lib/commission";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -58,6 +60,8 @@ export function Devices() {
       const flows = must(await sb.from("device_day_flows").select("*").eq("day", day)) as FlowRow[];
       const balances = must(await sb.from("device_balances").select("*")) as DeviceBalance[];
       const simBalances = must(await sb.from("device_sim_balances").select("*")) as DeviceSimBalance[];
+      // The B2B float view arrives with migration 059; until it is live the page must still open.
+      const floats = ((await sb.from("wallet_b2b_float").select("*")).data ?? []) as B2BFloatRow[];
       const wallets = must(await sb.from("device_wallets").select("*").order("created_at", { ascending: true })) as DeviceWallet[];
       // Deposit orders per wallet in the last 24 h (view wallet_order_stats, migration 052). A missing view never stops the page.
       const statRes = await sb.from("wallet_order_stats").select("*");
@@ -69,7 +73,7 @@ export function Devices() {
       // The newest app version (update system). A missing table never stops the page.
       const rel = await sb.from("app_release").select("version_code,notes").limit(1);
       const release = (rel.data?.[0] ?? null) as { version_code: number; notes: string | null } | null;
-      return { devices, totals, flows, balances, simBalances, wallets, walletStats, rates, commission, groups, release };
+      return { devices, totals, flows, balances, simBalances, floats, wallets, walletStats, rates, commission, groups, release };
     },
     [day],
     { refreshMs: 10000 },
@@ -264,6 +268,7 @@ export function Devices() {
               flows={(data?.flows ?? []).filter((f) => f.device_id === d.id)}
               balances={(data?.balances ?? []).filter((b) => b.device_id === d.id)}
               simBalances={(data?.simBalances ?? []).filter((b) => b.device_id === d.id)}
+              floats={(data?.floats ?? []).filter((f) => f.device_id === d.id)}
               wallets={(data?.wallets ?? []).filter((w) => w.device_id === d.id)}
               walletStats={(data?.walletStats ?? []).filter((x) => x.device_id === d.id)}
               rates={(data?.rates ?? []).filter((r) => r.device_id === d.id)}
@@ -289,6 +294,7 @@ function DeviceCard({
   flows,
   balances,
   simBalances,
+  floats,
   wallets,
   walletStats,
   rates,
@@ -306,6 +312,7 @@ function DeviceCard({
   flows: FlowRow[];
   balances: DeviceBalance[];
   simBalances: DeviceSimBalance[];
+  floats: B2BFloatRow[];
   wallets: DeviceWallet[];
   walletStats: WalletOrderStat[];
   rates: RateRow[];
@@ -445,6 +452,8 @@ function DeviceCard({
       </Table>
 
       <WalletsCard deviceId={d.id} wallets={wallets} reported={d.info?.wallets} stats={walletStats} defaultGroup={d.default_group ?? "main"} onChanged={onChanged} />
+
+      <B2BFloat deviceId={d.id} floats={floats} balances={balances} onChanged={onChanged} />
 
       <CommissionCard device={d} rates={rates} balance={commission} onChanged={onChanged} />
 
