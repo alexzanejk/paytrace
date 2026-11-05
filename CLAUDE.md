@@ -401,3 +401,11 @@ NOT yet verified (be honest about this):
 Unofficial approach, may breach bKash/Nagad terms (wallet freeze risk); SMS can be spoofed or delayed; phone must stay
 on and unrestricted; Play Store will not allow SMS-reading apps (sideload only); official aggregators (e.g. SSLCOMMERZ)
 are the safer long-term route.
+
+## Claude Code plugin (owner request 2026-11-05)
+`.claude/settings.json` registers the GitHub marketplace `DietrichGebert/ponytail` and enables `ponytail@ponytail`
+(MIT, "write only the code that is needed": YAGNI, standard library first, `/ponytail-review`, `/ponytail-audit`,
+`/ponytail-debt`). Anyone opening this repo in Claude Code is offered it once. Its hooks inject the rule at session
+start, keep a per-project cost CSV under `~/.config/ponytail/band/` on the user's own machine, and send nothing
+anywhere unless a webhook address is set in the plugin's own config (default empty). It is a style guide for the
+agent; nothing in PayTrace depends on it.
