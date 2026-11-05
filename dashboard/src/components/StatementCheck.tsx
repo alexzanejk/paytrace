@@ -29,7 +29,7 @@ export function StatementCheck({ deviceId, provider = "bkash" }: { deviceId: str
   const [last, setLast] = useState<StatementCommand | null>(null);
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);
-  const [payments, setPayments] = useState<{ trx_id: string; amount: number; occurred_at: string | null; created_at: string }[]>([]);
+  const [payments, setPayments] = useState<{ trx_id: string; amount: number; occurred_at: string | null; received_at: string }[]>([]);
   const timer = useRef<number | null>(null);
 
   const load = useCallback(async () => {
@@ -49,10 +49,10 @@ export function StatementCheck({ deviceId, provider = "bkash" }: { deviceId: str
     const since = new Date(Date.now() - 45 * 864e5).toISOString();
     const { data } = await sb
       .from("payments")
-      .select("trx_id,amount,occurred_at,created_at")
+      .select("trx_id,amount,occurred_at,received_at")
       .eq("device_id", deviceId)
       .eq("provider", provider)
-      .gte("created_at", since)
+      .gte("received_at", since)
       .limit(500);
     setPayments((data ?? []) as typeof payments);
   }, [deviceId, provider]);

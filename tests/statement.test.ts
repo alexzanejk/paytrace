@@ -89,7 +89,7 @@ check("a date that cannot be one", statementDay("45/99/26") === null && statemen
 // ---- which transactions PayTrace never received ----
 const dayOf = (iso: string) => iso.slice(0, 10);
 const stored = [
-  { trx_id: "A1", amount: 500, occurred_at: "2026-10-29T12:00:00+06:00", created_at: "2026-10-29T12:00:00+06:00" },
+  { trx_id: "A1", amount: 500, occurred_at: "2026-10-29T12:00:00+06:00", received_at: "2026-10-29T12:00:00+06:00" },
 ];
 const list = readList([page1, page2]);
 const matches: RowMatch[] = list.map((r) => matchRow(r, stored, dayOf));
@@ -98,10 +98,10 @@ check("a Cash Out we never received is 'missing'", matches[2] === "missing" && m
 check("a Cash In the agent paid out is not expected as an SMS", matches[0] === "unknown", matches);
 check("a B2B transfer is not expected either", matches[4] === "unknown" && matches[5] === "unknown", matches);
 // The same amount on a different day is not the same transaction.
-const otherDay = [{ trx_id: "B2", amount: 500, occurred_at: "2026-09-01T12:00:00+06:00", created_at: "2026-09-01T12:00:00+06:00" }];
+const otherDay = [{ trx_id: "B2", amount: 500, occurred_at: "2026-09-01T12:00:00+06:00", received_at: "2026-09-01T12:00:00+06:00" }];
 check("same amount, wrong day, still missing", matchRow(list[1], otherDay, dayOf) === "missing");
 // A payment with no stated time is judged by when it was stored.
-const noTime = [{ trx_id: "C3", amount: 500, occurred_at: null, created_at: "2026-10-29T12:00:00+06:00" }];
+const noTime = [{ trx_id: "C3", amount: 500, occurred_at: null, received_at: "2026-10-29T12:00:00+06:00" }];
 check("a payment with no stated time still counts", matchRow(list[1], noTime, dayOf) === "have");
 
 check("summary names what is missing", statementSummary(list, matches).includes("2 Cash Out are MISSING"), statementSummary(list, matches));

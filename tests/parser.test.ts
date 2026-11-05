@@ -48,6 +48,13 @@ check("bkash send money received", p?.txnType === "send_money_received" && p.amo
 const bkashPay = `You have received payment Tk 500.00 from 01712345678. Fee Tk 5.00. Balance Tk 5,500.00. TrxID PAY123XYZ9 at 16/10/2026 10:05`;
 p = parsed(bkashPay, "bkash");
 check("bkash payment received + fee kept separate", p?.txnType === "payment_received" && p.amount === 500 && p.fee === 5);
+// Real layout 2026-11-05 (number changed): a MERCHANT account pays, so "from" carries a name with the number on the end.
+const bkashRecvNamed = `You have received Tk 500.00 from SOME HAIR CUTTING SALOON_01611000335 01611000335. Fee Tk 0.00. Balance Tk 3,172.31. TrxID DK52TEST01 at 05/11/2026 01:00`;
+p = parsed(bkashRecvNamed, "bkash");
+check("bkash received from a NAMED payer still reads", p?.txnType === "send_money_received" && p.amount === 500 && p.trxId === "DK52TEST01", p);
+check("the named payer's number is kept as the counterparty", p?.counterparty === "01611000335", p?.counterparty);
+check("a payer with no number keeps the name", parsed("You have received Tk 20.00 from ABC STORE. Fee Tk 0.00. Balance Tk 30.00. TrxID DK52TEST02 at 05/11/2026 01:00", "bkash")?.counterparty === "ABC STORE");
+check("a masked payer stays as written", parsed(bkashRecv.replace("01712345678", "0171XXXX678"), "bkash")?.counterparty === "0171XXXX678");
 const nagadRecv = `Money Received.
 Amount: Tk 800.00
 Sender: 01812345678

@@ -134,7 +134,7 @@ export type RowMatch = "have" | "missing" | "unknown";
  */
 export function matchRow(
   row: StatementRow,
-  payments: { trx_id: string; amount: number; occurred_at: string | null; created_at: string }[],
+  payments: { trx_id: string; amount: number; occurred_at: string | null; received_at: string }[],
   dayOf: (iso: string) => string,
 ): RowMatch {
   const kind = row.type.replace(/\s+/g, " ").trim().toLowerCase();
@@ -142,7 +142,7 @@ export function matchRow(
   const day = statementDay(row.date);
   if (!day) return "unknown";
   const hit = payments.some((p) => {
-    const when = p.occurred_at ?? p.created_at;
+    const when = p.occurred_at ?? p.received_at;
     return Math.abs(Number(p.amount) - Math.abs(row.amount)) < 0.005 && dayOf(when) === day;
   });
   return hit ? "have" : "missing";
