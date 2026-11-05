@@ -60,8 +60,11 @@ export function Devices() {
       const flows = must(await sb.from("device_day_flows").select("*").eq("day", day)) as FlowRow[];
       const balances = must(await sb.from("device_balances").select("*")) as DeviceBalance[];
       const simBalances = must(await sb.from("device_sim_balances").select("*")) as DeviceSimBalance[];
-      // The B2B float view arrives with migration 059; until it is live the page must still open.
-      const floats = ((await sb.from("wallet_b2b_float").select("*")).data ?? []) as B2BFloatRow[];
+      // The B2B float, through an admin-only function (migration 060: the view itself is refused for the signed-in admin).
+      // A failure never stops the page, but it is SHOWN on the B2B card, never turned into zeros without a word.
+      const floatRes = await sb.rpc("wallet_b2b_floats");
+      const floats = (floatRes.data ?? []) as B2BFloatRow[];
+      const floatsError = floatRes.error ? floatRes.error.message : "";
       const wallets = must(await sb.from("device_wallets").select("*").order("created_at", { ascending: true })) as DeviceWallet[];
       // Deposit orders per wallet in the last 24 h (view wallet_order_stats, migration 052). A missing view never stops the page.
       const statRes = await sb.from("wallet_order_stats").select("*");
@@ -73,7 +76,7 @@ export function Devices() {
       // The newest app version (update system). A missing table never stops the page.
       const rel = await sb.from("app_release").select("version_code,notes").limit(1);
       const release = (rel.data?.[0] ?? null) as { version_code: number; notes: string | null } | null;
-      return { devices, totals, flows, balances, simBalances, floats, wallets, walletStats, rates, commission, groups, release };
+      return { devices, totals, flows, balances, simBalances, floats, floatsError, wallets, walletStats, rates, commission, groups, release };
     },
     [day],
     { refreshMs: 10000 },
@@ -269,6 +272,7 @@ export function Devices() {
               balances={(data?.balances ?? []).filter((b) => b.device_id === d.id)}
               simBalances={(data?.simBalances ?? []).filter((b) => b.device_id === d.id)}
               floats={(data?.floats ?? []).filter((f) => f.device_id === d.id)}
+              floatsError={data?.floatsError ?? ""}
               wallets={(data?.wallets ?? []).filter((w) => w.device_id === d.id)}
               walletStats={(data?.walletStats ?? []).filter((x) => x.device_id === d.id)}
               rates={(data?.rates ?? []).filter((r) => r.device_id === d.id)}
@@ -295,6 +299,7 @@ function DeviceCard({
   balances,
   simBalances,
   floats,
+  floatsError,
   wallets,
   walletStats,
   rates,
@@ -313,6 +318,7 @@ function DeviceCard({
   balances: DeviceBalance[];
   simBalances: DeviceSimBalance[];
   floats: B2BFloatRow[];
+  floatsError: string;
   wallets: DeviceWallet[];
   walletStats: WalletOrderStat[];
   rates: RateRow[];
@@ -453,7 +459,7 @@ function DeviceCard({
 
       <WalletsCard deviceId={d.id} wallets={wallets} reported={d.info?.wallets} stats={walletStats} defaultGroup={d.default_group ?? "main"} onChanged={onChanged} />
 
-      <B2BFloat deviceId={d.id} floats={floats} balances={balances} onChanged={onChanged} />
+      <B2BFloat deviceId={d.id} floats={floats} loadError={floatsError} balances={balances} onChanged={onChanged} />
 
       <CommissionCard device={d} rates={rates} balance={commission} onChanged={onChanged} />
 

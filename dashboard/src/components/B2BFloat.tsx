@@ -15,8 +15,8 @@ const WALLETS = ["bkash", "nagad", "rocket"] as const;
 /** The B2B float of each wallet on this phone (owner 2026-11-05): distributor money the owner does not count as theirs.
  *  Float = the opening amount typed here + B2B in - B2B out since then (from the ledger, so a statement-only line counts).
  *  Jobs start from "your money" = balance - float. A B2B OUT in the last 24 hours is shown in red. */
-export function B2BFloat({ deviceId, floats, balances, onChanged }: {
-  deviceId: string; floats: B2BFloatRow[]; balances: DeviceBalance[]; onChanged: () => void;
+export function B2BFloat({ deviceId, floats, loadError = "", balances, onChanged }: {
+  deviceId: string; floats: B2BFloatRow[]; loadError?: string; balances: DeviceBalance[]; onChanged: () => void;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [text, setText] = useState("");
@@ -45,6 +45,11 @@ export function B2BFloat({ deviceId, floats, balances, onChanged }: {
         Money the distributor puts into an agent wallet (B2B in) is not yours, so jobs start from <span className="font-medium text-foreground">your money</span> = balance minus the B2B float.
         Type the B2B amount in the wallet right now as the opening; from then on every B2B in adds to it and every B2B out takes from it (from the SMS, or from the wallet&apos;s statement when no SMS comes, as on bKash).
       </p>
+      {loadError ? (
+        <p className="mb-3 rounded-md border border-destructive/40 bg-destructive/5 p-2 text-sm text-destructive" role="alert">
+          Could not read the saved B2B numbers ({loadError}). What you save is stored, but it cannot be shown until this is fixed, so the figures below are NOT the real ones.
+        </p>
+      ) : null}
       {shown.length === 0 ? <p className="text-sm text-muted-foreground">No wallet with a balance on this phone yet.</p> : null}
       <div className="space-y-3">
         {shown.map((w) => {
