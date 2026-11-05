@@ -43,6 +43,7 @@ object Sender {
         put("raw_message", r.body)
         put("sender_id", r.sender)
         put("timestamp", r.createdAt)
+        put("sim_slot", r.simSlot)
         return o
     }
 

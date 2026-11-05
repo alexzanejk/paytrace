@@ -16,8 +16,9 @@ object CatchUp {
     /** One scan handles at most this many NEW messages. The rest are picked up by the next scan, nothing is skipped. */
     const val MAX_PER_SCAN = 200
 
-    data class InboxRow(val address: String?, val body: String?, val date: Long)
-    data class Candidate(val provider: String, val sender: String, val body: String, val date: Long)
+    /** subId = the SIM subscription the inbox recorded for the message (null when the inbox has no such column). */
+    data class InboxRow(val address: String?, val body: String?, val date: Long, val subId: Int? = null)
+    data class Candidate(val provider: String, val sender: String, val body: String, val date: Long, val subId: Int? = null)
 
     /** items are new messages, oldest first. truncated = there were more than MAX_PER_SCAN of them. */
     data class Selection(val items: List<Candidate>, val truncated: Boolean)
@@ -47,7 +48,7 @@ object CatchUp {
                 val body = r.body?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                 val provider = providerOf(sender) ?: return@mapNotNull null
                 if (!enabled(provider)) return@mapNotNull null
-                Candidate(provider, sender, body, r.date)
+                Candidate(provider, sender, body, r.date, r.subId)
             }
             // Oldest first: the server checks each balance against the one before it.
             .sortedBy { it.date }

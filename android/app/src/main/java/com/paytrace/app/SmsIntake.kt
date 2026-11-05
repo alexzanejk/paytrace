@@ -37,13 +37,13 @@ object SmsIntake {
 
     /** Keeps payment messages from the four providers and queues them for the server. Safe to call twice for the same
      *  message: the second copy is recognised and ignored. */
-    fun handlePayment(ctx: Context, sender: String, body: String, receivedAt: Long? = null) {
+    fun handlePayment(ctx: Context, sender: String, body: String, receivedAt: Long? = null, simSlot: Int? = null) {
         val provider = Providers.fromSender(sender) ?: return
         val settings = AppSettings(ctx)
         if (!settings.providerEnabled(provider)) return
         if (!settings.monitoring) return // paused by the owner; the inbox scan picks these up when monitoring resumes
         if (body.isBlank()) return
-        val id = Db.get(ctx).insertIfNew(provider, sender, body, Providers.quick(body), receivedAt)
+        val id = Db.get(ctx).insertIfNew(provider, sender, body, Providers.quick(body), receivedAt, simSlot)
         if (id > 0) SendWorker.enqueue(ctx, id, 0)
     }
 

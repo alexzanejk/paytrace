@@ -7,7 +7,9 @@ import { WALLETS, walletLabel } from "@/lib/phoneCommands";
  *
  *  It only reads. The wallet's list is the truth about what happened on that account, so any Cash Out on it that
  *  PayTrace has no payment for is an SMS that never arrived — which is the thing that cannot be found any other way. */
-export function StatementSection({ deviceId }: { deviceId: string }) {
+/** `wallets`: the numbers saved in the phone app and their SIM, from the heartbeat (so each statement is compared only
+ *  with the payments of its own SIM). */
+export function StatementSection({ deviceId, wallets }: { deviceId: string; wallets?: { provider: string; slot: number }[] }) {
   return (
     <Disclosure icon={FileClock} title="Check against the wallet's own statement" summary="when the balance does not match">
       <div className="space-y-4">
@@ -19,7 +21,7 @@ export function StatementSection({ deviceId }: { deviceId: string }) {
         {WALLETS.map((w) => (
           <div key={w}>
             <p className="mb-1 text-sm font-medium">{walletLabel(w)}</p>
-            <StatementCheck deviceId={deviceId} provider={w} />
+            <StatementCheck deviceId={deviceId} provider={w} slot={wallets?.find((x) => x.provider === w)?.slot ?? null} />
             {w === "bkash" ? null : (
               <p className="mt-1 text-xs text-muted-foreground">
                 {walletLabel(w)}&apos;s statement screens have never been seen, so this may come back saying the menu

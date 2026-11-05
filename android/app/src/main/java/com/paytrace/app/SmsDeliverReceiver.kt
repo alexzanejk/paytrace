@@ -15,11 +15,12 @@ class SmsDeliverReceiver : BroadcastReceiver() {
         val sender = parts[0].originatingAddress ?: return
         val body = parts.joinToString("") { it.messageBody ?: "" }
         val date = parts[0].timestampMillis.takeIf { it > 0 } ?: System.currentTimeMillis()
+        val slot = SimSlot.fromIntent(context, intent)
 
         SmsIntake.runAwake(context, this) {
             SmsIntake.saveToInbox(context, sender, body, date)
             try {
-                if (Providers.fromSender(sender) != null) SmsIntake.handlePayment(context, sender, body, date)
+                if (Providers.fromSender(sender) != null) SmsIntake.handlePayment(context, sender, body, date, slot)
                 else SmsIntake.notifyOther(context, sender, body)
             } catch (e: Exception) {
                 // The message is already safe in the inbox; the inbox scan will pick the payment up later.

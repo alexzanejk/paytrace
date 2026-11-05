@@ -34,6 +34,8 @@ export interface Payment {
   balance_delta: number | null;
   chain_status: string | null;
   device_id: string | null;
+  /** Which SIM the SMS arrived on: 0 = SIM 1, 1 = SIM 2, null = the app did not say (older build). */
+  sim_slot?: number | null;
 }
 
 export interface Order {
@@ -117,6 +119,11 @@ export interface DeviceBalance {
   provider: string;
   balance: number;
   at: string;
+}
+
+/** The newest balance per phone, wallet type AND SIM (view device_sim_balances): two wallets of the same kind on one phone. */
+export interface DeviceSimBalance extends DeviceBalance {
+  sim_slot: number | null;
 }
 
 export interface ProviderBalance {

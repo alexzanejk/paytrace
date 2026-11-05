@@ -5,7 +5,7 @@ import { tk, when } from "@/lib/format";
 import { isLive, POLL_MS, errorText, walletScreens, type PhoneCommand, type WalletName, walletLabel } from "@/lib/phoneCommands";
 import { PhoneTrace } from "@/components/PhoneTrace";
 import {
-  readList, readDetail, unreadLines, matchRow, statementSummary, type RowMatch, type StatementRow,
+  readList, readDetail, unreadLines, matchRow, statementSummary, forSim, type RowMatch, type StatementRow,
 } from "@/lib/statement";
 import { nudgePhone } from "@/lib/wake";
 import { Button } from "@/components/ui/button";
@@ -24,12 +24,13 @@ const COLUMNS = "grid grid-cols-[1.6rem_5rem_1fr_auto] gap-x-2 gap-y-2 items-bas
  *  changed — it only reads. Opening one entry asks the phone again and brings back that entry's own screen, which
  *  carries the TrxID, the full numbers and the exact time.
  */
-export function StatementCheck({ deviceId, provider = "bkash" }: { deviceId: string; provider?: WalletName }) {
+/** `slot`: which SIM this wallet is on (0 = SIM 1), from the phone's heartbeat; null = not known. */
+export function StatementCheck({ deviceId, provider = "bkash", slot = null }: { deviceId: string; provider?: WalletName; slot?: number | null }) {
   const label = walletLabel(provider);
   const [last, setLast] = useState<StatementCommand | null>(null);
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);
-  const [payments, setPayments] = useState<{ trx_id: string; amount: number; occurred_at: string | null; received_at: string }[]>([]);
+  const [payments, setPayments] = useState<{ trx_id: string; amount: number; occurred_at: string | null; received_at: string; sim_slot?: number | null }[]>([]);
   const timer = useRef<number | null>(null);
 
   const load = useCallback(async () => {
@@ -49,7 +50,7 @@ export function StatementCheck({ deviceId, provider = "bkash" }: { deviceId: str
     const since = new Date(Date.now() - 45 * 864e5).toISOString();
     const { data } = await sb
       .from("payments")
-      .select("trx_id,amount,occurred_at,received_at")
+      .select("trx_id,amount,occurred_at,received_at,sim_slot")
       .eq("device_id", deviceId)
       .eq("provider", provider)
       .gte("received_at", since)
@@ -82,7 +83,9 @@ export function StatementCheck({ deviceId, provider = "bkash" }: { deviceId: str
   const screens = last?.status === "done" ? walletScreens(last.screens) : null;
   const rows: StatementRow[] = last?.item == null ? readList(screens) : [];
   const dayOf = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Dhaka" });
-  const matches: RowMatch[] = rows.map((r) => matchRow(r, payments, dayOf));
+  // Only this wallet's own SIM may say "we have it": a second wallet of the same kind on the other SIM is another account.
+  const mine = forSim(payments, slot);
+  const matches: RowMatch[] = rows.map((r) => matchRow(r, mine, dayOf));
   const detail = last?.item != null && screens && screens.length > 0 ? readDetail(screens[screens.length - 1]) : null;
   const odd = last?.item == null ? unreadLines(screens) : [];
 

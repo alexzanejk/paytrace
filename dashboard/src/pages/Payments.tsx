@@ -268,7 +268,7 @@ function Details({ p }: { p: Payment }) {
         <dt className="text-muted-foreground">From</dt>
         <dd>{p.counterparty ?? "–"}</dd>
         <dt className="text-muted-foreground">Arrived</dt>
-        <dd>{when(p.received_at)}</dd>
+        <dd>{when(p.received_at)}{p.sim_slot === 0 || p.sim_slot === 1 ? ` · SIM ${p.sim_slot + 1}` : ""}</dd>
         <dt className="text-muted-foreground" title="What the PayTrace column in Admin Hub's Transactions Stream shows for this TrxID">Admin Hub sees</dt>
         <dd><HubBadge status={p.status} /></dd>
         <dt className="text-muted-foreground" title={GENUINE_HINT}>Looks genuine? <HelpCircle className="inline h-3 w-3 align-[-1px]" aria-hidden /></dt>

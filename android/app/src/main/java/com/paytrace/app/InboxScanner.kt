@@ -30,7 +30,7 @@ object InboxScanner {
         val picked = CatchUp.select(rows, since, Providers::fromSender, settings::providerEnabled) { db.hasMessage(it.provider, it.body) }
         var added = 0
         for (c in picked.items) {
-            val id = db.insertIfNew(c.provider, c.sender, c.body, Providers.quick(c.body), c.date)
+            val id = db.insertIfNew(c.provider, c.sender, c.body, Providers.quick(c.body), c.date, SimSlot.slotOf(app, c.subId))
             if (id > 0) {
                 SendWorker.enqueue(app, id, 0)
                 added++
@@ -42,11 +42,20 @@ object InboxScanner {
         return added
     }
 
-    private fun read(ctx: Context, since: Long): List<CatchUp.InboxRow> {
+    /** The subscription (SIM) column first; a phone whose inbox lacks it is read without, so the scan never stops working over it. */
+    private fun read(ctx: Context, since: Long): List<CatchUp.InboxRow> = try {
+        read(ctx, since, withSim = true)
+    } catch (e: Exception) {
+        read(ctx, since, withSim = false)
+    }
+
+    private fun read(ctx: Context, since: Long, withSim: Boolean): List<CatchUp.InboxRow> {
         val out = ArrayList<CatchUp.InboxRow>()
+        val cols = if (withSim) arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE, Telephony.Sms.SUBSCRIPTION_ID)
+            else arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE)
         ctx.contentResolver.query(
             Telephony.Sms.Inbox.CONTENT_URI,
-            arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE),
+            cols,
             "${Telephony.Sms.DATE} >= ?",
             arrayOf(since.toString()),
             "${Telephony.Sms.DATE} ASC",
@@ -54,7 +63,11 @@ object InboxScanner {
             val a = c.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
             val b = c.getColumnIndexOrThrow(Telephony.Sms.BODY)
             val d = c.getColumnIndexOrThrow(Telephony.Sms.DATE)
-            while (c.moveToNext()) out.add(CatchUp.InboxRow(c.getString(a), c.getString(b), c.getLong(d)))
+            val s = if (withSim) c.getColumnIndex(Telephony.Sms.SUBSCRIPTION_ID) else -1
+            while (c.moveToNext()) {
+                val sub = if (s >= 0 && !c.isNull(s)) c.getInt(s) else null
+                out.add(CatchUp.InboxRow(c.getString(a), c.getString(b), c.getLong(d), sub))
+            }
         }
         return out
     }
