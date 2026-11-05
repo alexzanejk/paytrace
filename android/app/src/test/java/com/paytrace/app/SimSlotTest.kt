@@ -18,7 +18,9 @@ class SimSlotTest {
 
     @Test fun thePhoneIdIsTheLastResort() {
         assertEquals(1, SimSlot.resolve(mapOf("phone" to 1), subToSlot))
-        assertEquals(0, SimSlot.resolve(mapOf("phone" to 0, "subscription" to 2), subToSlot))
+        // A subscription id that translates wins over the phone id; the phone id only speaks when nothing else does.
+        assertEquals(1, SimSlot.resolve(mapOf("phone" to 0, "subscription" to 2), subToSlot))
+        assertEquals(0, SimSlot.resolve(mapOf("phone" to 0, "subscription" to 9), subToSlot))
     }
 
     @Test fun textValuesAreReadToo() {
