@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from "react";
+import { OFFLINE_AFTER_SEC } from "@/lib/deviceHealth";
 import type { OutboxRow } from "@/lib/webhooks";
+import { mainNumbers, planLine, sitePlan, unchosenCount, type NumberDevice, type NumberWallet, type SiteAssignment } from "@/lib/siteNumbers";
 import { BookOpen, ChevronDown, ExternalLink, KeyRound, Plus, ShieldAlert } from "lucide-react";
 import { must, sb } from "@/lib/supabase";
 import { when } from "@/lib/format";
@@ -51,6 +53,25 @@ export function ApiAccess() {
     [],
     { refreshMs: 30000 },
   );
+
+  // Which numbers each site shows (migration 057): main phones' numbers and the per-site ticks.
+  const { data: numberData } = useQuery(
+    async () => {
+      const [devices, wallets, assignments] = await Promise.all([
+        sb.from("devices").select("id,name,status,last_seen_at,default_group"),
+        sb.from("device_wallets").select("id,device_id,provider,wallet_number,method,enabled,wallet_group"),
+        sb.from("site_wallets").select("api_key_id,wallet_id,enabled"),
+      ]);
+      return { devices: must(devices) as NumberDevice[], wallets: must(wallets) as NumberWallet[], assignments: must(assignments) as SiteAssignment[] };
+    },
+    [],
+    { refreshMs: 30000 },
+  );
+  const numbersFor = (keyId: string) => {
+    if (!numberData) return undefined;
+    const plan = sitePlan(keyId, mainNumbers(numberData.wallets, numberData.devices, Date.now(), OFFLINE_AFTER_SEC), numberData.assignments);
+    return { lines: plan.map(planLine), unchosen: unchosenCount(plan) };
+  };
 
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -189,7 +210,7 @@ export function ApiAccess() {
           {active.length === 0 ? (
             <Card className="p-6 text-center text-sm text-muted-foreground">No website yet. Add one above.</Card>
           ) : (
-            active.map((k) => <SiteCard key={k.id} site={k} outbox={outbox ?? []} onChanged={refresh} onRevoke={() => void revoke(k)} />)
+            active.map((k) => <SiteCard key={k.id} site={k} outbox={outbox ?? []} numbers={numbersFor(k.id)} onChanged={refresh} onRevoke={() => void revoke(k)} />)
           )}
           {revokeError ? <p className="text-sm text-destructive">{revokeError}</p> : null}
           <p className="text-xs text-muted-foreground">

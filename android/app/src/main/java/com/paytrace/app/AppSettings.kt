@@ -353,11 +353,12 @@ class AppSettings(ctx: Context) {
     companion object {
         const val DEFAULT_SERVER_URL = "https://mkjcqwkfbamnuibmurcd.supabase.co/functions/v1/ingest"
 
-        /** These two are always sent: the server needs the original text and the sender ID to verify a payment. */
-        val LOCKED = setOf("raw_message", "sender_id")
+        /** Always sent: the server needs the original text and the sender ID to verify a payment, and the SIM slot to
+         *  keep two wallets of the same kind on one phone apart. */
+        val LOCKED = setOf("raw_message", "sender_id", "sim_slot")
         val DEFAULT_FIELDS = setOf(
             "platform", "trx_id", "amount", "sender", "fee", "commission",
-            "balance", "datetime", "raw_message", "sender_id", "timestamp",
+            "balance", "datetime", "raw_message", "sender_id", "timestamp", "sim_slot",
         )
         val FIELD_LABELS = listOf(
             "platform" to "Platform (BKASH / NAGAD …)",
@@ -371,6 +372,7 @@ class AppSettings(ctx: Context) {
             "timestamp" to "Time received on phone",
             "raw_message" to "Original SMS text (always sent)",
             "sender_id" to "SMS sender ID (always sent)",
+            "sim_slot" to "Which SIM the SMS arrived on (always sent)",
         )
     }
 }

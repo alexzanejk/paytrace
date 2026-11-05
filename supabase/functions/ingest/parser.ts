@@ -107,6 +107,16 @@ export function detectProvider(text: string, hint?: string | null): Provider | n
   return null;
 }
 
+/** The payer as bKash names them: a number ("01712345678"), a masked one ("0171XXXX678"), or an account NAME that may
+ *  carry its number at the end; the number is kept when there is one, so the payer-digits checks still work. */
+function payerOf(s: string): string {
+  const t = s.trim();
+  const nums = t.match(/01\d{9}/g);
+  if (nums) return nums[nums.length - 1];
+  if (/^[\dXx*]+$/.test(t)) return t;
+  return t.slice(0, 40);
+}
+
 function parseBkash(text: string): ParseResult {
   let txnType: TxnType | null = null;
   let amount: number | null = null;
@@ -116,10 +126,12 @@ function parseBkash(text: string): ParseResult {
   let m = text.match(new RegExp(`Cash\\s*Out\\s+Tk\\s*${NUM}\\s+from\\s+([\\dXx*]+)`, "i"));
   if (m) {
     txnType = "cash_out"; amount = num(m[1]); who = m[2];
-  } else if ((m = text.match(new RegExp(`You have received payment\\s+Tk\\s*${NUM}\\s+from\\s+([\\dXx*]+)`, "i")))) {
-    txnType = "payment_received"; amount = num(m[1]); who = m[2];
-  } else if ((m = text.match(new RegExp(`You have received\\s+Tk\\s*${NUM}\\s+from\\s+([\\dXx*]+)`, "i")))) {
-    txnType = "send_money_received"; amount = num(m[1]); who = m[2];
+  } else if ((m = text.match(new RegExp(`You have received payment\\s+Tk\\s*${NUM}\\s+from\\s+(.+?)\\.\\s*(?:Fee|Balance|TrxID)`, "i")))) {
+    txnType = "payment_received"; amount = num(m[1]); who = payerOf(m[2]);
+  } else if ((m = text.match(new RegExp(`You have received\\s+Tk\\s*${NUM}\\s+from\\s+(.+?)\\.\\s*(?:Fee|Balance|TrxID)`, "i")))) {
+    // The payer is usually a number, but a merchant account is named ("You have received Tk 500.00 from SMART HAIR
+    // CUTTING SALOON_0161XXXXXXX 0161XXXXXXX." real 2026-11-05, unreadable until then: a customer's Tk 500 went uncredited).
+    txnType = "send_money_received"; amount = num(m[1]); who = payerOf(m[2]);
   } else if ((m = text.match(new RegExp(`Cash\\s*In\\s+Tk\\s*${NUM}\\s+to\\s+([\\dXx*]+)\\s+successful`, "i")))) {
     // The AGENT's own cash-in receipt (real sample 2026-11-04): money LEFT the agent wallet. Never a customer payment.
     txnType = "transfer_out"; flow = "cash_in"; amount = num(m[1]); who = m[2];

@@ -16,6 +16,8 @@ class SmsReceiver : BroadcastReceiver() {
         val sender = parts[0].originatingAddress ?: return
         // Long messages arrive in several parts; join them back together.
         val body = parts.joinToString("") { it.messageBody ?: "" }
-        SmsIntake.runAwake(context, this) { SmsIntake.handlePayment(context, sender, body) }
+        // Which SIM it came in on: two wallets of the same kind on one phone are told apart only by this.
+        val slot = SimSlot.fromIntent(context, intent)
+        SmsIntake.runAwake(context, this) { SmsIntake.handlePayment(context, sender, body, simSlot = slot) }
     }
 }

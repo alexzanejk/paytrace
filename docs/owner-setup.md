@@ -646,3 +646,37 @@ Also done in batch 4 without any step for you: the database functions only the s
 browsers and to the public key; the gateway's timer route can no longer be hammered from outside (one run per two
 seconds for strangers, our own calls unaffected); eight indexes were added so the transaction check and the busiest
 pages stay fast as the tables grow.
+
+## Which deposit number each website shows (2026-11-05)
+
+Before this, a website's deposit number came from every number on every main phone, in turn, so you could not tell
+which one a customer would see. Now you choose per website.
+
+- **Numbers by site** (new page in the menu): every number on your main phones down the side, one column per website,
+  a tick box in each square. Tick the numbers a website may show. Under the table, "What each website shows right now"
+  spells it out per wallet type. A wallet type with no tick is marked in amber and still gets any main number, in turn,
+  as before, so nothing stops working while you tick.
+- When a website has ticked several numbers for the same wallet type, customers get them in turn: a number on an
+  online phone first, then the one handed out longest ago.
+- **Main phone or partner phone:** when you approve a new phone, the chooser now says "Main phone (your websites)" or
+  "Partner phone · code". Only main phones' numbers appear on the Numbers by site page. Partner phones are unchanged:
+  a partner's players reach that phone's numbers through the code the website sends with the deposit.
+- The Websites page shows the same summary in section 4 of each site's card.
+
+## Two wallets of the same kind on one phone (2026-11-05)
+
+A phone can hold two bKash accounts on its two SIMs (the Redmi "rubel" has an agent bKash on SIM 1 and a personal bKash
+on SIM 2). Both text from the same sender "bKash", and the message never says which account, so until now PayTrace put
+them in one pile and compared one account's balance with the other's: almost every real payment on that phone was held
+as "can't tell".
+
+- From app build 1.0.148 on, every SMS carries **which SIM it arrived on**. PayTrace keeps one balance chain per phone,
+  wallet type and SIM, so the two accounts never get mixed again. Nothing to set up: update the app on each phone from
+  inside the app, as usual.
+- The phone's card shows the last balance per SIM under a wallet type when there is more than one.
+- The statement check compares the wallet's statement only with the payments of that wallet's own SIM (the SIM you saved
+  for that number in the app).
+- A held payment that came in on the OTHER SIM than the one the phone's wallet menu is set up on is not checked against
+  that menu's balance or statement (it would be another account's); the Review page says so, and you decide.
+- Phones still on an older build behave exactly as before. On the day you update, the first message from each account
+  is compared with the old mixed pile once and may read "can't tell" one more time; after that each account is clean.

@@ -1,6 +1,6 @@
 import {
   readRow, readList, readDetail, unreadLines, looksLikeAList, matchRow, statementDay, statementSummary,
-  type RowMatch,
+  type RowMatch, forSim,
 } from "../dashboard/src/lib/statement.ts";
 
 let pass = 0, fail = 0;
@@ -89,7 +89,7 @@ check("a date that cannot be one", statementDay("45/99/26") === null && statemen
 // ---- which transactions PayTrace never received ----
 const dayOf = (iso: string) => iso.slice(0, 10);
 const stored = [
-  { trx_id: "A1", amount: 500, occurred_at: "2026-10-29T12:00:00+06:00", created_at: "2026-10-29T12:00:00+06:00" },
+  { trx_id: "A1", amount: 500, occurred_at: "2026-10-29T12:00:00+06:00", received_at: "2026-10-29T12:00:00+06:00" },
 ];
 const list = readList([page1, page2]);
 const matches: RowMatch[] = list.map((r) => matchRow(r, stored, dayOf));
@@ -98,11 +98,18 @@ check("a Cash Out we never received is 'missing'", matches[2] === "missing" && m
 check("a Cash In the agent paid out is not expected as an SMS", matches[0] === "unknown", matches);
 check("a B2B transfer is not expected either", matches[4] === "unknown" && matches[5] === "unknown", matches);
 // The same amount on a different day is not the same transaction.
-const otherDay = [{ trx_id: "B2", amount: 500, occurred_at: "2026-09-01T12:00:00+06:00", created_at: "2026-09-01T12:00:00+06:00" }];
+const otherDay = [{ trx_id: "B2", amount: 500, occurred_at: "2026-09-01T12:00:00+06:00", received_at: "2026-09-01T12:00:00+06:00" }];
 check("same amount, wrong day, still missing", matchRow(list[1], otherDay, dayOf) === "missing");
 // A payment with no stated time is judged by when it was stored.
-const noTime = [{ trx_id: "C3", amount: 500, occurred_at: null, created_at: "2026-10-29T12:00:00+06:00" }];
+const noTime = [{ trx_id: "C3", amount: 500, occurred_at: null, received_at: "2026-10-29T12:00:00+06:00" }];
 check("a payment with no stated time still counts", matchRow(list[1], noTime, dayOf) === "have");
+
+// Two wallets of the same kind on two SIMs: only the statement's own SIM counts (an untagged payment still counts).
+const twoSims = [
+  { trx_id: "S1", amount: 500, sim_slot: 0 }, { trx_id: "S2", amount: 500, sim_slot: 1 }, { trx_id: "S3", amount: 500, sim_slot: null },
+];
+check("forSim keeps the wallet's SIM and the untagged, drops the other SIM", forSim(twoSims, 0).map((p) => p.trx_id).join() === "S1,S3");
+check("forSim with the SIM unknown keeps everything", forSim(twoSims, null).length === 3 && forSim(twoSims, undefined).length === 3);
 
 check("summary names what is missing", statementSummary(list, matches).includes("2 Cash Out are MISSING"), statementSummary(list, matches));
 const allThere: RowMatch[] = list.map(() => "have");

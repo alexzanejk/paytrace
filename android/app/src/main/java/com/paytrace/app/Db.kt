@@ -26,6 +26,8 @@ data class LogRow(
     val error: String?,
     val createdAt: Long,
     val updatedAt: Long,
+    /** 0 = SIM 1, 1 = SIM 2, null = the phone did not say which SIM the SMS arrived on. */
+    val simSlot: Int? = null,
 )
 
 data class Stats(
@@ -36,7 +38,7 @@ data class Stats(
     val pending: Int,
 )
 
-class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "paytrace.db", null, 1) {
+class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "paytrace.db", null, 2) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -47,12 +49,15 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "paytrace.db"
                 "trx_id text, amount real, fee real, commission real, balance real," +
                 "payer text, datetime text, cash_out integer not null default 0," +
                 "status text not null, attempts integer not null default 0, error text," +
-                "created_at integer not null, updated_at integer not null)"
+                "created_at integer not null, updated_at integer not null, sim_slot integer)"
         )
         db.execSQL("create index logs_status on logs(status, created_at)")
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        // Version 2 (2026-11-05): which SIM each SMS arrived on. Older rows keep null = unknown.
+        if (oldVersion < 2) db.execSQL("alter table logs add column sim_slot integer")
+    }
 
     private fun Cursor.str(c: String): String? {
         val i = getColumnIndexOrThrow(c)
@@ -65,6 +70,11 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "paytrace.db"
     }
 
     private fun Cursor.lng(c: String): Long = getLong(getColumnIndexOrThrow(c))
+
+    private fun Cursor.intOrNull(c: String): Int? {
+        val i = getColumnIndex(c)
+        return if (i < 0 || isNull(i)) null else getInt(i)
+    }
 
     private fun Cursor.toRow() = LogRow(
         id = lng("id"),
@@ -84,6 +94,7 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "paytrace.db"
         error = str("error"),
         createdAt = lng("created_at"),
         updatedAt = lng("updated_at"),
+        simSlot = intOrNull("sim_slot"),
     )
 
     private fun sha(s: String): String =
@@ -96,7 +107,7 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "paytrace.db"
 
     /** Returns the new row id, or -1 if this exact message was already stored (duplicate).
      *  receivedAt is when the SMS really arrived (for messages picked up later from the inbox); default is now. */
-    fun insertIfNew(provider: String, sender: String, body: String, q: Providers.Quick, receivedAt: Long? = null): Long {
+    fun insertIfNew(provider: String, sender: String, body: String, q: Providers.Quick, receivedAt: Long? = null, simSlot: Int? = null): Long {
         val now = System.currentTimeMillis()
         val v = ContentValues()
         v.put("provider", provider)
@@ -115,6 +126,7 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "paytrace.db"
         v.put("attempts", 0)
         v.put("created_at", receivedAt ?: now)
         v.put("updated_at", now)
+        if (simSlot != null && simSlot in 0..1) v.put("sim_slot", simSlot)
         return writableDatabase.insertWithOnConflict("logs", null, v, SQLiteDatabase.CONFLICT_IGNORE)
     }
 

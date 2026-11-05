@@ -125,6 +125,15 @@ export const looksLikeAList = (screens: string[] | null | undefined): boolean =>
 
 export type RowMatch = "have" | "missing" | "unknown";
 
+/** The stored payments that belong to the wallet whose statement this is. A phone can hold two wallets of the same
+ *  kind on two SIMs; the statement is the one on `slot` (0 = SIM 1), so a payment the app tagged with the OTHER SIM is
+ *  another account's and must not count as "we have it". A payment with no SIM (older app build), or a wallet whose
+ *  SIM is not known, is kept: better a false "have" than a false MISSING. */
+export function forSim<T extends { sim_slot?: number | null }>(payments: T[], slot: number | null | undefined): T[] {
+  if (slot !== 0 && slot !== 1) return payments;
+  return payments.filter((p) => p.sim_slot == null || p.sim_slot === slot);
+}
+
 /** Does PayTrace hold a payment that is plainly this statement line?
  *
  *  The list gives only a day, a kind and an amount: no TrxID, no time. So the test is deliberately loose — the same
@@ -134,7 +143,7 @@ export type RowMatch = "have" | "missing" | "unknown";
  */
 export function matchRow(
   row: StatementRow,
-  payments: { trx_id: string; amount: number; occurred_at: string | null; created_at: string }[],
+  payments: { trx_id: string; amount: number; occurred_at: string | null; received_at: string }[],
   dayOf: (iso: string) => string,
 ): RowMatch {
   const kind = row.type.replace(/\s+/g, " ").trim().toLowerCase();
@@ -142,7 +151,7 @@ export function matchRow(
   const day = statementDay(row.date);
   if (!day) return "unknown";
   const hit = payments.some((p) => {
-    const when = p.occurred_at ?? p.created_at;
+    const when = p.occurred_at ?? p.received_at;
     return Math.abs(Number(p.amount) - Math.abs(row.amount)) < 0.005 && dayOf(when) === day;
   });
   return hit ? "have" : "missing";

@@ -16,6 +16,7 @@ import { Devices } from "@/pages/Devices";
 import { Jobs } from "@/pages/Jobs";
 import { Logs } from "@/pages/Logs";
 import { ApiAccess } from "@/pages/ApiAccess";
+import { SiteNumbers } from "@/pages/SiteNumbers";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { Help } from "@/pages/Help";
 
@@ -82,6 +83,7 @@ export default function App() {
       {tab === "jobs" && <Jobs />}
       {tab === "logs" && <Logs />}
       {tab === "api" && <ApiAccess />}
+      {tab === "numbers" && <SiteNumbers />}
       {tab === "settings" && <SettingsPage onSaved={setSettings} />}
       {tab === "help" && <Help />}
     </AppShell>

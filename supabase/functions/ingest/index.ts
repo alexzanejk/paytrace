@@ -273,9 +273,10 @@ async function reparse(authHeader: string, body: Record<string, unknown>): Promi
     const raw = typeof det.raw === "string" ? det.raw : "";
     const senderId = typeof det.sender_id === "string" ? det.sender_id : "";
     const dev = typeof det.device_id === "string" && /^[0-9a-f-]{36}$/i.test(det.device_id) ? det.device_id : null;
+    const sim = simSlotOf(det.sim_slot);
     let result = "no_text", status: string | null = null, paymentId: string | null = null;
     if (raw) {
-      const res = await storeSms({ raw, hint: (e.provider ?? "").toLowerCase(), senderId, deviceId: dev, rerun: true, legacyTrusted: !senderId });
+      const res = await storeSms({ raw, hint: (e.provider ?? "").toLowerCase(), senderId, deviceId: dev, simSlot: sim, rerun: true, legacyTrusted: !senderId });
       const out = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       status = typeof out.status === "string" ? out.status : null;
       paymentId = typeof out.payment_id === "string" ? out.payment_id : null;
@@ -523,6 +524,8 @@ async function handle(req: Request): Promise<Response> {
   const raw = str("raw_message");
   const hint = str("platform").toLowerCase();
   const senderId = str("sender_id");
+  // Which SIM the SMS arrived on (0 = SIM 1, 1 = SIM 2). An old app build sends none: unknown, judged as before.
+  const simSlot = simSlotOf(body.sim_slot);
 
   // ---- connection test: acknowledge, store nothing ----
   if (body.test === true || body.test === "true" || /^TEST/i.test(str("trx_id"))) {
@@ -531,16 +534,22 @@ async function handle(req: Request): Promise<Response> {
   }
 
   if (!raw) return json({ success: false, message: "raw_message required" }, 400);
-  return await storeSms({ raw, hint, senderId, deviceId });
+  return await storeSms({ raw, hint, senderId, deviceId, simSlot });
+}
+
+/** 0 or 1 (as a number or as text, for the GET setting), else null = the phone did not say. */
+function simSlotOf(v: unknown): number | null {
+  return v === 0 || v === "0" ? 0 : v === 1 || v === "1" ? 1 : null;
 }
 
 /** One SMS to read and store. `rerun`: the owner pressed "Run the parser again" on a message that could not be read
  *  before (nothing is logged twice and no alert is sent); `legacyTrusted`: that message was logged before the sender ID
  *  was kept, and it came from a paired phone, which only forwards the four provider sender IDs in the first place. */
-type SmsSource = { raw: string; hint: string; senderId: string; deviceId: string | null; rerun?: boolean; legacyTrusted?: boolean };
+type SmsSource = { raw: string; hint: string; senderId: string; deviceId: string | null; simSlot?: number | null; rerun?: boolean; legacyTrusted?: boolean };
 
 async function storeSms(src: SmsSource): Promise<Response> {
   const { raw, hint, senderId, deviceId } = src;
+  const simSlot = src.simSlot ?? null;
   // ---- parse on the server (so parser fixes never need an app update) ----
   const result = parseSms(raw, hint);
   if (result.kind === "ignored") {
@@ -550,7 +559,7 @@ async function storeSms(src: SmsSource): Promise<Response> {
   if (result.kind === "failed") {
     if (!src.rerun) {
       // The sender and the phone are kept so the message can be read again once the parser knows its layout.
-      await log("parse_failed", hint || null, { reason: result.reason, raw, sender_id: senderId || null, device_id: deviceId });
+      await log("parse_failed", hint || null, { reason: result.reason, raw, sender_id: senderId || null, device_id: deviceId, sim_slot: simSlot });
       defer(alertUnread(hint || null, result.reason));
     }
     // success:true so the app stops retrying; the text is kept in the log for review
@@ -587,6 +596,8 @@ async function storeSms(src: SmsSource): Promise<Response> {
     // Judged against THIS phone's previous message (migration 051): one phone is one wallet per provider. Null only on
     // the old shared-secret path, where the function falls back to the provider-wide chain.
     p_device: deviceId,
+    // ...and inside the same SIM (migration 058): two wallets of the same kind on one phone are two chains.
+    p_sim: simSlot,
   });
   const chainStatus: string = chain?.status ?? "unverified";
   // bKash never states the agent commission; the balance does. Trust it only on a sound chain.
@@ -633,7 +644,7 @@ async function storeSms(src: SmsSource): Promise<Response> {
       counterparty: d.counterparty, occurred_at: d.occurredAt,
       raw_message: raw, status, review_reason: reviewReason,
       balance_delta: chain?.delta ?? null, chain_status: chainStatus,
-      device_id: deviceId,
+      device_id: deviceId, sim_slot: simSlot,
     })
     .select("id")
     .single();

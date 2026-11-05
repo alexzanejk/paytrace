@@ -2,7 +2,8 @@ import { useState } from "react";
 import { BatteryMedium, BellRing, ChevronLeft, ChevronRight, Check, HeartPulse, ListOrdered, Pencil, Smartphone, X } from "lucide-react";
 import { must, sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
-import { PROVIDER_LABEL, PROVIDERS, type Device, type DeviceBalance, type DeviceWallet } from "@/lib/types";
+import { PROVIDER_LABEL, PROVIDERS, type Device, type DeviceBalance,
+  type DeviceSimBalance, type DeviceWallet } from "@/lib/types";
 import { addDays, dayLabel, dhakaDay, groupSummary, summarize, type DayTotal } from "@/lib/period";
 import { openPaymentsWith } from "@/lib/filters";
 import { infoProblems } from "@/lib/deviceHealth";
@@ -56,6 +57,7 @@ export function Devices() {
       // Cash Out / Cash In / B2B per wallet for the same day (view device_day_flows, migration 048).
       const flows = must(await sb.from("device_day_flows").select("*").eq("day", day)) as FlowRow[];
       const balances = must(await sb.from("device_balances").select("*")) as DeviceBalance[];
+      const simBalances = must(await sb.from("device_sim_balances").select("*")) as DeviceSimBalance[];
       const wallets = must(await sb.from("device_wallets").select("*").order("created_at", { ascending: true })) as DeviceWallet[];
       // Deposit orders per wallet in the last 24 h (view wallet_order_stats, migration 052). A missing view never stops the page.
       const statRes = await sb.from("wallet_order_stats").select("*");
@@ -67,7 +69,7 @@ export function Devices() {
       // The newest app version (update system). A missing table never stops the page.
       const rel = await sb.from("app_release").select("version_code,notes").limit(1);
       const release = (rel.data?.[0] ?? null) as { version_code: number; notes: string | null } | null;
-      return { devices, totals, flows, balances, wallets, walletStats, rates, commission, groups, release };
+      return { devices, totals, flows, balances, simBalances, wallets, walletStats, rates, commission, groups, release };
     },
     [day],
     { refreshMs: 10000 },
@@ -261,6 +263,7 @@ export function Devices() {
               totals={totals.filter((t) => t.device_id === d.id)}
               flows={(data?.flows ?? []).filter((f) => f.device_id === d.id)}
               balances={(data?.balances ?? []).filter((b) => b.device_id === d.id)}
+              simBalances={(data?.simBalances ?? []).filter((b) => b.device_id === d.id)}
               wallets={(data?.wallets ?? []).filter((w) => w.device_id === d.id)}
               walletStats={(data?.walletStats ?? []).filter((x) => x.device_id === d.id)}
               rates={(data?.rates ?? []).filter((r) => r.device_id === d.id)}
@@ -285,6 +288,7 @@ function DeviceCard({
   totals,
   flows,
   balances,
+  simBalances,
   wallets,
   walletStats,
   rates,
@@ -301,6 +305,7 @@ function DeviceCard({
   totals: DayTotal[];
   flows: FlowRow[];
   balances: DeviceBalance[];
+  simBalances: DeviceSimBalance[];
   wallets: DeviceWallet[];
   walletStats: WalletOrderStat[];
   rates: RateRow[];
@@ -411,6 +416,7 @@ function DeviceCard({
               const ps = byProvider.get(p);
               const fl = flowsBy.get(p);
               const bal = balances.find((b) => b.provider === p);
+              const sims = simBalances.filter((b) => b.provider === p).sort((a, b) => (a.sim_slot ?? 9) - (b.sim_slot ?? 9));
               return (
                 <TableRow key={p}>
                   <TableCell><ProviderChip provider={p} /></TableCell>
@@ -424,6 +430,12 @@ function DeviceCard({
                   <TableCell className="text-right">
                     <span className="tabular">{bal ? tk(bal.balance) : "–"}</span>
                     {bal ? <span className="block text-xs text-muted-foreground">as of {when(bal.at)}</span> : null}
+                    {/* Two wallets of the same kind on two SIMs: each account's own last balance. */}
+                    {sims.length > 1 ? sims.map((s) => (
+                      <span key={s.sim_slot ?? "x"} className="block text-xs text-muted-foreground">
+                        {s.sim_slot == null ? "SIM not known" : `SIM ${s.sim_slot + 1}`}: {tk(s.balance)}
+                      </span>
+                    )) : null}
                   </TableCell>
                 </TableRow>
               );
@@ -463,7 +475,7 @@ function DeviceCard({
           <PhonePermissions device={d} onChanged={onChanged} />
           {d.allow_balance !== false ? WALLETS.map((w) => <BalanceCheck key={w} deviceId={d.id} provider={w} />) : null}
           {d.allow_cashin === true ? <CashInSection deviceId={d.id} /> : null}
-          {d.allow_balance !== false ? <StatementSection deviceId={d.id} /> : null}
+          {d.allow_balance !== false ? <StatementSection deviceId={d.id} wallets={d.info?.wallets} /> : null}
         </div>
       ) : null}
       {showHealth ? <DeviceDetails info={d.info} /> : null}
