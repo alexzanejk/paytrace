@@ -152,6 +152,25 @@ export function unreadMessage(p: { provider: string | null; reason: string; dash
   ].join("\n");
 }
 
+/** B2B money moved on an agent wallet (owner 2026-11-05: "if B2B is ever done by our money we should instantly know").
+ *  OUT = e-money left the wallet for the distributor, which spends the owner's money too; IN = the distributor topped the
+ *  wallet up, which raises the B2B float. Seen in an SMS, or only in the wallet's statement (bKash sends no SMS for B2B in). */
+export function b2bMessage(p: {
+  direction: "in" | "out"; provider: string; amount: number; phone: string; how: "sms" | "statement";
+  balance?: number | null; trxId?: string | null; day?: string | null; dashboardUrl: string;
+}): string {
+  const wallet = PROVIDER[p.provider] ?? clean(p.provider, 20);
+  const who = clean(p.phone) || "a phone";
+  const head = p.direction === "out" ? `\u{1F534} B2B OUT: ${taka(p.amount)} left ${who}'s ${wallet} wallet` : `\u{1F535} B2B in: ${taka(p.amount)} came into ${who}'s ${wallet} wallet`;
+  const lines = [head];
+  if (p.direction === "out") lines.push("That is money sent to the distributor. If you did not ask for it, check this wallet now.");
+  else lines.push("The B2B float of this wallet went up by that amount; jobs start from the balance minus the float.");
+  if (p.how === "sms") lines.push(`From the SMS${p.trxId ? ` \u00b7 TrxID ${clean(p.trxId, 30)}` : ""}${p.balance != null ? ` \u00b7 balance now ${taka(p.balance)}` : ""}.`);
+  else lines.push(`Seen in the wallet's own statement${p.day ? ` (entry dated ${clean(p.day, 12)})` : ""}; no SMS came for it.`);
+  lines.push(`${p.dashboardUrl}/#/ledger`);
+  return lines.join("\n");
+}
+
 export const testMessage = () =>
   [
     "✅ PayTrace test message",

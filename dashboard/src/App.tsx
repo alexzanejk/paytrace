@@ -8,6 +8,7 @@ import { MfaChallenge } from "@/components/MfaChallenge";
 import { needsSecondStep } from "@/lib/mfa";
 import { Overview } from "@/pages/Overview";
 import { Review } from "@/pages/Review";
+import { Ledger } from "@/pages/Ledger";
 import { Payments } from "@/pages/Payments";
 import { Orders } from "@/pages/Orders";
 import { Commission } from "@/pages/Commission";
@@ -75,6 +76,7 @@ export default function App() {
     <AppShell tab={tab} onTab={openTab} onSignOut={() => void sb.auth.signOut()}>
       {tab === "overview" && <Overview />}
       {tab === "review" && <Review />}
+      {tab === "ledger" && <Ledger />}
       {tab === "payments" && <Payments />}
       {tab === "orders" && <Orders settings={settings} />}
       {tab === "commission" && <Commission />}
