@@ -646,3 +646,19 @@ Also done in batch 4 without any step for you: the database functions only the s
 browsers and to the public key; the gateway's timer route can no longer be hammered from outside (one run per two
 seconds for strangers, our own calls unaffected); eight indexes were added so the transaction check and the busiest
 pages stay fast as the tables grow.
+
+## Which deposit number each website shows (2026-11-05)
+
+Before this, a website's deposit number came from every number on every main phone, in turn, so you could not tell
+which one a customer would see. Now you choose per website.
+
+- **Numbers by site** (new page in the menu): every number on your main phones down the side, one column per website,
+  a tick box in each square. Tick the numbers a website may show. Under the table, "What each website shows right now"
+  spells it out per wallet type. A wallet type with no tick is marked in amber and still gets any main number, in turn,
+  as before, so nothing stops working while you tick.
+- When a website has ticked several numbers for the same wallet type, customers get them in turn: a number on an
+  online phone first, then the one handed out longest ago.
+- **Main phone or partner phone:** when you approve a new phone, the chooser now says "Main phone (your websites)" or
+  "Partner phone · code". Only main phones' numbers appear on the Numbers by site page. Partner phones are unchanged:
+  a partner's players reach that phone's numbers through the code the website sends with the deposit.
+- The Websites page shows the same summary in section 4 of each site's card.

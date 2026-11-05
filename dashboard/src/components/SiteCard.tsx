@@ -95,7 +95,7 @@ function KeyReveal({ siteId, hasSecret }: { siteId: string; hasSecret: boolean }
 }
 
 /** One website that uses PayTrace: its key, where its payment results go, how its result page looks, and what to send its developer. */
-export function SiteCard({ site, outbox = [], onChanged, onRevoke }: { site: SiteKey; outbox?: OutboxRow[]; onChanged: () => void; onRevoke: () => void }) {
+export function SiteCard({ site, outbox = [], numbers, onChanged, onRevoke }: { site: SiteKey; outbox?: OutboxRow[]; numbers?: { lines: string[]; unchosen: number }; onChanged: () => void; onRevoke: () => void }) {
   const [url, setUrl] = useState("");
   const [hookBusy, setHookBusy] = useState(false);
   const [hookNote, setHookNote] = useState("");
@@ -313,6 +313,20 @@ export function SiteCard({ site, outbox = [], onChanged, onRevoke }: { site: Sit
           <Button size="sm" onClick={() => void saveGo()} disabled={okUrl === null && badUrl === null}>Save pages</Button>
           {goNote ? <span className="text-xs text-muted-foreground">{goNote}</span> : null}
         </div>
+      </section>
+
+      <section className="grid gap-2">
+        <h4 className="text-sm font-semibold">4. Which deposit numbers this site shows</h4>
+        {numbers && numbers.lines.length ? (
+          <ul className="grid gap-1 text-sm">
+            {numbers.lines.map((l) => <li key={l} className={l.includes("not chosen") ? "text-status-warn" : ""}>{l}</li>)}
+          </ul>
+        ) : (
+          <p className="text-sm text-status-warn">No main phone has a deposit number yet.</p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          Choose them on the <a href="#/numbers" className="underline">Numbers by site</a> page. A wallet type with nothing chosen is given any main number, in turn.
+        </p>
       </section>
 
       <section className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">

@@ -39,13 +39,13 @@ export function GroupChoice({
           }
         }}
       >
-        <SelectTrigger aria-label={label} className="h-8 w-[9.5rem] text-xs"><SelectValue /></SelectTrigger>
+        <SelectTrigger aria-label={label} className="h-8 w-[12rem] text-xs"><SelectValue /></SelectTrigger>
         <SelectContent>
-          <SelectItem value="main">Main</SelectItem>
+          <SelectItem value="main">Main phone (your websites)</SelectItem>
           {groups.filter((g) => g !== "main").map((g) => (
-            <SelectItem key={g} value={g}>{g}</SelectItem>
+            <SelectItem key={g} value={g}>Partner phone · {g}</SelectItem>
           ))}
-          <SelectItem value={NEW}>New partner code…</SelectItem>
+          <SelectItem value={NEW}>Partner phone · new code…</SelectItem>
         </SelectContent>
       </Select>
       {typing ? (
