@@ -11,6 +11,7 @@ import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { CopyButton } from "@/components/CopyButton";
 import { SiteCard, type SiteKey } from "@/components/SiteCard";
+import { HubAccessCard } from "@/components/HubAccessCard";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -249,6 +250,8 @@ export function ApiAccess() {
             </div>
           </div>
         </details>
+
+        <HubAccessCard />
       </div>
     </Screen>
   );
