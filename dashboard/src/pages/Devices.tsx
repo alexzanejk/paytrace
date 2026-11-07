@@ -7,7 +7,8 @@ import { PROVIDER_LABEL, PROVIDERS, type Device, type DeviceBalance,
 import { addDays, dayLabel, dhakaDay, groupSummary, summarize, type DayTotal } from "@/lib/period";
 import { openPaymentsWith } from "@/lib/filters";
 import { infoProblems } from "@/lib/deviceHealth";
-import { FLOW_KINDS, FLOW_WORDS, groupFlows, hasFlows, type FlowRow } from "@/lib/flows";
+import { cn } from "@/lib/utils";
+import { FLOW_KINDS, FLOW_WORDS, agreement, groupFlows, hasFlows, type FlowRow } from "@/lib/flows";
 import { useQuery } from "@/hooks/useQuery";
 import { wakePhone, WAKE_TEXT } from "@/lib/wake";
 import { Screen } from "@/components/Screen";
@@ -407,7 +408,7 @@ function DeviceCard({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Money through each wallet on {dayLabel(day)} (12:00 AM to 11:59 PM Bangladesh time). Received and Cash Out came IN; Cash In and B2B went OUT.
+        Money through each wallet on {dayLabel(day)} (12:00 AM to 11:59 PM Bangladesh time). Received and Cash Out came IN; Cash In and B2B went OUT. Cash Out is shown twice: what the SMS said and what the wallet's own statement listed, with whether they agree.
         Hover a heading for what is counted.
       </p>
       <Table className="[&_td]:px-2 [&_th]:px-2 sm:[&_td]:px-3 sm:[&_th]:px-3">
@@ -423,7 +424,7 @@ function DeviceCard({
         </TableHeader>
         <TableBody>
           {shown.length === 0 ? (
-            <EmptyRow cols={6} text={`No transactions yet for ${dayLabel(day)}.`} />
+            <EmptyRow cols={7} text={`No transactions yet for ${dayLabel(day)}.`} />
           ) : (
             shown.map((p) => {
               const ps = byProvider.get(p);
@@ -434,12 +435,20 @@ function DeviceCard({
                 <TableRow key={p}>
                   <TableCell><ProviderChip provider={p} /></TableCell>
                   <TableCell className="text-right tabular">{ps && ps.received.n ? tk(ps.received.amount) : "–"}</TableCell>
-                  {FLOW_KINDS.map((k) => (
-                    <TableCell key={k} className="text-right">
-                      <span className="tabular">{fl && fl[k].n ? tk(fl[k].amount) : "–"}</span>
-                      {fl && fl[k].n ? <span className="block text-xs text-muted-foreground">{fl[k].n}</span> : null}
-                    </TableCell>
-                  ))}
+                  {FLOW_KINDS.map((k) => {
+                    const agree = k === "cash_out_stmt" && fl ? agreement(fl) : null;
+                    return (
+                      <TableCell key={k} className="text-right">
+                        <span className="tabular">{fl && fl[k].n ? tk(fl[k].amount) : "–"}</span>
+                        {fl && fl[k].n ? <span className="block text-xs text-muted-foreground">{fl[k].n}</span> : null}
+                        {agree && agree.text ? (
+                          <span className={cn("block whitespace-nowrap text-xs", agree.tone === "ok" ? "text-status-ok" : agree.tone === "warn" ? "text-status-warn" : "text-muted-foreground")}>
+                            {agree.text}
+                          </span>
+                        ) : null}
+                      </TableCell>
+                    );
+                  })}
                   <TableCell className="text-right">
                     <span className="tabular">{bal ? tk(bal.balance) : "–"}</span>
                     {bal ? <span className="block text-xs text-muted-foreground">as of {when(bal.at)}</span> : null}

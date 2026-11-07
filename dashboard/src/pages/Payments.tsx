@@ -7,7 +7,7 @@ import { PAGE_INTRO, PAYMENT_STATUS, PAYMENT_TYPE, hubView } from "@/lib/words";
 import { openHelp } from "@/lib/nav";
 import { PageIntro } from "@/components/PageIntro";
 import { ArrowDownLeft, HelpCircle } from "lucide-react";
-import { COUNTED_STATUSES, rangeBounds, rangeLabel, periodRange, summarize, type DayTotal } from "@/lib/period";
+import { rangeBounds, rangeLabel, periodRange, summarize, type DayTotal } from "@/lib/period";
 import { takePaymentsPreset } from "@/lib/filters";
 import { downloadText, toCsv } from "@/lib/csv";
 import { reviewReasonText } from "@/lib/reasons";
@@ -88,7 +88,8 @@ export function Payments() {
       else if (device !== ALL) t = t.eq("device_id", device);
       if (provider !== ALL) t = t.eq("provider", provider);
       if (type !== ALL) t = t.eq("txn_type", type);
-      t = status !== ALL ? t.eq("status", status) : t.in("status", COUNTED_STATUSES);
+      // `counted` (migration 061): real money, including a hold that is only an order question.
+      t = status !== ALL ? t.eq("status", status) : t.eq("counted", true);
       const totals = must(await t) as DayTotal[];
       return { rows: (res.data ?? []) as Payment[], total: res.count ?? 0, totals };
     },
@@ -163,7 +164,7 @@ export function Payments() {
         <StatCard label="Payments in" value={tk(sum.received.amount)} sub={`${sum.received.n} payments to your numbers`} />
         <StatCard label="Customer cash-outs" value={tk(sum.cashOut.amount)} sub={`${sum.cashOut.n} through your agent numbers`} />
         <StatCard label="Commission earned" value={tk(sum.commission)} sub="the wallet's commission on those cash-outs" />
-        <StatCard label="SMS counted" value={String(nTx)} sub={status === ALL ? "\"Needs a decision\" and Ignored are not counted" : `only: ${PAYMENT_STATUS[status]?.label ?? status}`} />
+        <StatCard label="SMS counted" value={String(nTx)} sub={status === ALL ? "Held for a balance-chain doubt and Ignored are not counted" : `only: ${PAYMENT_STATUS[status]?.label ?? status}`} />
       </div>
 
       {/* Wide screens: a table. Phones: one card per transaction. */}

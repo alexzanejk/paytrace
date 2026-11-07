@@ -3,7 +3,7 @@ import { ArrowDownToLine, Banknote, Clock, HandCoins, Scale } from "lucide-react
 import { must, sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { PROVIDERS, PROVIDER_LABEL, TYPE_LABEL, type DeviceBalance, type ProviderBalance } from "@/lib/types";
-import { addDays, dayLabel, groupSummary, isCounted, isIncoming, periodRange, rangeLabel, summarize, type DayTotal } from "@/lib/period";
+import { addDays, dayLabel, groupSummary, isCountedRow, isIncoming, periodRange, rangeLabel, summarize, type DayTotal } from "@/lib/period";
 import { PROVIDER_COLOR } from "@/lib/deviceColors";
 import { openPaymentsWith } from "@/lib/filters";
 import { useQuery } from "@/hooks/useQuery";
@@ -51,7 +51,7 @@ export function Overview() {
   const sum = summarize(totals);
   const perDevice = groupSummary(totals, (r) => r.device_id ?? "none");
   const approved = devices.list.filter((d) => d.status === "approved");
-  const counted = totals.filter((r) => isCounted(r.status));
+  const counted = totals.filter((r) => isCountedRow(r));
 
   // One row per day / provider / type, newest day first.
   const breakdown = [...groupBy(counted, (r) => `${r.day}|${r.provider}|${r.txn_type}`)]

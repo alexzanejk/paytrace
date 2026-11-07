@@ -233,7 +233,14 @@ async function recordStatement(commandId: string, screens: string[], deviceName:
     if (lines.length === 0) return;
     const { data, error } = await db.rpc("statement_lines_record", { p_command: commandId, p_lines: lines });
     if (error) { console.error("statement_lines_record failed", error.code); return; }
-    const r = data as { count?: number; provider?: string; added?: { day?: string; type?: string; amount?: number | string }[] } | null;
+    const r = data as {
+      count?: number; provider?: string; added?: { day?: string; type?: string; amount?: number | string }[];
+      confirmed?: { trx_id?: string; amount?: number | string; provider?: string; result?: string; detail?: string }[];
+    } | null;
+    // Migration 061: the pull re-judged the wallet's chain holds; tell the owner about each one it released.
+    for (const c of r?.confirmed ?? []) {
+      await notify.send(confirmedMessage({ provider: c.provider ?? r?.provider ?? "", amount: Number(c.amount) || 0, trxId: String(c.trx_id ?? ""), how: "statement", detail: String(c.detail ?? ""), result: String(c.result ?? "") }));
+    }
     for (const a of r?.added ?? []) {
       const amount = Number(a.amount);
       if (/b2b/i.test(String(a.type ?? "")) && Number.isFinite(amount) && amount < 0) {

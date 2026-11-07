@@ -71,15 +71,21 @@ export interface DayTotal {
   provider: string;
   txn_type: string;
   status: string;
+  /** From the view (migration 061): true when the money really arrived, even if an order question is still open. */
+  counted?: boolean | null;
   n: number;
   amount: number;
   fee: number;
   commission: number;
 }
 
-/** Statuses that count as real money in the totals. Payments held for review (could be fake SMS) and ignored ones do not. */
+/** Statuses that always count as real money. Since migration 061 the database also counts a payment held only for an
+ *  order question (wrong amount, paid before the order, wrong phone) whose balance chain is intact; that decision arrives
+ *  as the row's `counted` flag, so prefer isCountedRow. A chain-mismatch hold and an ignored row never count. */
 export const COUNTED_STATUSES = ["unmatched", "matched", "tracked_only"];
 export const isCounted = (status: string) => COUNTED_STATUSES.includes(status);
+export const isCountedRow = (r: { status: string; counted?: boolean | null }) =>
+  typeof r.counted === "boolean" ? r.counted : isCounted(r.status);
 
 export const isIncoming = (type: string) => type === "payment_received" || type === "send_money_received";
 
@@ -111,7 +117,7 @@ export function summarize(rows: DayTotal[]): Summary {
   const cashOut = empty();
   let commission = 0;
   for (const r of rows) {
-    if (!isCounted(r.status)) continue;
+    if (!isCountedRow(r)) continue;
     if (isIncoming(r.txn_type)) add(received, r);
     else if (r.txn_type === "cash_out") add(cashOut, r);
     commission += Number(r.commission) || 0;
