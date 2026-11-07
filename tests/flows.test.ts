@@ -1,4 +1,4 @@
-import { FLOW_KINDS, FLOW_WORDS, groupFlows, hasFlows, sumFlows, type FlowRow } from "../dashboard/src/lib/flows.ts";
+import { FLOW_KINDS, FLOW_WORDS, agreement, groupFlows, hasFlows, sumFlows, type FlowRow } from "../dashboard/src/lib/flows.ts";
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, extra?: unknown) {
@@ -17,7 +17,16 @@ const rows: FlowRow[] = [
 const all = sumFlows(rows);
 check("cash out adds across providers, strings included", all.cash_out.n === 5 && Math.abs(all.cash_out.amount - 2200.5) < 1e-9);
 check("cash in and b2b are kept apart", all.cash_in.amount === 5000 && all.b2b_out.amount === 1040);
-check("an unknown kind is ignored, never mis-filed", all.cash_out.n + all.cash_in.n + all.b2b_out.n === 7);
+check("an unknown kind is ignored, never mis-filed", all.cash_out.n + all.cash_out_stmt.n + all.cash_in.n + all.b2b_out.n === 7);
+
+// SMS vs statement agreement, per wallet and day.
+const f = (sms: [number, number], stmt: [number, number]) => ({ ...sumFlows([]), cash_out: { n: sms[0], amount: sms[1] }, cash_out_stmt: { n: stmt[0], amount: stmt[1] } });
+check("agree when count and amount match", agreement(f([3, 1500], [3, 1500])).tone === "ok");
+check("SMS more than the statement is a warning that names the difference", /SMS has Tk 500 more/.test(agreement(f([3, 1500], [2, 1000])).text) && agreement(f([3, 1500], [2, 1000])).tone === "warn");
+check("statement more than the SMS is a warning too", /statement has Tk 500 more/.test(agreement(f([2, 1000], [3, 1500])).text));
+check("no statement yet is said, not flagged", agreement(f([2, 1000], [0, 0])).tone === "none" && /no statement/.test(agreement(f([2, 1000], [0, 0])).text));
+check("nothing at all says nothing", agreement(f([0, 0], [0, 0])).text === "");
+check("the statement column says it can show fewer on a busy day", /newest entries/.test(FLOW_WORDS.cash_out_stmt.meaning));
 
 const byProvider = groupFlows(rows, (r) => r.provider);
 check("grouped by provider", byProvider.get("rocket")?.b2b_out.n === 1 && byProvider.get("bkash")?.cash_in.n === 1);

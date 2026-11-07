@@ -1,5 +1,5 @@
 import {
-  addDays, dayStartIso, groupSummary, isCounted, periodRange, rangeBounds, rangeLabel, summarize, type DayTotal,
+  addDays, dayStartIso, groupSummary, isCounted, isCountedRow, periodRange, rangeBounds, rangeLabel, summarize, type DayTotal,
 } from "../dashboard/src/lib/period.ts";
 import { csvCell, toCsv } from "../dashboard/src/lib/csv.ts";
 
@@ -48,6 +48,9 @@ check("received = payments + send money, counted statuses only", s.received.amou
 check("cash out summed across phones", s.cashOut.amount === 1200 && s.cashOut.n === 4, s.cashOut);
 check("commission summed", Math.abs(s.commission - 5.3) < 1e-9, s.commission);
 check("review and ignored are not counted", !isCounted("review") && !isCounted("ignored") && isCounted("tracked_only"));
+check("the view's counted flag wins over the status: a wrong-amount hold with an intact chain counts",
+  isCountedRow({ status: "review", counted: true }) && !isCountedRow({ status: "review", counted: false }) && !isCountedRow({ status: "tracked_only", counted: false }));
+check("without the flag (older rows, tests) the status list decides", isCountedRow({ status: "tracked_only" }) && !isCountedRow({ status: "review", counted: null }));
 
 const per = groupSummary(rows, (r) => r.device_id ?? "none");
 check("totals per phone", per.get("d1")!.cashOut.amount === 1000 && per.get("d2")!.cashOut.amount === 200);
