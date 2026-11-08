@@ -1,11 +1,10 @@
 import { useState, type FormEvent } from "react";
-import { Banknote } from "lucide-react";
 import { must, sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { useQuery } from "@/hooks/useQuery";
 import { useDevices } from "@/hooks/useDevices";
 import { CASHIN_LABEL, CASHIN_PROVIDERS, CASHIN_TONE, cashinCancellable, cashinSettleable, normalizeNumber, numberProblem, type CashinStatus } from "@/lib/cashin";
-import { leftoverText, MAX_INSTRUCTION, parseThreshold, URGENCIES, URGENCY_LABEL, type Urgency } from "@/lib/jobs";
+import { leftoverText, MAX_INSTRUCTION, URGENCIES, URGENCY_LABEL, type Urgency } from "@/lib/jobs";
 import { PROVIDER_LABEL } from "@/lib/types";
 import { DeviceChip } from "@/components/DeviceChip";
 import { Confirm } from "@/components/Confirm";
@@ -28,13 +27,10 @@ interface JobRow {
   amount: number | string | null; commission: number | string | null; submitted_at: string | null; attempts: number; diff: number | string | null; note: string | null;
 }
 
-/** Cash-in jobs: when a wallet's balance reaches the amount, the partner cashes in to one of these personal numbers (a number of the same wallet type,
- *  taken in turn) and types the amount and the cash-in commission the wallet gave; the next Cash Out message checks it. */
 import { CashInCommandLimit } from "@/components/CashInCommandLimit";
 
-export function CashInJobs() {
-  const devices = useDevices();
-  const { data, error, refresh } = useQuery(
+function useCashIn() {
+  return useQuery(
     async () => {
       const s = must(await sb.from("cashin_settings").select("*").maybeSingle()) as { enabled: boolean; threshold: number | string; urgency: Urgency; instruction: string } | null;
       const numbers = must(await sb.from("cashin_numbers").select("*").order("provider").order("created_at")) as NumberRow[];
@@ -47,25 +43,37 @@ export function CashInJobs() {
     [],
     { refreshMs: 20000 },
   );
+}
 
+/** The Taka job's own settings (migration 072: WHEN it starts is now chosen per wallet on the Jobs page): what the partner reads,
+ *  how urgent, and the owner's personal numbers to Cash In to (a bKash wallet gets a bKash number, and so on, used in turn). */
+export function TakaJobSettings() {
+  const { data, error, refresh } = useCashIn();
   return (
-    <section aria-labelledby="cashin-h">
-      <h3 id="cashin-h" className="mb-1 mt-10 flex items-center gap-2 text-base font-semibold"><Banknote className="h-4 w-4" aria-hidden /> Cash-in jobs</h3>
-      <p className="mb-3 text-sm text-muted-foreground">
-        When a wallet's balance reaches the amount, the partner is asked to cash in to one of your personal numbers (a bKash wallet gets a bKash number, and so on; with
-        several numbers they are used in turn). A cash-in sends no SMS, so the partner types the amount and the cash-in commission the wallet gave (for example Tk 0.38 on Tk 100).
-        PayTrace checks the numbers against the next Cash Out message for that wallet.
+    <div className="grid gap-4">
+      <p className="text-sm text-muted-foreground">
+        The partner Cash Ins from the agent wallet to one of these numbers (a bKash wallet gets a bKash number, and so on; several numbers are used in turn), then taps
+        “I did it” and types the amount and the commission the wallet gave. PayTrace checks it against the next Cash Out message for that wallet.
       </p>
-      {error ? <p role="alert" className="mb-3 text-sm text-destructive">{error}</p> : null}
+      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       {data ? (
         <div className="grid gap-6 xl:grid-cols-2">
-          <CashInCommandLimit />
-          <SettingsCard key={JSON.stringify(data.settings)} initial={data.settings} onSaved={refresh} />
           <NumbersCard numbers={data.numbers} onChanged={refresh} />
+          <SettingsCard key={JSON.stringify(data.settings)} initial={data.settings} onSaved={refresh} />
+          <CashInCommandLimit />
         </div>
       ) : null}
+    </div>
+  );
+}
 
-      <h4 className="mb-2 mt-6 text-sm font-semibold">Cash-in checks</h4>
+/** Every Taka job and what came of it, with Accept / Reject / Cancel where a decision is due. */
+export function CashInChecks() {
+  const devices = useDevices();
+  const { data, error, refresh } = useCashIn();
+  return (
+    <section>
+      {error ? <p role="alert" className="mb-3 text-sm text-destructive">{error}</p> : null}
       <Table>
         <TableHeader>
           <TableRow>
@@ -155,8 +163,6 @@ function Actions({ job, onDone }: { job: JobRow; onDone: () => void }) {
 }
 
 function SettingsCard({ initial, onSaved }: { initial: Settings; onSaved: () => void }) {
-  const [enabled, setEnabled] = useState(initial.enabled);
-  const [threshold, setThreshold] = useState(String(initial.threshold));
   const [urgency, setUrgency] = useState<Urgency>(initial.urgency);
   const [instruction, setInstruction] = useState(initial.instruction);
   const [busy, setBusy] = useState(false);
@@ -166,35 +172,23 @@ function SettingsCard({ initial, onSaved }: { initial: Settings; onSaved: () => 
   async function save(e: FormEvent) {
     e.preventDefault();
     setNote("");
-    const amount = parseThreshold(threshold);
-    if (!amount || amount <= 0) return setProblem("Type the amount in taka, for example 8000.");
     if (!instruction.trim()) return setProblem("Write what the partner should do.");
     setProblem("");
     setBusy(true);
-    const { error } = await sb.rpc("set_cashin_settings", { p_enabled: enabled, p_threshold: amount, p_instruction: instruction.trim(), p_urgency: urgency });
+    // The on/off switch and the amount live on the Jobs page now (one switch for all jobs, one amount per wallet): kept as they are.
+    const { error } = await sb.rpc("set_cashin_settings", { p_enabled: initial.enabled, p_threshold: initial.threshold, p_instruction: instruction.trim(), p_urgency: urgency });
     setBusy(false);
     if (error) return setProblem(error.message);
-    setNote(enabled ? "Saved. Wallets at or above the amount will get a cash-in job within a minute." : "Saved. Cash-in jobs are off.");
+    setNote("Saved.");
     onSaved();
   }
 
   return (
     <Card>
-      <CardHeader><CardTitle>When and what</CardTitle></CardHeader>
+      <CardHeader><CardTitle>What the partner reads</CardTitle></CardHeader>
       <CardContent>
         <form onSubmit={save} className="grid gap-4">
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
-            <div>
-              <p className="text-sm font-medium">Cash-in jobs are {enabled ? "on" : "off"}</p>
-              <p className="text-xs text-muted-foreground">Needs at least one number of the wallet's type below.</p>
-            </div>
-            <Switch checked={enabled} onCheckedChange={setEnabled} aria-label="Cash-in jobs on or off" />
-          </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="grid gap-1.5">
-              <Label htmlFor="cashin-amount">Start the job when a wallet's balance reaches (Tk)</Label>
-              <Input id="cashin-amount" inputMode="decimal" value={threshold} onChange={(e) => setThreshold(e.target.value)} />
-            </div>
             <div className="grid gap-1.5">
               <Label>How urgent</Label>
               <Select value={urgency} onValueChange={(v) => setUrgency(v as Urgency)}>
@@ -249,7 +243,7 @@ function NumbersCard({ numbers, onChanged }: { numbers: NumberRow[]; onChanged: 
 
   return (
     <Card>
-      <CardHeader><CardTitle>Personal numbers to cash in to</CardTitle></CardHeader>
+      <CardHeader><CardTitle>Our personal numbers to Cash In to</CardTitle></CardHeader>
       <CardContent className="grid gap-4">
         <form onSubmit={add} className="grid gap-3 sm:grid-cols-[9rem_minmax(0,1fr)_minmax(0,9rem)_auto] sm:items-end">
           <div className="grid gap-1.5">
