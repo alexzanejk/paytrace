@@ -16,6 +16,7 @@ import { Commission } from "@/pages/Commission";
 import { Crypto } from "@/pages/Crypto";
 import { Devices } from "@/pages/Devices";
 import { Jobs } from "@/pages/Jobs";
+import { JobHistory } from "@/pages/JobHistory";
 import { Logs } from "@/pages/Logs";
 import { ApiAccess } from "@/pages/ApiAccess";
 import { SiteNumbers } from "@/pages/SiteNumbers";
@@ -85,6 +86,7 @@ export default function App() {
       {tab === "crypto" && <Crypto />}
       {tab === "devices" && <Devices />}
       {tab === "jobs" && <Jobs />}
+      {tab === "jobhistory" && <JobHistory />}
       {tab === "logs" && <Logs />}
       {tab === "api" && <ApiAccess />}
       {tab === "numbers" && <SiteNumbers />}
