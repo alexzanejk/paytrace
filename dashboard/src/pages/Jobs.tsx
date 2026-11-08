@@ -11,7 +11,7 @@ import {
 } from "@/lib/jobs";
 import { defaultLabel, JOB_KINDS, KIND_LABEL, KIND_SHORT, standing, wantFor, type JobKind, type WalletJobRow, type WalletJobRule } from "@/lib/walletJobs";
 import { PROVIDER_LABEL } from "@/lib/types";
-import { CashInChecks, TakaJobSettings } from "@/pages/CashInJobs";
+import { CashInChecks, CostLine, TakaJobSettings } from "@/pages/CashInJobs";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { DeviceChip } from "@/components/DeviceChip";
@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 interface TransferRow {
   id: string; device_id: string; provider: string; amount: number; charge: number; base_balance: number; status: TransferStatus;
   attempts: number; diff: number | null; submitted_at: string; checked_at: string | null; note: string | null;
+  cost?: number | string | null; cost_note?: string | null;
 }
 interface AgentRow {
   device_id: string; provider: string; agent_name: string | null; enabled: boolean; instruction: string | null; urgency: Urgency | null;
@@ -57,6 +58,9 @@ export function Jobs() {
       const wallets = must(await sb.rpc("admin_wallet_jobs")) as WalletJobRow[];
       const rules = must(await sb.from("wallet_job_rules").select("provider,kind,threshold").order("provider")) as WalletJobRule[];
       const transfers = must(await sb.from("job_transfers").select("*").order("submitted_at", { ascending: false }).limit(30)) as TransferRow[];
+      // Everything a partner has submitted that is not settled yet, however old: shown at the top with Accept / Reject.
+      const waitingSends = must(await sb.from("job_transfers").select("*").in("status", ["checking", "mismatch", "review"]).order("submitted_at")) as TransferRow[];
+      const { count: waitingTaka } = await sb.from("cashin_jobs").select("id", { count: "exact", head: true }).in("status", ["checking", "mismatch", "review"]);
       const agents = must(await sb.from("agent_jobs").select("*")) as AgentRow[];
       const settings: JobSettings = {
         enabled: !!row?.enabled,
@@ -66,7 +70,7 @@ export function Jobs() {
         urgency: row?.urgency ?? "urgent",
         network: row?.network ?? DEFAULT_NETWORK,
       };
-      return { settings, jobsOn: !!row?.enabled && !!cash?.enabled, wallets, rules, transfers, agents };
+      return { settings, jobsOn: !!row?.enabled && !!cash?.enabled, wallets, rules, transfers, agents, waitingSends, waitingTaka: waitingTaka ?? 0 };
     },
     [],
     { refreshMs: 20000 },
@@ -74,7 +78,7 @@ export function Jobs() {
 
   const byPhone = new Map<string, WalletJobRow[]>();
   for (const w of data?.wallets ?? []) byPhone.set(w.device_id, [...(byPhone.get(w.device_id) ?? []), w]);
-  const waitingChecks = (data?.transfers ?? []).filter((t) => transferOpen(t.status)).length;
+  const waitingChecks = (data?.waitingSends.length ?? 0) + (data?.waitingTaka ?? 0);
 
   return (
     <Screen loading={loading || devices.loading} error={error ?? devices.error} hasData={!!data}>
@@ -85,6 +89,30 @@ export function Jobs() {
       {data ? (
         <div className="grid gap-6">
           <MasterSwitch on={data.jobsOn} onChanged={refresh} />
+
+          {waitingChecks > 0 ? (
+            <section aria-labelledby="waiting-h">
+              <Card className="border-status-warn/40 p-4">
+                <h3 id="waiting-h" className="text-base font-semibold">Waiting for your OK ({waitingChecks})</h3>
+                <p className="mb-3 mt-1 text-sm text-muted-foreground">
+                  The partner says the job is done. PayTrace confirms it by itself when the wallet's message adds up; you can also <strong>Accept</strong> it now
+                  (after checking the money reached us) or <strong>Reject</strong> it. “Other cost” is what the partner says it cost them, in their own words.
+                </p>
+                {data.waitingSends.length ? (
+                  <>
+                    <h4 className="mb-2 text-sm font-semibold">Crypto job</h4>
+                    <TransfersTable rows={data.waitingSends} nameOf={devices.nameOf} onDone={refresh} />
+                  </>
+                ) : null}
+                {data.waitingTaka ? (
+                  <>
+                    <h4 className="mb-2 mt-4 text-sm font-semibold">Taka job</h4>
+                    <CashInChecks waitingOnly onDone={refresh} />
+                  </>
+                ) : null}
+              </Card>
+            </section>
+          ) : null}
 
           <section aria-labelledby="wallets-h">
             <h3 id="wallets-h" className="mb-1 text-base font-semibold">Each wallet's job</h3>
@@ -128,7 +156,7 @@ export function Jobs() {
             <Disclosure
               icon={ClipboardCheck}
               title="Did the partners really do it? (checks)"
-              summary={waitingChecks ? `${waitingChecks} crypto send${waitingChecks === 1 ? "" : "s"} waiting for you` : "Crypto sends and Taka sends, with Accept / Reject"}
+              summary={waitingChecks ? `${waitingChecks} waiting for you (also shown at the top)` : "Every send the partners submitted, with what came of it"}
             >
               <h4 className="mb-2 text-sm font-semibold">Crypto job: sends</h4>
               <TransfersTable rows={data.transfers} nameOf={devices.nameOf} onDone={refresh} />
@@ -292,6 +320,7 @@ function TransfersTable({ rows, nameOf, onDone }: { rows: TransferRow[]; nameOf:
             <TableHead>Wallet</TableHead>
             <TableHead className="hidden text-right sm:table-cell">Sent</TableHead>
             <TableHead className="hidden text-right sm:table-cell">Charge</TableHead>
+            <TableHead className="hidden sm:table-cell">Other cost</TableHead>
             <TableHead className="hidden sm:table-cell">Result</TableHead>
             <TableHead className="hidden sm:table-cell">Off by</TableHead>
             <TableHead className="hidden text-right sm:table-cell"><span className="sr-only">Actions</span></TableHead>
@@ -299,7 +328,7 @@ function TransfersTable({ rows, nameOf, onDone }: { rows: TransferRow[]; nameOf:
         </TableHeader>
         <TableBody>
           {rows.length === 0 ? (
-            <EmptyRow cols={7} text="No partner has submitted a send yet." />
+            <EmptyRow cols={8} text="No partner has submitted a send yet." />
           ) : (
             rows.map((t) => (
               <TableRow key={t.id}>
@@ -309,12 +338,14 @@ function TransfersTable({ rows, nameOf, onDone }: { rows: TransferRow[]; nameOf:
                   <ProviderChip provider={t.provider} className="mt-0.5 flex text-xs" />
                   <div className="mt-1.5 flex flex-col items-start gap-1.5 sm:hidden">
                     <span className="text-xs text-muted-foreground tabular">Sent {tk(Number(t.amount))} · charge {tk(Number(t.charge))}</span>
+                    <CostLine cost={t.cost} note={t.cost_note} labelled />
                     <Badge tone={TRANSFER_TONE[t.status]}>{TRANSFER_LABEL[t.status]}</Badge>
                     {transferOpen(t.status) ? <SettleButtons id={t.id} onDone={onDone} /> : null}
                   </div>
                 </TableCell>
                 <TableCell className="hidden text-right tabular sm:table-cell">{tk(Number(t.amount))}</TableCell>
                 <TableCell className="hidden text-right tabular sm:table-cell">{tk(Number(t.charge))}</TableCell>
+                <TableCell className="hidden whitespace-normal sm:table-cell"><CostLine cost={t.cost} note={t.cost_note} /></TableCell>
                 <TableCell className="hidden sm:table-cell">
                   <Badge tone={TRANSFER_TONE[t.status]}>{TRANSFER_LABEL[t.status]}</Badge>
                   {t.note ? <span className="mt-0.5 block text-xs text-muted-foreground">{t.note}</span> : null}
@@ -345,7 +376,7 @@ function SettleButtons({ id, onDone }: { id: string; onDone: () => void }) {
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex gap-1">
-        <Confirm title="Accept this send?" description="Only do this after you have checked your own wallet history. The job will count as done." confirmLabel="Accept" onConfirm={() => settle("verified")}>
+        <Confirm title="Accept this send?" description="Only do this after you have checked that the money reached our wallet. The job counts as done; PayTrace stops waiting for the next Cash Out message." confirmLabel="Accept" onConfirm={() => settle("verified")}>
           <Button size="sm" variant="outline">Accept</Button>
         </Confirm>
         <Confirm title="Reject this send?" description="The partner will see that it was not accepted. The job comes back with the next balance message if it is still above the amount." confirmLabel="Reject" onConfirm={() => settle("rejected")}>

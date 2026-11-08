@@ -543,10 +543,12 @@ async function handle(req: Request): Promise<Response> {
     if (!device) return json({ success: false, message: "not paired" }, 403);
     const amount = Number(body.amount);
     const charge = body.charge == null || body.charge === "" ? 0 : Number(body.charge);
-    if (!Number.isFinite(amount) || !Number.isFinite(charge)) return json({ success: false, message: "bad_amount" }, 400);
+    const { cost, costNote } = costOf(body);
+    if (!Number.isFinite(amount) || !Number.isFinite(charge) || !Number.isFinite(cost)) return json({ success: false, message: "bad_amount" }, 400);
+    const extra = { p_cost: cost, p_cost_note: costNote };
     const { data, error } = body.action === "job_sent"
-      ? await db.rpc("device_job_sent", { p_device: device.id, p_provider: String(body.provider ?? ""), p_amount: amount, p_charge: charge })
-      : await db.rpc("device_job_fix", { p_device: device.id, p_id: String(body.id ?? ""), p_amount: amount, p_charge: charge });
+      ? await db.rpc("device_job_sent", { p_device: device.id, p_provider: String(body.provider ?? ""), p_amount: amount, p_charge: charge, ...extra })
+      : await db.rpc("device_job_fix", { p_device: device.id, p_id: String(body.id ?? ""), p_amount: amount, p_charge: charge, ...extra });
     if (error) {
       console.error(body.action + " failed", error.code);
       return json({ success: false, message: "could not save" }, 500);
@@ -559,10 +561,12 @@ async function handle(req: Request): Promise<Response> {
     if (!device) return json({ success: false, message: "not paired" }, 403);
     const amount = Number(body.amount);
     const commission = body.commission == null || body.commission === "" ? 0 : Number(body.commission);
-    if (!Number.isFinite(amount) || !Number.isFinite(commission)) return json({ success: false, message: "bad_amount" }, 400);
+    const { cost, costNote } = costOf(body);
+    if (!Number.isFinite(amount) || !Number.isFinite(commission) || !Number.isFinite(cost)) return json({ success: false, message: "bad_amount" }, 400);
+    const extra = { p_cost: cost, p_cost_note: costNote };
     const { data, error } = body.action === "cashin_sent"
-      ? await db.rpc("device_cashin_sent", { p_device: device.id, p_provider: String(body.provider ?? ""), p_amount: amount, p_commission: commission })
-      : await db.rpc("device_cashin_fix", { p_device: device.id, p_id: String(body.id ?? ""), p_amount: amount, p_commission: commission });
+      ? await db.rpc("device_cashin_sent", { p_device: device.id, p_provider: String(body.provider ?? ""), p_amount: amount, p_commission: commission, ...extra })
+      : await db.rpc("device_cashin_fix", { p_device: device.id, p_id: String(body.id ?? ""), p_amount: amount, p_commission: commission, ...extra });
     if (error) {
       console.error(body.action + " failed", error.code);
       return json({ success: false, message: "could not save" }, 500);
@@ -607,6 +611,14 @@ async function handle(req: Request): Promise<Response> {
 
   if (!raw) return json({ success: false, message: "raw_message required" }, 400);
   return await storeSms({ raw, hint, senderId, deviceId, simSlot, deviceName: device?.name ?? "" });
+}
+
+/** What a job cost the partner besides the commission/charge, and what for (migration 076). An older app sends neither: 0 and no note.
+ *  The note is the partner's own words, kept short; the database strips control characters again. */
+function costOf(body: Record<string, unknown>): { cost: number; costNote: string | null } {
+  const cost = body.cost == null || body.cost === "" ? 0 : Number(body.cost);
+  const note = typeof body.cost_note === "string" ? body.cost_note.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 200) : "";
+  return { cost, costNote: note || null };
 }
 
 /** 0 or 1 (as a number or as text, for the GET setting), else null = the phone did not say. */

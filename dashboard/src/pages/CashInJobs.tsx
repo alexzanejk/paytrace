@@ -25,6 +25,7 @@ interface NumberRow { id: string; provider: string; number: string; label: strin
 interface JobRow {
   id: string; device_id: string; provider: string; number: string; balance: number | string; created_at: string; status: CashinStatus;
   amount: number | string | null; commission: number | string | null; submitted_at: string | null; attempts: number; diff: number | string | null; note: string | null;
+  cost?: number | string | null; cost_note?: string | null;
 }
 
 import { CashInCommandLimit } from "@/components/CashInCommandLimit";
@@ -67,10 +68,21 @@ export function TakaJobSettings() {
   );
 }
 
-/** Every Taka job and what came of it, with Accept / Reject / Cancel where a decision is due. */
-export function CashInChecks() {
+/** Every Taka job and what came of it, with Accept / Reject / Cancel where a decision is due. [waitingOnly]: just the ones
+ *  submitted by the partner and not yet settled (the top of the Jobs page), however old; [onDone] tells the page to refresh. */
+export function CashInChecks({ waitingOnly = false, onDone }: { waitingOnly?: boolean; onDone?: () => void } = {}) {
   const devices = useDevices();
-  const { data, error, refresh } = useCashIn();
+  const { data, error, refresh: refreshOwn } = useQuery(
+    async () => {
+      const q = sb.from("cashin_jobs").select("*");
+      const jobs = must(await (waitingOnly ? q.in("status", ["checking", "mismatch", "review"]).order("submitted_at") : q.order("created_at", { ascending: false }).limit(30))) as JobRow[];
+      return { jobs };
+    },
+    [waitingOnly],
+    { refreshMs: 20000 },
+  );
+  const refresh = () => { refreshOwn(); onDone?.(); };
+  if (waitingOnly && (data?.jobs ?? []).length === 0) return null;
   return (
     <section>
       {error ? <p role="alert" className="mb-3 text-sm text-destructive">{error}</p> : null}
@@ -80,8 +92,9 @@ export function CashInChecks() {
             <TableHead>When (BD)</TableHead>
             <TableHead>Agent</TableHead>
             <TableHead className="hidden sm:table-cell">Number</TableHead>
-            <TableHead className="hidden text-right sm:table-cell">Cash-in</TableHead>
+            <TableHead className="hidden text-right sm:table-cell">Sent</TableHead>
             <TableHead className="hidden text-right sm:table-cell">Commission</TableHead>
+            <TableHead className="hidden sm:table-cell">Other cost</TableHead>
             <TableHead className="hidden sm:table-cell">Result</TableHead>
             <TableHead className="hidden sm:table-cell">Off by</TableHead>
             <TableHead className="hidden text-right sm:table-cell"><span className="sr-only">Actions</span></TableHead>
@@ -89,7 +102,7 @@ export function CashInChecks() {
         </TableHeader>
         <TableBody>
           {(data?.jobs ?? []).length === 0 ? (
-            <EmptyRow cols={8} text="No cash-in job yet." />
+            <EmptyRow cols={9} text="No cash-in job yet." />
           ) : (
             data!.jobs.map((j) => (
               <TableRow key={j.id}>
@@ -99,7 +112,8 @@ export function CashInChecks() {
                   <ProviderChip provider={j.provider} className="mt-0.5 flex text-xs" />
                   <div className="mt-1.5 flex flex-col items-start gap-1.5 sm:hidden">
                     <span className="font-mono text-xs text-muted-foreground">{j.number}</span>
-                    {j.amount !== null ? <span className="text-xs text-muted-foreground tabular">Cash-in {tk(Number(j.amount))} · commission {tk(Number(j.commission ?? 0))}</span> : null}
+                    {j.amount !== null ? <span className="text-xs text-muted-foreground tabular">Sent {tk(Number(j.amount))} · commission {tk(Number(j.commission ?? 0))}</span> : null}
+                    <CostLine cost={j.cost} note={j.cost_note} labelled />
                     <Badge tone={CASHIN_TONE[j.status]}>{CASHIN_LABEL[j.status]}</Badge>
                     <Actions job={j} onDone={refresh} />
                   </div>
@@ -107,6 +121,7 @@ export function CashInChecks() {
                 <TableCell className="hidden font-mono text-xs sm:table-cell">{j.number}</TableCell>
                 <TableCell className="hidden text-right tabular sm:table-cell">{j.amount === null ? "–" : tk(Number(j.amount))}</TableCell>
                 <TableCell className="hidden text-right tabular sm:table-cell">{j.commission === null ? "–" : tk(Number(j.commission))}</TableCell>
+                <TableCell className="hidden whitespace-normal sm:table-cell"><CostLine cost={j.cost} note={j.cost_note} /></TableCell>
                 <TableCell className="hidden sm:table-cell">
                   <Badge tone={CASHIN_TONE[j.status]}>{CASHIN_LABEL[j.status]}</Badge>
                   {j.note ? <span className="mt-0.5 block text-xs text-muted-foreground">{j.note}</span> : null}
@@ -126,6 +141,18 @@ export function CashInChecks() {
   );
 }
 
+/** What else the job cost the partner and what for, in their own words (migration 076). Shown as plain text, never as markup. */
+export function CostLine({ cost, note, labelled = false }: { cost?: number | string | null; note?: string | null; labelled?: boolean }) {
+  const n = Number(cost ?? 0);
+  if (!(n > 0) && !note) return labelled ? null : <span className="text-xs text-muted-foreground">–</span>;
+  return (
+    <span className="block min-w-36 max-w-56 whitespace-normal text-xs">
+      {n > 0 ? <span className="tabular font-medium">{labelled ? "Other cost " : ""}{tk(n)}</span> : labelled ? <span className="font-medium">Other cost</span> : null}
+      {note ? <span className="block break-words text-muted-foreground">{note}</span> : null}
+    </span>
+  );
+}
+
 function Actions({ job, onDone }: { job: JobRow; onDone: () => void }) {
   const [problem, setProblem] = useState("");
   async function act(decision: "verified" | "rejected" | "cancelled") {
@@ -138,7 +165,7 @@ function Actions({ job, onDone }: { job: JobRow; onDone: () => void }) {
     return (
       <div className="flex flex-col items-end gap-1">
         <div className="flex gap-1">
-          <Confirm title="Accept this cash-in?" description="Only do this after you have checked the wallet history yourself. The job will count as done." confirmLabel="Accept" onConfirm={() => act("verified")}>
+          <Confirm title="Accept this send?" description="Only do this after you have checked that the money reached our number. The job counts as done; PayTrace stops waiting for the next Cash Out message." confirmLabel="Accept" onConfirm={() => act("verified")}>
             <Button size="sm" variant="outline">Accept</Button>
           </Confirm>
           <Confirm title="Reject this cash-in?" description="The partner will see that it was not accepted." confirmLabel="Reject" onConfirm={() => act("rejected")}>

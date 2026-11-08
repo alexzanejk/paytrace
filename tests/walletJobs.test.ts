@@ -45,5 +45,15 @@ check("a Cash In / Send Money message of exactly that amount, after the job was 
 check("one message can prove only one job", sql75.includes("not exists (select 1 from public.cashin_jobs j where j.payment_id = p.id)") && sql75.includes("not exists (select 1 from public.job_transfers t where t.payment_id = p.id)"));
 check("no DROP or DELETE (the MCP hangs on them)", !/\b(drop|delete)\b/i.test(sql75.replace(/--[^\n]*/g, "")));
 
+const sql76 = readFileSync(new URL("../supabase/migrations/20261108_076_job_cost_note.sql", import.meta.url), "utf8");
+check("every submission and fix can carry the partner's other cost and what it was for",
+  ["device_cashin_sent", "device_cashin_fix", "device_job_sent", "device_job_fix"].every((f) => sql76.includes(`function public.${f}(`) && sql76.includes("p_cost numeric, p_cost_note text")));
+check("the cost is for the owner to read: the six-argument versions call the old check unchanged",
+  sql76.includes("r := public.device_cashin_sent(p_device, p_provider, p_amount, p_commission);") && sql76.includes("r := public.device_job_sent(p_device, p_provider, p_amount, p_charge);"));
+check("the partner's own list shows the cost and its note", sql76.includes("'cost', t.cost, 'cost_note', t.cost_note") && sql76.includes("'cost', c.cost, 'cost_note', c.cost_note"));
+check("076: no DROP or DELETE", !/\b(drop|delete)\b/i.test(sql76.replace(/--[^\n]*/g, "")));
+const ingest = readFileSync(new URL("../supabase/functions/ingest/index.ts", import.meta.url), "utf8");
+check("the ingest function passes cost and its note on all four actions", (ingest.match(/\.\.\.extra \}\)/g) ?? []).length === 4 && ingest.includes("function costOf("));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

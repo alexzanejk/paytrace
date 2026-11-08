@@ -38,6 +38,9 @@ data class Transfer(
     val note: String = "",
     /** "send" or "cashin". For a cash-in, [charge] is the cash-in commission the wallet gave (it is added to the balance). */
     val kind: String = "send",
+    /** Anything else the job cost the partner (a fund-transfer fee, say) and what for (migration 076). For the owner to read. */
+    val cost: Double = 0.0,
+    val costNote: String = "",
 ) {
     val canFix: Boolean get() = status == "mismatch" && attempts < 2
     val isCashIn: Boolean get() = kind == "cashin"
@@ -56,6 +59,7 @@ data class SendResult(val ok: Boolean, val status: String, val error: String?) {
             "too_much" -> "That is more than the wallet's balance. Check the amount and the charge."
             "no_balance" -> "PayTrace has not seen a balance message for this wallet yet."
             "bad_amount", "bad_provider" -> "Type the amount in taka, for example 10000."
+            "bad_cost" -> "Type the other cost in taka, for example 25, or leave it empty."
             "not_fixable" -> "These numbers cannot be changed any more. The owner will check them."
             "offline" -> "Could not reach the server. Check the internet and try again."
             else -> "Could not save. Try again."
@@ -73,6 +77,16 @@ object MoneyInput {
     }
 }
 
+/** What the partner types after doing a job: the amount, the commission (cash-in) or charge (send), and anything else it cost
+ *  them with a few words on what for. [cost] and [costNote] are for the owner to read; they do not change the automatic check. */
+data class SendForm(val amount: Double, val charge: Double, val cost: Double = 0.0, val costNote: String = "") {
+    fun into(o: JSONObject): JSONObject = o.put("cost", cost).put("cost_note", costNote.trim().take(NOTE_MAX))
+
+    companion object {
+        const val NOTE_MAX = 200
+    }
+}
+
 object JobsParser {
     /** The sends the partner has submitted, newest first. Empty when the reply has none (an older server) or is not a success. */
     fun parseTransfers(text: String): List<Transfer> = try {
@@ -85,7 +99,8 @@ object JobsParser {
             val provider = t.optString("provider")
             val status = t.optString("status")
             if (id.isBlank() || provider.isBlank() || status.isBlank()) null
-            else Transfer(id, provider, t.optDouble("amount", 0.0), t.optDouble("charge", 0.0), status, t.optInt("attempts", 1), t.optString("submitted_at", ""), t.optString("resolved_at", ""), t.optString("note", "").let { if (it == "null") "" else it }, t.optString("kind", "send").let { if (it == "cashin") it else "send" })
+            else Transfer(id, provider, t.optDouble("amount", 0.0), t.optDouble("charge", 0.0), status, t.optInt("attempts", 1), t.optString("submitted_at", ""), t.optString("resolved_at", ""), t.optString("note", "").let { if (it == "null") "" else it }, t.optString("kind", "send").let { if (it == "cashin") it else "send" },
+                t.optDouble("cost", 0.0).let { if (it.isNaN() || it < 0) 0.0 else it }, t.optString("cost_note", "").let { if (it == "null") "" else it })
         }
     } catch (e: Exception) {
         emptyList()
@@ -167,25 +182,25 @@ object JobsApi {
     }
 
     /** The partner says they sent [amount] with P2P [charge]; the next Cash Out message for this wallet will check it. */
-    fun sent(s: AppSettings, provider: String, amount: Double, charge: Double): SendResult {
-        val body = JSONObject().put("action", "job_sent").put("provider", provider).put("amount", amount).put("charge", charge).toString()
+    fun sent(s: AppSettings, provider: String, f: SendForm): SendResult {
+        val body = f.into(JSONObject().put("action", "job_sent").put("provider", provider).put("amount", f.amount).put("charge", f.charge)).toString()
         return JobsParser.parseSend(post(s, body))
     }
 
     /** A cash-in job: the partner cashed in [amount] and the wallet gave [commission] for it (added to the balance, no SMS). */
-    fun cashInSent(s: AppSettings, provider: String, amount: Double, commission: Double): SendResult {
-        val body = JSONObject().put("action", "cashin_sent").put("provider", provider).put("amount", amount).put("commission", commission).toString()
+    fun cashInSent(s: AppSettings, provider: String, f: SendForm): SendResult {
+        val body = f.into(JSONObject().put("action", "cashin_sent").put("provider", provider).put("amount", f.amount).put("commission", f.charge)).toString()
         return JobsParser.parseSend(post(s, body))
     }
 
-    fun cashInFix(s: AppSettings, id: String, amount: Double, commission: Double): SendResult {
-        val body = JSONObject().put("action", "cashin_fix").put("id", id).put("amount", amount).put("commission", commission).toString()
+    fun cashInFix(s: AppSettings, id: String, f: SendForm): SendResult {
+        val body = f.into(JSONObject().put("action", "cashin_fix").put("id", id).put("amount", f.amount).put("commission", f.charge)).toString()
         return JobsParser.parseSend(post(s, body))
     }
 
     /** The one correction allowed after a send did not add up. */
-    fun fix(s: AppSettings, id: String, amount: Double, charge: Double): SendResult {
-        val body = JSONObject().put("action", "job_fix").put("id", id).put("amount", amount).put("charge", charge).toString()
+    fun fix(s: AppSettings, id: String, f: SendForm): SendResult {
+        val body = f.into(JSONObject().put("action", "job_fix").put("id", id).put("amount", f.amount).put("charge", f.charge)).toString()
         return JobsParser.parseSend(post(s, body))
     }
 

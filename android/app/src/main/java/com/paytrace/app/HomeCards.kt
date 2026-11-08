@@ -2,6 +2,8 @@ package com.paytrace.app
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -64,7 +66,7 @@ fun StatusPill(healthy: Boolean, configured: Boolean) {
 
 /** "কাজ করুন এখনই": what to do, in a box, and the wallet address to do it with. */
 @Composable
-fun JobCard(job: Job, onSent: suspend (Double, Double) -> String?) {
+fun JobCard(job: Job, onSent: suspend (SendForm) -> String?) {
     val cashIn = job.isCashIn
     val clip = LocalClipboardManager.current
     var copied by remember(job.wallet) { mutableStateOf(false) }
@@ -142,8 +144,8 @@ fun JobCard(job: Job, onSent: suspend (Double, Double) -> String?) {
     if (confirm) {
         SendDialog(
             title = "How much did you send?",
-            text = if (cashIn) "Type the exact amount you sent to our number, then the commission your wallet gave you or the charge you paid (0 if none). PayTrace checks these numbers against the next cash-out message."
-            else "Type exactly what left the wallet, then the P2P charge. PayTrace checks it against the next cash-out message.",
+            text = if (cashIn) "Type the exact amount you sent to our number and the commission your wallet gave you. If anything else cost you money (a fund transfer, a charge), type it under Other cost and write what it was for. PayTrace checks these numbers against the next cash-out message."
+            else "Type exactly what left the wallet, then the P2P charge. If anything else cost you money, type it under Other cost and write what it was for. PayTrace checks it against the next cash-out message.",
             initialAmount = "",
             initialCharge = "",
             amountLabel = "Amount you sent (Tk)",
@@ -161,21 +163,25 @@ fun SendDialog(
     text: String,
     initialAmount: String,
     initialCharge: String,
-    onSubmit: suspend (Double, Double) -> String?,
+    onSubmit: suspend (SendForm) -> String?,
     onClose: () -> Unit,
     amountLabel: String = "Amount you sent (Tk)",
     chargeLabel: String = "P2P charge (Tk)",
+    initialCost: String = "",
+    initialCostNote: String = "",
 ) {
     val scope = rememberCoroutineScope()
     var amount by remember { mutableStateOf(initialAmount) }
     var charge by remember { mutableStateOf(initialCharge) }
+    var cost by remember { mutableStateOf(initialCost) }
+    var costNote by remember { mutableStateOf(initialCostNote) }
     var busy by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = { if (!busy) onClose() },
         title = { Text(title) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(text, style = MaterialTheme.typography.bodyMedium)
                 OutlinedTextField(
                     amount, { amount = it; problem = null }, Modifier.fillMaxWidth(),
@@ -187,6 +193,18 @@ fun SendDialog(
                     label = { Text(chargeLabel) }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 )
+                // Anything else the job cost (a fund-transfer fee, a P2P fee ...) and what it was for: the owner reads it with the send.
+                OutlinedTextField(
+                    cost, { cost = it; problem = null }, Modifier.fillMaxWidth(),
+                    label = { Text("Other cost (Tk), if any") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                )
+                OutlinedTextField(
+                    costNote, { costNote = it.take(SendForm.NOTE_MAX); problem = null }, Modifier.fillMaxWidth(),
+                    label = { Text("What did it cost for?") },
+                    placeholder = { Text("e.g. fund transfer fee 25, bKash charge 10") },
+                    minLines = 2, maxLines = 4,
+                )
                 problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
             }
         },
@@ -196,12 +214,17 @@ fun SendDialog(
                 onClick = {
                     val a = MoneyInput.parse(amount)
                     val c = if (charge.isBlank()) 0.0 else MoneyInput.parse(charge)
+                    val o = if (cost.isBlank()) 0.0 else MoneyInput.parse(cost)
                     if (a == null || a <= 0.0 || c == null) {
                         problem = "Type the amount and the charge in taka, for example 10000 and 50."
+                    } else if (o == null || o < 0.0) {
+                        problem = "Type the other cost in taka, for example 25, or leave it empty."
+                    } else if (o > 0.0 && costNote.isBlank()) {
+                        problem = "Write what the other cost was for."
                     } else {
                         busy = true
                         scope.launch {
-                            val err = onSubmit(a, c)
+                            val err = onSubmit(SendForm(a, c, o, costNote.trim()))
                             busy = false
                             if (err == null) onClose() else problem = err
                         }
@@ -299,7 +322,7 @@ fun PaidRecentCard(e: Earnings) {
 
 /** One send the partner submitted, on one compact row: what was sent, when, and how the check went (green, waiting, or red with what to do). */
 @Composable
-fun ActivityRow(t: Transfer, onFix: suspend (Double, Double) -> String?) {
+fun ActivityRow(t: Transfer, onFix: suspend (SendForm) -> String?) {
     val st = statusColors()
     var fixing by remember { mutableStateOf(false) }
     val (mark, fg, bg) = when (t.status) {
@@ -335,9 +358,11 @@ fun ActivityRow(t: Transfer, onFix: suspend (Double, Double) -> String?) {
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                     Text((if (t.isCashIn) "Cash in " else "Sent ") + EarningsFormat.money(t.amount), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     Text(
-                        EarningsFormat.provider(t.provider) + (if (t.isCashIn) " \u00B7 commission " else " \u00B7 charge ") + EarningsFormat.money(t.charge) + (if (whenText.isNotBlank()) " \u00B7 $whenText" else ""),
+                        EarningsFormat.provider(t.provider) + (if (t.isCashIn) " \u00B7 commission " else " \u00B7 charge ") + EarningsFormat.money(t.charge) +
+                            (if (t.cost > 0.0) " \u00B7 other cost " + EarningsFormat.money(t.cost) else "") + (if (whenText.isNotBlank()) " \u00B7 $whenText" else ""),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (t.costNote.isNotBlank()) Text("Cost: " + t.costNote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Text(
                     chip,
@@ -358,8 +383,10 @@ fun ActivityRow(t: Transfer, onFix: suspend (Double, Double) -> String?) {
             initialCharge = if (t.charge == 0.0) "" else t.charge.toString(),
             amountLabel = if (t.isCashIn) "Cash-in amount (Tk)" else "Amount you sent (Tk)",
             chargeLabel = if (t.isCashIn) "Cash-in commission you got (Tk)" else "P2P charge (Tk)",
-            onSubmit = { a, c -> onFix(a, c) },
+            onSubmit = { f -> onFix(f) },
             onClose = { fixing = false },
+            initialCost = if (t.cost == 0.0) "" else t.cost.toString(),
+            initialCostNote = t.costNote,
         )
     }
 }

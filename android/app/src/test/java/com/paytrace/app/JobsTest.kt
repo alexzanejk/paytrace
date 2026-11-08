@@ -151,4 +151,20 @@ class JobsTest {
         assertTrue(B2bAnswer.text(null, "bKash").startsWith("Could not reach the server"))
         assertTrue(B2bAnswer.text("not json", "bKash").startsWith("Could not reach the server"))
     }
+
+    // Migration 076: the partner's other cost and what it was for travel with the send, and come back on their own list.
+    @Test fun otherCostAndItsNoteGoToTheServerAndComeBack() {
+        val body = SendForm(28000.0, 0.0, 25.0, "  fund transfer fee  ").into(org.json.JSONObject().put("action", "cashin_sent"))
+        assertEquals(25.0, body.getDouble("cost"), 0.001)
+        assertEquals("fund transfer fee", body.getString("cost_note"))
+        assertEquals(SendForm.NOTE_MAX, SendForm(1.0, 0.0, 1.0, "x".repeat(500)).into(org.json.JSONObject()).getString("cost_note").length)
+        val t = JobsParser.parseTransfers(
+            """{"success":true,"transfers":[{"id":"a","provider":"rocket","amount":28000,"charge":0,"status":"checking","attempts":1,"kind":"cashin","cost":25,"cost_note":"fund transfer fee"},
+               {"id":"b","provider":"rocket","amount":100,"charge":0,"status":"verified","attempts":1,"cost_note":null}]}"""
+        )
+        assertEquals(25.0, t[0].cost, 0.001)
+        assertEquals("fund transfer fee", t[0].costNote)
+        assertEquals(0.0, t[1].cost, 0.001)
+        assertEquals("", t[1].costNote)
+    }
 }
