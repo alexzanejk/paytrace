@@ -26,7 +26,9 @@ import { StatementSection } from "@/components/StatementSection";
 import { PhoneActions } from "@/components/PhoneActions";
 import { CashInSection } from "@/components/CashInSection";
 import { PhonePermissions } from "@/components/PhonePermissions";
-import { AppVersionCard, VersionChip } from "@/components/AppVersionCard";
+import { AppVersionCard, OutdatedCard, VersionChip } from "@/components/AppVersionCard";
+import { latestReleaseBuild } from "@/lib/latestRelease";
+import { newestOf } from "@/lib/appVersion";
 import { GROUP_CODE, GroupChoice } from "@/components/GroupChoice";
 import { CommissionCard } from "@/components/CommissionCard";
 import { B2BFloat } from "@/components/B2BFloat";
@@ -85,7 +87,15 @@ export function Devices() {
       // The newest app version (update system). A missing table never stops the page.
       const rel = await sb.from("app_release").select("version_code,notes").limit(1);
       const release = (rel.data?.[0] ?? null) as { version_code: number; notes: string | null } | null;
-      return { devices, totals, flows, balances, simBalances, floats, floatsError, gaps, notOurs, wallets, walletStats, rates, commission, groups, release };
+      // The newest build on the download link (GitHub release), so an outdated phone is seen without anyone typing the
+      // number (owner 2026-11-08). The typed number stays as the fallback; the higher of the two wins.
+      const fromLink = await latestReleaseBuild();
+      const newestBuild = newestOf(release?.version_code, fromLink);
+      if (fromLink && (!release || fromLink > release.version_code)) {
+        // Keep the database in step, quietly: the phone's own update check does not read it, but other pages may.
+        await sb.rpc("set_app_release", { p_version_code: fromLink, p_notes: release?.notes ?? null }).then(() => undefined, () => undefined);
+      }
+      return { devices, totals, flows, balances, simBalances, floats, floatsError, gaps, notOurs, wallets, walletStats, rates, commission, groups, release, newestBuild, fromLink };
     },
     [day],
     { refreshMs: 10000 },
@@ -169,8 +179,11 @@ export function Devices() {
 
       {wakeAllNote ? <p role="status" className="mb-4 text-sm text-muted-foreground">{wakeAllNote}</p> : null}
 
+      <OutdatedCard phones={approved.map((d) => ({ name: d.name, version: d.info?.app_version }))} newest={data?.newestBuild ?? null} />
+
       <AppVersionCard
-        newest={data?.release?.version_code || null}
+        newest={data?.newestBuild ?? null}
+        fromLink={data?.fromLink ?? null}
         notes={data?.release?.notes ?? null}
         versions={approved.map((d) => d.info?.app_version)}
         onChanged={refresh}
@@ -288,7 +301,7 @@ export function Devices() {
               walletStats={(data?.walletStats ?? []).filter((x) => x.device_id === d.id)}
               rates={(data?.rates ?? []).filter((r) => r.device_id === d.id)}
               commission={(data?.commission ?? []).find((c) => c.device_id === d.id)}
-              newest={data?.release?.version_code || null}
+              newest={data?.newestBuild ?? null}
               error={failed[d.id]}
               onChanged={refresh}
               onRemove={() => setStatus(d, "revoked")}

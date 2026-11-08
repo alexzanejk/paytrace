@@ -10,6 +10,7 @@ data class SmsRow(
     val type: Int, // 1 received, 2 sent, 3 draft, 4 sending, 5 failed, 6 queued (Android's own numbers)
     val read: Boolean,
     val status: Int, // delivery report: -1 none, 0 delivered, 32 pending, 64 failed
+    val subId: Int = -1, // the SIM subscription the phone recorded for it; -1 = not recorded
 ) {
     val incoming get() = type == TYPE_INBOX
     val failed get() = type == TYPE_FAILED || status == STATUS_FAILED

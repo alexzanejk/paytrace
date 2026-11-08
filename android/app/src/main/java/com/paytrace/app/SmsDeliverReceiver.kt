@@ -16,9 +16,12 @@ class SmsDeliverReceiver : BroadcastReceiver() {
         val body = parts.joinToString("") { it.messageBody ?: "" }
         val date = parts[0].timestampMillis.takeIf { it > 0 } ?: System.currentTimeMillis()
         val slot = SimSlot.fromIntent(context, intent)
+        // The SIM goes into the inbox row too: as the SMS app, PayTrace is the only one who will ever write it there
+        // (owner 2026-11-08: no app could show the SIM of a message on a phone where PayTrace is the SMS app).
+        val subId = SimSlot.subscriptionFromIntent(intent)
 
         SmsIntake.runAwake(context, this) {
-            SmsIntake.saveToInbox(context, sender, body, date)
+            SmsIntake.saveToInbox(context, sender, body, date, subId)
             try {
                 if (Providers.fromSender(sender) != null) SmsIntake.handlePayment(context, sender, body, date, slot)
                 else SmsIntake.notifyOther(context, sender, body)

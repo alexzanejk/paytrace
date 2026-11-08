@@ -34,6 +34,7 @@ export interface DeviceInfo {
   accessibility_repairs?: number;
   /** Wallet numbers saved on the phone: which number is bKash, Nagad, Rocket, and which SIM each is in. */
   wallets?: { provider: string; number: string; slot: number; found: boolean }[];
+  sim_keys?: string; // the names on the last SMS broadcast whose SIM the phone could not read (names only, never values)
   push_ready?: boolean;
   keepalive_test?: "pass" | "fail" | "short";
   keepalive_test_at?: string;
@@ -125,6 +126,13 @@ export function settingsLines(info: DeviceInfo | null | undefined): SettingsLine
   } else if (info.accessibility_on === true && info.accessibility_running === true) {
     const n = info.accessibility_repairs ?? 0;
     out.push({ text: n > 0 ? `Accessibility service running (self-repaired ${n}×)` : "Accessibility service running", tone: "ok", hint: n > 0 ? "The phone has switched the service off and on by itself after being killed, this many times. Many repairs mean the phone's battery settings still let it kill PayTrace." : "The dialer way is ready: PayTrace can read the wallet's menu on this phone." });
+  }
+  if (info.sim_keys) {
+    out.push({
+      text: `SIM not readable on a message; this phone's messages carry: ${info.sim_keys}`,
+      tone: "warn",
+      hint: "The app could not tell which SIM a message arrived on, so two wallets of one kind on this phone cannot be told apart. Send this line to the developer: it names what the phone puts on the message, which is what the app has to read.",
+    });
   }
   if (info.cashin_allowed === true) {
     out.push({ text: "Sending money ON", tone: "idle", hint: "The phone will make a cash-in when the dashboard asks (still limited by the daily limit on the Jobs page and the Tk 10,000 cap per cash-in)." });

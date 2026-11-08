@@ -51,6 +51,13 @@ object LaunchRequest {
     var address by mutableStateOf<String?>(null)
 }
 
+/** "SIM 1 · Grameenphone" for a message's subscription, or "" when the phone did not record one. */
+private fun simLabelOf(ctx: android.content.Context, subId: Int): String {
+    if (subId < 0) return ""
+    val slot = SimSlot.slotOf(ctx, subId) ?: return ""
+    return SimNames.label(slot, SimNames.list(ctx))
+}
+
 private fun whenText(ms: Long): String = SimpleDateFormat("dd MMM HH:mm", Locale.getDefault()).format(Date(ms))
 
 /** Conversations and a simple chat view: read, mark as seen, send. Text messages only; picture messages are not supported. */
@@ -247,6 +254,10 @@ private fun Bubble(m: SmsRow) {
                     else -> ""
                 }
                 Text(whenText(m.date) + if (state.isNotEmpty()) "  ·  $state" else "", style = MaterialTheme.typography.labelSmall)
+                // Which SIM, the way Google Messages writes it ("SIM 1 · Grameenphone"); nothing when the phone did not record it.
+                val ctx = LocalContext.current
+                val simText = remember(m.subId) { simLabelOf(ctx, m.subId) }
+                if (simText.isNotEmpty()) Text(simText, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 Text(
                     if (copied) "Copied" else "Copy",
                     style = MaterialTheme.typography.labelMedium,

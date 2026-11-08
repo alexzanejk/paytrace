@@ -28,11 +28,26 @@ object SmsStore {
         Telephony.Sms._ID, Telephony.Sms.THREAD_ID, Telephony.Sms.ADDRESS, Telephony.Sms.BODY,
         Telephony.Sms.DATE, Telephony.Sms.TYPE, Telephony.Sms.READ, Telephony.Sms.STATUS,
     )
+    private val PROJECTION_SIM = PROJECTION + Telephony.Sms.SUBSCRIPTION_ID
 
     private fun android.database.Cursor.toRow() = SmsRow(
         id = getLong(0), threadId = getLong(1), address = getString(2) ?: "", body = getString(3) ?: "",
         date = getLong(4), type = getInt(5), read = getInt(6) == 1, status = getInt(7),
+        subId = if (columnCount > 8 && !isNull(8)) getInt(8) else -1,
     )
+
+    /** Queries with the SIM column first and, on a phone whose message table lacks it, without. */
+    private fun query(ctx: Context, where: String?, args: Array<String>?, limit: Int): List<SmsRow> {
+        val out = ArrayList<SmsRow>()
+        val run = { proj: Array<String> ->
+            out.clear()
+            ctx.contentResolver.query(Telephony.Sms.CONTENT_URI, proj, where, args, "${Telephony.Sms.DATE} DESC")?.use { c ->
+                while (c.moveToNext() && out.size < limit) out.add(c.toRow())
+            }
+        }
+        try { run(PROJECTION_SIM) } catch (e: Exception) { run(PROJECTION) }
+        return out
+    }
 
     fun canRead(ctx: Context) =
         ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
@@ -42,24 +57,16 @@ object SmsStore {
 
     /** The newest messages, for the conversation list. */
     fun recent(ctx: Context, limit: Int = 1500): List<SmsRow> = try {
-        val out = ArrayList<SmsRow>()
-        ctx.contentResolver.query(Telephony.Sms.CONTENT_URI, PROJECTION, null, null, "${Telephony.Sms.DATE} DESC")?.use { c ->
-            while (c.moveToNext() && out.size < limit) out.add(c.toRow())
-        }
-        out
+        query(ctx, null, null, limit)
     } catch (e: Exception) {
         emptyList()
     }
 
     /** One conversation, oldest first. */
     fun thread(ctx: Context, threadId: Long, address: String, limit: Int = 500): List<SmsRow> = try {
-        val out = ArrayList<SmsRow>()
         val (where, args) = if (threadId > 0) "${Telephony.Sms.THREAD_ID} = ?" to arrayOf(threadId.toString())
         else "${Telephony.Sms.ADDRESS} = ?" to arrayOf(address)
-        ctx.contentResolver.query(Telephony.Sms.CONTENT_URI, PROJECTION, where, args, "${Telephony.Sms.DATE} DESC")?.use { c ->
-            while (c.moveToNext() && out.size < limit) out.add(c.toRow())
-        }
-        out.reversed()
+        query(ctx, where, args, limit).reversed()
     } catch (e: Exception) {
         emptyList()
     }
