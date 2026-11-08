@@ -17,6 +17,7 @@ const PLAIN: [string, string][] = [
   ["bill_paid", "A bill paid from the wallet. Not a customer payment; kept so the balance adds up"],
   ["loan_repaid", "A bKash loan repayment from the wallet. Not a customer payment; kept so the balance adds up"],
   ["unverified_format", "Message format not confirmed yet, held to be safe"],
+  ["not_ours", "Not one of this phone's wallets: no wallet of this kind (or in this SIM) is set up in the PayTrace app on the phone. Kept for the record only; not counted anywhere"],
   ["balance_chain_mismatch", "Account balance does not follow the previous message — possibly a fake SMS"],
 ];
 

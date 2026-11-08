@@ -641,6 +641,35 @@ async function storeSms(src: SmsSource): Promise<Response> {
     return json({ success: true, message: "provider disabled on server", ignored: true });
   }
 
+  // ---- not one of this phone's wallets (migration 064): a wallet that is not set up in the app on that phone is not
+  //      ours. Stored for the record only: no totals, no balance, no chain, no gap, no job, no alert. A phone with no
+  //      wallet set up at all is treated as before (the rule cannot tell what is ours there). ----
+  if (deviceId) {
+    const { data: ours, error: oursError } = await db.rpc("wallet_is_ours", { p_device: deviceId, p_provider: d.provider, p_sim: simSlot });
+    if (!oursError && ours === false) {
+      const outgoingNow = d.txnType === "transfer_out" || d.txnType === "transfer_in";
+      const { data: kept, error: keepError } = await db
+        .from("payments")
+        .insert({
+          provider: d.provider, txn_type: outgoingNow ? "unknown" : d.txnType, trx_id: d.trxId,
+          amount: d.amount, fee: d.fee, commission: d.commission, balance: d.balance,
+          counterparty: d.counterparty, occurred_at: d.occurredAt,
+          raw_message: raw, status: "ignored", review_reason: "not_ours",
+          balance_delta: null, chain_status: "unverified",
+          device_id: deviceId, sim_slot: simSlot,
+        })
+        .select("id")
+        .single();
+      if (keepError) {
+        if (keepError.code === "23505") return json({ success: true, message: "Duplicate: already recorded", duplicate: true });
+        await log("error", d.provider, { code: keepError.code });
+        return json({ success: false, message: "could not save" }, 500);
+      }
+      if (!src.rerun) await log("created", d.provider, { trx_id: d.trxId, type: d.txnType, amount: d.amount, device_id: deviceId, sim_slot: simSlot, not_ours: true }, kept.id);
+      return json({ success: true, message: "stored: not one of this phone's wallets", payment_id: kept.id, status: "ignored", not_ours: true });
+    }
+  }
+
   // ---- balance chain: a forged SMS cannot know the live account balance ----
   // Money the agent SENT OUT (B2B to the distributor, a cash-in, a bill) lowers the balance: judge it as a negative amount.
   // Money that came in on the agent's own side (B2B from the distributor, a cash-in from an agent) raises it like a payment.
