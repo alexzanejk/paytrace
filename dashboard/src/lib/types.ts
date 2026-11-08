@@ -91,6 +91,8 @@ export interface Device {
   allow_cashin?: boolean;
   /** The phone app may show its Personal accounts section (migration 065; off by default). */
   allow_personal?: boolean;
+  /** Where this partner's commission is paid (migration 068); saved only by the owner on the dashboard. */
+  commission_number?: string | null;
 }
 
 export interface EventRow {
