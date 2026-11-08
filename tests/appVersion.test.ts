@@ -28,6 +28,14 @@ check("outdated phones, most behind first, unreported left out", od.length === 2
 check("nobody is outdated without a newest build", outdatedPhones([{ name: "a", version: "1.0.1" }], null).length === 0);
 check("the warning sentence names the phones and the newest", outdatedLine(od, 150).startsWith("Outdated app on 2 phones: Unnamed phone (v1.0.100), rubel (v1.0.147). The newest is v1.0.150.") && outdatedLine([], 150) === "");
 
+// The dashboard's security header must let the browser ask GitHub for the newest release, or the Outdated app card can
+// never appear (2026-11-08: it blocked the lookup silently and every phone read "up to date"). Only the dashboard rule;
+// the pay page keeps Supabase only.
+const headers = readFileSync(new URL("../dashboard/public/_headers", import.meta.url), "utf8");
+const rules = headers.split(/\n(?=\S)/);
+check("the dashboard rule allows api.github.com", /connect-src[^\n]*https:\/\/api\.github\.com/.test(rules.find((r) => r.startsWith("/*")) ?? ""));
+check("the pay page rules do not", rules.filter((r) => r.startsWith("/pay")).every((r) => !r.includes("api.github.com")));
+
 const sql = readFileSync(new URL("../supabase/migrations/20261030_040_app_release.sql", import.meta.url), "utf8");
 check("only admins can read or change the release", sql.includes("using (public.is_admin())") && sql.includes("if not public.is_admin() then raise exception"));
 check("the table has exactly one row", sql.includes("check (id)") && sql.includes("on conflict (id) do nothing"));
