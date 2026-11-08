@@ -23,3 +23,32 @@ export function versionCounts(versions: Array<string | null | undefined>, newest
   for (const v of versions) out[versionState(v, newest)]++;
   return out;
 }
+
+/** The build number of a GitHub release tag such as "v1.0.153" (the Android build publishes one per build on main). */
+export const releaseBuild = (tag: string | null | undefined): number | null => buildNumber(tag);
+
+/** The newest build PayTrace knows of: the one the owner typed, or the newest release on the download link, whichever is higher. */
+export function newestOf(...candidates: Array<number | null | undefined>): number | null {
+  const n = candidates.filter((c): c is number => typeof c === "number" && Number.isInteger(c) && c > 0);
+  return n.length ? Math.max(...n) : null;
+}
+
+export interface Outdated { name: string; version: string; behindBy: number }
+
+/** The phones running an older app than the newest build, most behind first. A phone that never reported is not listed. */
+export function outdatedPhones(phones: Array<{ name: string | null; version: string | null | undefined }>, newest: number | null | undefined): Outdated[] {
+  if (!newest) return [];
+  const out: Outdated[] = [];
+  for (const p of phones) {
+    const b = buildNumber(p.version);
+    if (b !== null && b < newest) out.push({ name: p.name || "Unnamed phone", version: `1.0.${b}`, behindBy: newest - b });
+  }
+  return out.sort((a, b) => b.behindBy - a.behindBy);
+}
+
+/** One sentence for the Phones page's warning card. */
+export function outdatedLine(list: Outdated[], newest: number): string {
+  if (list.length === 0) return "";
+  const names = list.map((o) => `${o.name} (v${o.version})`).join(", ");
+  return `Outdated app on ${list.length} phone${list.length === 1 ? "" : "s"}: ${names}. The newest is v1.0.${newest}. Update from the app's Settings, or install the download link.`;
+}

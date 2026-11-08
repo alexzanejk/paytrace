@@ -134,6 +134,9 @@ object Sender {
             wallets.put(JSONObject().put("provider", prov).put("number", n).put("slot", s.ussdSlotOf(prov)).put("found", s.walletSimFoundOf(prov) >= 0))
         }
         if (wallets.length() > 0) o.put("wallets", wallets)
+        // The extra names (never values) on the last SMS broadcast whose SIM this phone could not read: the dashboard shows
+        // them, so an unknown phone model becomes a one-line fix instead of a guess (owner 2026-11-08).
+        SimSlot.keysSeen(ctx).takeIf { it.isNotEmpty() }?.let { o.put("sim_keys", it) }
         o.put("push_ready", s.pushToken.isNotEmpty())
         o.put("wake_count", s.wakeCount)
         if (s.lastWakeAt > 0) o.put("last_wake_at", s.lastWakeAt)

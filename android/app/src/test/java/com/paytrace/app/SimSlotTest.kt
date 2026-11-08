@@ -16,6 +16,16 @@ class SimSlotTest {
         assertEquals(1, SimSlot.resolve(mapOf("slot" to 1, SimSlot.EXTRA_SUBSCRIPTION_INDEX to 1), subToSlot))
     }
 
+    @Test fun theNamesOtherBrandsUseAreReadToo() {
+        // Slot-valued names seen on Xiaomi / Samsung / older HTC builds, and Android's own SLOT_INDEX.
+        assertEquals(1, SimSlot.resolve(mapOf("simId" to 1), subToSlot))
+        assertEquals(0, SimSlot.resolve(mapOf("slot_id" to 0), subToSlot))
+        assertEquals(1, SimSlot.resolve(mapOf("android.telephony.extra.SLOT_INDEX" to 1), subToSlot))
+        // Subscription-valued names.
+        assertEquals(1, SimSlot.resolve(mapOf("subId" to 2), subToSlot))
+        assertEquals(0, SimSlot.resolve(mapOf("subscriptionId" to 1), subToSlot))
+    }
+
     @Test fun thePhoneIdIsTheLastResort() {
         assertEquals(1, SimSlot.resolve(mapOf("phone" to 1), subToSlot))
         // A subscription id that translates wins over the phone id; the phone id only speaks when nothing else does.
@@ -33,6 +43,13 @@ class SimSlotTest {
         assertNull(SimSlot.resolve(mapOf("subscription" to -1), subToSlot))
         assertNull(SimSlot.resolve(emptyMap(), subToSlot))
         assertNull(SimSlot.resolve(mapOf("slot" to "x"), subToSlot))
+    }
+
+    @Test fun theSubscriptionItselfIsReadForTheInboxRow() {
+        assertEquals(2, SimSlot.subscriptionOf(mapOf(SimSlot.EXTRA_SUBSCRIPTION_INDEX to 2)))
+        assertEquals(7, SimSlot.subscriptionOf(mapOf("sub_id" to "7")))
+        assertNull(SimSlot.subscriptionOf(mapOf("subscription" to -1)))
+        assertNull(SimSlot.subscriptionOf(mapOf("slot" to 1)))
     }
 
     @Test fun aMessageKeepsItsSlotThroughTheCatchUpSelection() {

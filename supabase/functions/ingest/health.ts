@@ -31,6 +31,7 @@ export interface DeviceInfo {
   accessibility_running?: boolean; // ...and Android has really started it (a killed app leaves it on but dead: "malfunctioning")
   accessibility_repairs?: number; // times the phone switched that dead service off and on by itself (needs the adb grant)
   wallets?: WalletInfo[]; // the wallet numbers saved on the phone and which SIM each is in
+  sim_keys?: string; // the extra names (never values) on the last SMS broadcast whose SIM the app could not read
   wake_count?: number; // wake-up pushes this phone has received
   last_wake_at?: string; // when the latest one arrived
   push_ready?: boolean; // the phone has a Firebase push address, so the server can wake it
@@ -104,6 +105,10 @@ export function cleanInfo(body: Record<string, unknown>, now: Date = new Date())
       if (provider && number && slot !== undefined) wallets.push({ provider, number, slot, found: found === true });
     }
     if (wallets.length) info.wallets = wallets;
+  }
+  if (typeof body.sim_keys === "string") {
+    const k = body.sim_keys.replace(/[^A-Za-z0-9_.,:-]/g, "").slice(0, 200);
+    if (k) info.sim_keys = k;
   }
   const wakes = asCount(body.wake_count, 1_000_000);
   if (wakes !== undefined) info.wake_count = wakes;

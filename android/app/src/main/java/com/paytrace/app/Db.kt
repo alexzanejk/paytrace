@@ -127,7 +127,16 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "paytrace.db"
         v.put("created_at", receivedAt ?: now)
         v.put("updated_at", now)
         if (simSlot != null && simSlot in 0..1) v.put("sim_slot", simSlot)
-        return writableDatabase.insertWithOnConflict("logs", null, v, SQLiteDatabase.CONFLICT_IGNORE)
+        val id = writableDatabase.insertWithOnConflict("logs", null, v, SQLiteDatabase.CONFLICT_IGNORE)
+        // The same message can arrive twice (SMS app mode and the normal listener, or the inbox scan); when only the
+        // later copy names the SIM, keep it, so the row is complete if it has not been sent yet.
+        if (id == -1L && simSlot != null && simSlot in 0..1) {
+            try {
+                writableDatabase.execSQL("update logs set sim_slot = ? where dedupe = ? and sim_slot is null", arrayOf(simSlot, sha(sender + "\n" + body)))
+            } catch (e: Exception) {
+            }
+        }
+        return id
     }
 
     fun get(id: Long): LogRow? =

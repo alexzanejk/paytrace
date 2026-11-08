@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { buildNumber, versionCounts, versionState } from "../dashboard/src/lib/appVersion.ts";
+import { buildNumber, newestOf, outdatedLine, outdatedPhones, releaseBuild, versionCounts, versionState } from "../dashboard/src/lib/appVersion.ts";
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, extra?: unknown) {
@@ -20,6 +20,13 @@ check("no newest version set means unknown", versionState("1.0.64", 0) === "unkn
 
 const c = versionCounts(["1.0.64", "1.0.55", undefined, "1.0.64", "1.0.99"], 64);
 check("counts every state", c.current === 2 && c.behind === 1 && c.unknown === 1 && c.ahead === 1, c);
+
+check("a release tag gives its build", releaseBuild("v1.0.153") === 153 && releaseBuild(null) === null);
+check("newest is the highest known, ignoring blanks", newestOf(126, 153) === 153 && newestOf(null, 150) === 150 && newestOf(null, undefined) === null && newestOf(0) === null);
+const od = outdatedPhones([{ name: "rubel", version: "1.0.147" }, { name: "Vivo", version: "1.0.150" }, { name: "new", version: undefined }, { name: null, version: "1.0.100" }], 150);
+check("outdated phones, most behind first, unreported left out", od.length === 2 && od[0]!.name === "Unnamed phone" && od[0]!.behindBy === 50 && od[1]!.name === "rubel" && od[1]!.version === "1.0.147");
+check("nobody is outdated without a newest build", outdatedPhones([{ name: "a", version: "1.0.1" }], null).length === 0);
+check("the warning sentence names the phones and the newest", outdatedLine(od, 150).startsWith("Outdated app on 2 phones: Unnamed phone (v1.0.100), rubel (v1.0.147). The newest is v1.0.150.") && outdatedLine([], 150) === "");
 
 const sql = readFileSync(new URL("../supabase/migrations/20261030_040_app_release.sql", import.meta.url), "utf8");
 check("only admins can read or change the release", sql.includes("using (public.is_admin())") && sql.includes("if not public.is_admin() then raise exception"));

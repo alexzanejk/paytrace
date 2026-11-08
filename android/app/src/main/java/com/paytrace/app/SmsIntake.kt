@@ -43,13 +43,16 @@ object SmsIntake {
         if (!settings.providerEnabled(provider)) return
         if (!settings.monitoring) return // paused by the owner; the inbox scan picks these up when monitoring resumes
         if (body.isBlank()) return
-        val id = Db.get(ctx).insertIfNew(provider, sender, body, Providers.quick(body), receivedAt, simSlot)
+        // The broadcast did not say which SIM: the phone's own inbox row does (the SMS app writes it with the subscription
+        // within a second or two). Worth up to 2 s: without the SIM the server cannot tell two wallets of one kind apart.
+        val slot = simSlot ?: if (SmsStore.canRead(ctx)) SimSlot.fromProviderPatiently(ctx, sender, body, (receivedAt ?: System.currentTimeMillis()) - 120_000L) else null
+        val id = Db.get(ctx).insertIfNew(provider, sender, body, Providers.quick(body), receivedAt, slot)
         if (id > 0) SendWorker.enqueue(ctx, id, 0)
     }
 
     /** Only when PayTrace is the default SMS app: Android no longer saves messages itself, so PayTrace must put each one
      *  in the phone's inbox, or it would vanish. Returns true if saved. */
-    fun saveToInbox(ctx: Context, sender: String, body: String, dateMs: Long): Boolean = try {
+    fun saveToInbox(ctx: Context, sender: String, body: String, dateMs: Long, subId: Int? = null): Boolean = try {
         val v = ContentValues()
         v.put(Telephony.Sms.ADDRESS, sender)
         v.put(Telephony.Sms.BODY, body)
@@ -58,6 +61,8 @@ object SmsIntake {
         v.put(Telephony.Sms.READ, 0)
         v.put(Telephony.Sms.SEEN, 0)
         v.put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_INBOX)
+        // Which SIM it came in on, so the Messages tab (and any other app) can show it like Google Messages does.
+        if (subId != null && subId >= 0) v.put(Telephony.Sms.SUBSCRIPTION_ID, subId)
         ctx.contentResolver.insert(Telephony.Sms.Inbox.CONTENT_URI, v) != null
     } catch (e: Exception) {
         false
