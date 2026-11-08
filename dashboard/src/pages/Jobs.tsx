@@ -153,16 +153,17 @@ export function Jobs() {
           </section>
 
           <div className="grid gap-3">
-            <Disclosure
-              icon={ClipboardCheck}
-              title="Did the partners really do it? (checks)"
-              summary={waitingChecks ? `${waitingChecks} waiting for you (also shown at the top)` : "Every send the partners submitted, with what came of it"}
+            <a
+              href="#/jobhistory"
+              className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 text-sm transition-colors hover:bg-muted/50"
             >
-              <h4 className="mb-2 text-sm font-semibold">Crypto job: sends</h4>
-              <TransfersTable rows={data.transfers} nameOf={devices.nameOf} onDone={refresh} />
-              <h4 className="mb-2 mt-6 text-sm font-semibold">Taka job: sends to our numbers</h4>
-              <CashInChecks />
-            </Disclosure>
+              <ClipboardCheck aria-hidden className="size-5 text-muted-foreground" />
+              <span className="flex-1">
+                <span className="block font-medium">Job history</span>
+                <span className="text-muted-foreground">Every job by stage: pending on the phones, waiting for your OK, done, rejected or cancelled{waitingChecks ? ` · ${waitingChecks} waiting for you` : ""}</span>
+              </span>
+              <span aria-hidden className="text-muted-foreground">›</span>
+            </a>
             <Disclosure icon={Banknote} title="Taka job: our numbers and the text" summary="Where the partners send the taka">
               <TakaJobSettings />
             </Disclosure>
