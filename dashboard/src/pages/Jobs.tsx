@@ -84,7 +84,9 @@ export function Jobs() {
       const row = must(await sb.from("job_settings").select("*").maybeSingle()) as {
         enabled: boolean; threshold: number | string; instruction: string; wallets: Partial<Record<JobProvider, string>> | null; urgency: Urgency | null; network: string | null;
       } | null;
-      const open = must(await sb.from("device_open_jobs").select("*").order("balance", { ascending: false })) as OpenJob[];
+      // Through an admin-only function (migration 071): the view itself is refused for the signed-in admin, because it
+      // works out the B2B float with a server-only function.
+      const open = (must(await sb.rpc("admin_open_jobs")) as OpenJob[]).sort((a, b) => Number(b.balance) - Number(a.balance));
       const done = must(await sb.from("job_completions").select("*").order("done_at", { ascending: false }).limit(20)) as Done[];
       const transfers = must(await sb.from("job_transfers").select("*").order("submitted_at", { ascending: false }).limit(30)) as TransferRow[];
       const agents = must(await sb.from("agent_jobs").select("*")) as AgentRow[];
