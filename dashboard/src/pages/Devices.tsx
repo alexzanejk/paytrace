@@ -441,7 +441,7 @@ function DeviceCard({
         </div>
       </div>
 
-      <DayMoney rows={dayMoney} checks={dayChecks} error={dayMoneyError} checkError={dayCheckError} dayLabel={dayLabel(day)} today={day === dhakaDay()} />
+      <DayMoney deviceId={d.id} rows={dayMoney} checks={dayChecks} error={dayMoneyError} checkError={dayCheckError} dayLabel={dayLabel(day)} today={day === dhakaDay()} />
 
       <WalletsCard deviceId={d.id} wallets={wallets} reported={d.info?.wallets} stats={walletStats} defaultGroup={d.default_group ?? "main"} onChanged={onChanged} />
 

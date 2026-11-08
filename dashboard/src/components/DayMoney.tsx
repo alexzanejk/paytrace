@@ -5,6 +5,8 @@ import {
   type CheckTone, type DayCheckRow, type DayMoneyRow,
 } from "@/lib/dayMoney";
 import { cn } from "@/lib/utils";
+import { canReadStatement } from "@/lib/statementNow";
+import { StatementNow } from "@/components/StatementNow";
 
 const WALLET: Record<string, string> = { bkash: "bKash", nagad: "Nagad", rocket: "Rocket", upay: "Upay" };
 
@@ -22,8 +24,8 @@ function Verdict({ text, tone }: { text: string; tone: CheckTone }) {
  *  the wallet's own statement, or as a cash-in it made itself (device_day_money). Under the figures, the day's balance and
  *  whether every change of it is accounted for (device_day_check, migration 069). */
 export function DayMoney({
-  rows, checks, error, checkError, dayLabel, today,
-}: { rows: DayMoneyRow[]; checks: DayCheckRow[]; error: string; checkError: string; dayLabel: string; today: boolean }) {
+  deviceId, rows, checks, error, checkError, dayLabel, today,
+}: { deviceId: string; rows: DayMoneyRow[]; checks: DayCheckRow[]; error: string; checkError: string; dayLabel: string; today: boolean }) {
   if (error) return <p className="text-xs text-status-warn">Could not load the day totals: {error}</p>;
   const blocks = dayBlocks(rows, checks);
   if (!blocks.length) return <p className="text-xs text-muted-foreground">Nothing moved through this phone's wallets on {dayLabel}.</p>;
@@ -59,6 +61,8 @@ export function DayMoney({
               {b.check ? <p className="mt-2 text-xs tabular">{balanceLine(b.check, today)}</p> : null}
               {verdict ? <Verdict text={verdict.text} tone={verdict.tone} /> : null}
               {b.money ? <p className="mt-1 text-xs text-muted-foreground">{sourceLine(b.money)}</p> : null}
+              {/* A B2B or a hand-made cash-in sends no SMS: say so and the phone reads the statement at once (agent wallets only). */}
+              {b.account === "agent" && canReadStatement(b.provider) ? <StatementNow deviceId={deviceId} provider={b.provider} /> : null}
             </div>
           );
         })}

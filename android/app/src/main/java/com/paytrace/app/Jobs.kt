@@ -189,10 +189,30 @@ object JobsApi {
         return JobsParser.parseSend(post(s, body))
     }
 
+    /** "We just did a B2B" on [provider] (migration 070): the server queues a statement read for this wallet, which this
+     *  phone takes on its next heartbeat. Null when the server could not be reached. */
+    fun b2bDone(s: AppSettings, provider: String): String? =
+        post(s, JSONObject().put("action", "b2b_done").put("provider", provider).toString())
+
     /** Tells the server the agent finished the job for [provider]. True when the server recorded it. */
     fun done(s: AppSettings, provider: String): Boolean {
         val body = JSONObject().put("action", "job_done").put("provider", provider).toString()
         val r = post(s, body) ?: return false
         return try { JSONObject(r).optBoolean("done", false) } catch (e: Exception) { false }
+    }
+}
+
+/** The server's answer to "We did a B2B", in words for the Home card. Pure, so it is unit tested. */
+object B2bAnswer {
+    fun text(response: String?, wallet: String): String {
+        if (response == null) return "Could not reach the server. Check the internet and try again."
+        val o = try { JSONObject(response) } catch (e: Exception) { return "Could not reach the server. Try again." }
+        if (o.optBoolean("queued", false)) return "Reading the $wallet statement now. This takes a minute or two; leave the phone as it is."
+        return when (o.optString("reason")) {
+            "already_reading", "just_asked" -> "Already reading the $wallet statement. It will bring this B2B back too."
+            "balance_off" -> "The dashboard has not allowed this phone to read balances, so it cannot read the statement. Tell the owner."
+            "no_flow" -> "PayTrace cannot read a $wallet statement yet."
+            else -> "Could not ask for the statement. Try again."
+        }
     }
 }

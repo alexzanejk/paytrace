@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { canReadStatement, statementNowText } from "../dashboard/src/lib/statementNow.ts";
 import { balanceLine, dayBlocks, dayTotals, dhakaTime, stateLine, type DayCheckRow, type DayMoneyRow } from "../dashboard/src/lib/dayMoney.ts";
 
 let pass = 0, fail = 0;
@@ -44,6 +45,16 @@ check("a merchant's 'You have received' and the statement's 'Agent Cash Out' are
 check("a gap is explained by up to 6 entries, cash-ins with their commission", sql.includes("continue when cnt > 6 or cnt > best_cnt;") && sql.includes("slack := slack + 0.006 * abs(amts[i + 1]) + 0.5"));
 check("one menu at a time on a phone", sql.includes("and r.kind in ('balance', 'cashin', 'statement', 'sendmoney')"));
 check("after midnight: the statement, then a balance check", sql.includes("case when p_hour = 0 then 'day_end'") && sql.includes("values (r.device_id, 'balance', r.provider)"));
+
+// "We did a B2B / Cash In" (migration 070).
+check("asked: the phone reads now", statementNowText({ ok: true, queued: true }, "bKash").ok && statementNowText({ ok: true, queued: true }, "bKash").text.includes("reading the bKash statement now"));
+check("already reading is fine, not an error", statementNowText({ ok: true, queued: false, reason: "already_reading" }, "Nagad").ok);
+check("balance switch off is said plainly", !statementNowText({ ok: false, reason: "balance_off" }, "bKash").ok && statementNowText({ ok: false, reason: "balance_off" }, "bKash").text.includes("May check balance"));
+check("a failed call is an error", !statementNowText(null, "bKash").ok);
+check("buttons only where a statement can be read", canReadStatement("bkash") && canReadStatement("nagad") && !canReadStatement("rocket"));
+const sql70 = readFileSync(new URL("../supabase/migrations/20261108_070_statement_now.sql", import.meta.url), "utf8");
+check("the phone's button is limited to one read per wallet every 2 minutes", sql70.includes("e.at > now() - interval '2 minutes'"));
+check("the dashboard's buttons are admin only", sql70.includes("if not public.is_admin() then raise exception 'not allowed'; end if;"));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -142,4 +142,13 @@ class JobsTest {
         val jobs = JobsParser.parse("""{"success":true,"jobs":[{"kind":"weird","provider":"bkash","wallet":"0171","instruction":"x"}]}""")
         assertEquals("send", jobs!![0].kind)
     }
+
+    @Test fun theB2bButtonSaysWhatHappened() {
+        assertTrue(B2bAnswer.text("""{"success":true,"ok":true,"queued":true}""", "bKash").startsWith("Reading the bKash statement now"))
+        assertTrue(B2bAnswer.text("""{"success":true,"ok":true,"queued":false,"reason":"already_reading"}""", "Nagad").startsWith("Already reading"))
+        assertTrue(B2bAnswer.text("""{"success":true,"ok":true,"queued":false,"reason":"just_asked"}""", "Nagad").startsWith("Already reading"))
+        assertTrue(B2bAnswer.text("""{"success":true,"ok":false,"reason":"balance_off"}""", "bKash").contains("not allowed"))
+        assertTrue(B2bAnswer.text(null, "bKash").startsWith("Could not reach the server"))
+        assertTrue(B2bAnswer.text("not json", "bKash").startsWith("Could not reach the server"))
+    }
 }

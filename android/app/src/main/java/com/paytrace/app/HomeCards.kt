@@ -407,3 +407,44 @@ fun StatTile(label: String, value: String, sub: String, modifier: Modifier = Mod
         }
     }
 }
+
+/** "We did a B2B" (owner 2026-11-08): a B2B sends no SMS PayTrace can rely on, so after one the partner taps here and the
+ *  phone reads that wallet's statement at once, before the entry can scroll off the wallet's list. Only for wallets this
+ *  phone can read (bKash and Nagad with the PIN saved) and only while the dashboard allows balance reads. */
+@Composable
+fun B2bCard(settings: AppSettings, wallets: List<String>) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    var note by remember { mutableStateOf("") }
+    Card(
+        Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Did a B2B?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Tap right after you send or receive a B2B. The phone reads the wallet's statement so the money is recorded.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                wallets.forEach { p ->
+                    val label = UssdProviders.label(p)
+                    FilledTonalButton(enabled = !busy, onClick = {
+                        busy = true
+                        note = ""
+                        scope.launch {
+                            val answer = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { JobsApi.b2bDone(settings, p) }
+                            note = B2bAnswer.text(answer, label)
+                            // Take the statement command at once instead of on the next 30-second beat.
+                            HeartbeatWorker.now(ctx)
+                            busy = false
+                        }
+                    }) { Text("B2B on $label") }
+                }
+            }
+            if (note.isNotEmpty()) Text(note, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
