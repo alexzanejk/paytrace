@@ -1,1 +1,1 @@
-Each SMS now carries which SIM it arrived on, so a phone with two wallets of the same kind (an agent bKash on one SIM, a personal bKash on the other) keeps one clean balance chain per account instead of judging one against the other.
+Jobs: when you submit "I did it" / "I sent it" you can now type any other cost (a fund-transfer fee, a charge) and write what it was for. A job you were shown no longer disappears when you move the money out first.

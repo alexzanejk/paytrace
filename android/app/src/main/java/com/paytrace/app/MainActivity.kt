@@ -219,17 +219,17 @@ fun App() {
                 0 -> Home(
                     settings, tick, earnings, jobs, transfers,
                     onOpenEarnings = { tab = 1 },
-                    onSent = { kind, provider, amount, charge ->
+                    onSent = { kind, provider, form ->
                         val r = withContext(Dispatchers.IO) {
-                            if (kind == "cashin") JobsApi.cashInSent(settings, provider, amount, charge) else JobsApi.sent(settings, provider, amount, charge)
+                            if (kind == "cashin") JobsApi.cashInSent(settings, provider, form) else JobsApi.sent(settings, provider, form)
                         }
                         val snap = withContext(Dispatchers.IO) { JobsApi.fetch(settings) }
                         if (snap != null) { jobs = snap.jobs; transfers = snap.transfers }
                         if (r.ok) null else r.message
                     },
-                    onFix = { kind, id, amount, charge ->
+                    onFix = { kind, id, form ->
                         val r = withContext(Dispatchers.IO) {
-                            if (kind == "cashin") JobsApi.cashInFix(settings, id, amount, charge) else JobsApi.fix(settings, id, amount, charge)
+                            if (kind == "cashin") JobsApi.cashInFix(settings, id, form) else JobsApi.fix(settings, id, form)
                         }
                         val snap = withContext(Dispatchers.IO) { JobsApi.fetch(settings) }
                         if (snap != null) { jobs = snap.jobs; transfers = snap.transfers }
@@ -299,8 +299,8 @@ private fun Warning(text: String) {
 fun Home(
     settings: AppSettings, tick: Int, earnings: Earnings?, jobs: List<Job>, transfers: List<Transfer>,
     onOpenEarnings: () -> Unit,
-    onSent: suspend (String, String, Double, Double) -> String?,
-    onFix: suspend (String, String, Double, Double) -> String?,
+    onSent: suspend (String, String, SendForm) -> String?,
+    onFix: suspend (String, String, SendForm) -> String?,
 ) {
     val ctx = LocalContext.current
     val configured = remember(tick) { settings.ready }
@@ -338,11 +338,11 @@ fun Home(
 
         SectionTitle("Jobs", jobs.size)
         if (jobs.isEmpty()) EmptyJobsCard()
-        jobs.forEach { job -> JobCard(job, onSent = { amount, charge -> onSent(job.kind, job.provider, amount, charge) }) }
+        jobs.forEach { job -> JobCard(job, onSent = { form -> onSent(job.kind, job.provider, form) }) }
 
         if (transfers.isNotEmpty()) {
             SectionTitle("Your sends, last 3 days")
-            transfers.take(8).forEach { t -> ActivityRow(t, onFix = { amount, charge -> onFix(t.kind, t.id, amount, charge) }) }
+            transfers.take(8).forEach { t -> ActivityRow(t, onFix = { form -> onFix(t.kind, t.id, form) }) }
         }
 
         if (!smsOk) Warning("SMS permission is off. Open the phone's app settings for PayTrace and allow SMS, or no payment can be detected.")
