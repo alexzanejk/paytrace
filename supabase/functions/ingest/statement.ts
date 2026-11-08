@@ -49,22 +49,14 @@ export function readLine(line: string): (StatementLine & { no: number }) | null 
 /** Every entry on every page, each number once. An unreadable line is simply left out (the judge then says how many it read). */
 export function readStatementLines(screens: unknown): StatementLine[] {
   const out: StatementLine[] = [];
-  const seen = new Map<number, string>();
-  let top = 0;
+  const seen = new Set<number>();
   for (const screen of Array.isArray(screens) ? screens : []) {
-    const rows = String(screen).split("\n").map(readLine).filter((r): r is StatementLine => r !== null);
-    // A page that numbers its entries from 1 again (a wallet whose second page has not been seen yet) carries on
-    // after the last page instead of being thrown away as repeats. A page that continues the numbering (bKash) is as is.
-    const key = (r: StatementLine) => `${r.day}|${r.type}|${r.amount}|${r.in}`;
-    // The same page brought back twice is a repeat, not a new page.
-    const repeat = rows.every((r) => seen.get(r.no) === key(r));
-    const offset = rows.length && !repeat && rows[0].no <= top ? top : 0;
-    for (const row of rows) {
-      const no = row.no + offset;
-      if (seen.has(no)) continue;
-      seen.set(no, key(row));
-      top = Math.max(top, no);
-      out.push({ no, day: row.day, amount: row.amount, in: row.in, type: row.type });
+    for (const line of String(screen).split("\n")) {
+      const row = readLine(line);
+      if (row && !seen.has(row.no)) {
+        seen.add(row.no);
+        out.push({ no: row.no, day: row.day, amount: row.amount, in: row.in, type: row.type });
+      }
     }
   }
   return out;
