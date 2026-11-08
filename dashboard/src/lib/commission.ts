@@ -6,6 +6,9 @@
 const PROVIDERS = ["bkash", "nagad", "rocket", "upay"] as const;
 
 export const KINDS = ["cash_out", "send_money"] as const;
+/** The kinds a rate can be set for. Commission is earned on agent Cash Out only (owner 2026-11-08: personal accounts are
+ *  all the owner's), and the database counts Cash Out only since migration 068. */
+export const RATE_KINDS = ["cash_out"] as const;
 export type Kind = (typeof KINDS)[number];
 
 export const KIND_LABEL: Record<Kind, string> = {

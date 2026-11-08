@@ -13,7 +13,8 @@ import java.util.Locale
  *  this phone in the dashboard; otherwise [enabled] is false and the app shows nothing. PayTrace only records this: the owner pays
  *  partners outside the app. */
 data class EarnTotals(val total: Double, val commission: Double)
-data class EarnDay(val day: String, val total: Double, val commission: Double)
+/** [state] (migration 068, month days only): paid / sending / unsure / due / part / paid_before / running / none. */
+data class EarnDay(val day: String, val total: Double, val commission: Double, val state: String = "")
 data class EarnLine(val provider: String, val kind: String, val total: Double, val rate: Double, val commission: Double)
 /** Money the owner paid this partner (recorded in the dashboard). */
 data class EarnPaid(val day: String, val amount: Double, val note: String)
@@ -67,7 +68,7 @@ object EarningsParser {
             owed = o.optDouble("owed", 0.0),
             monthStart = o.optString("month_start", ""),
             monthEnd = o.optString("month_end", ""),
-            monthDays = list(o.optJSONArray("month_days")) { EarnDay(it.optString("day"), it.optDouble("total", 0.0), it.optDouble("commission", 0.0)) },
+            monthDays = list(o.optJSONArray("month_days")) { EarnDay(it.optString("day"), it.optDouble("total", 0.0), it.optDouble("commission", 0.0), it.optString("state")) },
             recentPaid = list(o.optJSONArray("recent_paid")) { EarnPaid(it.optString("day"), it.optDouble("amount", 0.0), it.optString("note", "")) },
             paidMonth = o.optDouble("paid_month", 0.0),
         )
@@ -98,6 +99,17 @@ object EarningsFormat {
         "cash_out" -> "Cash Out"
         "send_money" -> "Send Money"
         else -> k
+    }
+
+    /** Whether a day's commission is paid, in the partner's words; "" when there is nothing to say (no commission). */
+    fun stateLabel(state: String): String = when (state) {
+        "paid", "paid_before" -> "Paid"
+        "sending" -> "Being paid now"
+        "unsure" -> "Payment being checked"
+        "due" -> "Due"
+        "part" -> "Partly paid"
+        "running" -> "Today, payable after 11:59 PM"
+        else -> ""
     }
 
     /** "Fri 23 Oct" for 2026-10-23; the text unchanged if it is not a date. */

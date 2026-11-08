@@ -8,6 +8,7 @@ import { downloadText, toCsv } from "@/lib/csv";
 import { KIND_LABEL, fmtPct, owedOf, sumDays, type CommissionBalance, type CommissionDay, type Payout } from "@/lib/commission";
 import { useDevices } from "@/hooks/useDevices";
 import { useQuery } from "@/hooks/useQuery";
+import { DailyPayouts } from "@/components/DailyPayouts";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard, STAT_GRID } from "@/components/StatCard";
@@ -147,7 +148,7 @@ export function Commission() {
           </TableHeader>
           <TableBody>
             {days.length === 0 ? (
-              <EmptyRow cols={7} text="No Cash Out or Send Money payments in this period." />
+              <EmptyRow cols={7} text="No agent Cash Out in this period." />
             ) : (
               days.map((r) => (
                 <TableRow key={`${r.day}|${r.device_id}|${r.provider}|${r.kind}`}>
@@ -176,6 +177,8 @@ export function Commission() {
           </TableBody>
         </Table>
       </Card>
+
+      <DailyPayouts devices={devices.list} nameOf={devices.nameOf} />
 
       <PayoutsSection devices={approved.map((d) => ({ id: d.id, name: devices.nameOf(d.id) }))} nameOf={devices.nameOf} payouts={payouts} onChanged={refresh} />
     </Screen>

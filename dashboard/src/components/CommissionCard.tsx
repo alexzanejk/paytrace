@@ -4,7 +4,7 @@ import { sb } from "@/lib/supabase";
 import { dhakaDay } from "@/lib/period";
 import { tk } from "@/lib/format";
 import { PROVIDERS, PROVIDER_LABEL, type Device } from "@/lib/types";
-import { KINDS, KIND_LABEL, changedRates, fmtPct, owedOf, ratesOn, rateKey, type CommissionBalance, type RateRow } from "@/lib/commission";
+import { RATE_KINDS, KIND_LABEL, changedRates, fmtPct, owedOf, ratesOn, rateKey, type CommissionBalance, type RateRow } from "@/lib/commission";
 import { Disclosure } from "@/components/Disclosure";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,12 +66,13 @@ export function CommissionCard({
         </span>
       </div>
       <p className="mb-3 text-xs text-muted-foreground">
-        The partner earns this % of each day's total (12:00 AM to 11:59 PM Bangladesh time) that comes through this phone. Only payments counted in your
-        totals earn commission; held ones earn it once you approve them. Leave a box empty to keep its rate, type 0 for none.
+        The partner earns this % of each day's agent Cash Out total (12:00 AM to 11:59 PM Bangladesh time) through this phone. Money received on a
+        personal account earns nothing. Only payments counted in your totals earn commission; held ones earn it once you approve them. Leave a box
+        empty to keep its rate, type 0 for none.
       </p>
 
       <div className="grid gap-3">
-        {KINDS.map((kind) => (
+        {RATE_KINDS.map((kind) => (
           <div key={kind}>
             <p className="mb-1 text-xs font-medium">{KIND_LABEL[kind]}</p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -114,6 +115,8 @@ export function CommissionCard({
       {note ? <p className="mt-2 text-xs text-muted-foreground">{note}</p> : null}
       {problem ? <p className="mt-2 text-xs text-destructive">{problem}</p> : null}
 
+      <CommissionNumber device={device} onChanged={onChanged} />
+
       <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border pt-3 text-sm">
         <span>Earned: <b className="tabular">{tk(balance?.earned ?? 0)}</b></span>
         <span>Paid: <b className="tabular">{tk(balance?.paid ?? 0)}</b></span>
@@ -121,5 +124,38 @@ export function CommissionCard({
         <a className="text-xs underline" href="#/commission">Open the Commission page</a>
       </p>
     </Disclosure>
+  );
+}
+
+/** Where this partner's commission is paid. Saved only here, by the owner (never from the partner's app), typed twice. */
+function CommissionNumber({ device, onChanged }: { device: Device; onChanged: () => void }) {
+  const [a, setA] = useState("");
+  const [b, setB] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState("");
+  const digits = (s: string) => s.replace(/\D/g, "").replace(/^880/, "0");
+  const same = a.trim() !== "" && digits(a) === digits(b);
+  async function save(value: string | null) {
+    setProblem("");
+    setBusy(true);
+    const { error } = await sb.rpc("set_commission_number", { p_device: device.id, p_number: value });
+    setBusy(false);
+    if (error) return setProblem(error.message);
+    setA(""); setB("");
+    onChanged();
+  }
+  return (
+    <div className="mt-3 grid gap-2 border-t border-border pt-3 text-sm">
+      <p className="text-xs font-medium">Commission is paid to</p>
+      <p>{device.commission_number ? <span className="font-mono text-base">{device.commission_number}</span> : <span className="text-status-warn">No number saved yet. Daily payouts need it.</span>}</p>
+      <div className="flex flex-wrap items-end gap-2">
+        <Input className="h-9 w-44" inputMode="tel" placeholder="01XXXXXXXXX" value={a} onChange={(e) => setA(e.target.value)} aria-label="Commission number" />
+        <Input className="h-9 w-44" inputMode="tel" placeholder="Type it again" value={b} onPaste={(e) => e.preventDefault()} onChange={(e) => setB(e.target.value)} aria-label="Commission number again" />
+        <Button size="sm" disabled={!same || busy} onClick={() => void save(a)}>{device.commission_number ? "Change number" : "Save number"}</Button>
+        {device.commission_number ? <Button size="sm" variant="ghost" disabled={busy} onClick={() => void save(null)}>Remove</Button> : null}
+      </div>
+      {a && b && !same ? <p className="text-xs text-status-warn">The two numbers are not the same.</p> : null}
+      {problem ? <p className="text-xs text-destructive">{problem}</p> : null}
+    </div>
   );
 }

@@ -148,12 +148,25 @@ private fun MonthByDay(e: Earnings) {
                         Text(EarningsFormat.dayLabel(it.day), style = MaterialTheme.typography.bodyMedium)
                         if (it.total > 0) Text("on " + EarningsFormat.money(it.total), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Text(
-                        EarningsFormat.money(it.commission),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = if (it.commission > 0) FontWeight.SemiBold else FontWeight.Normal,
-                        color = if (it.commission > 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            EarningsFormat.money(it.commission),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (it.commission > 0) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (it.commission > 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        // Paid or due, day by day (owner 2026-11-08: daily commission payouts).
+                        val label = if (it.commission > 0) EarningsFormat.stateLabel(it.state) else ""
+                        if (label.isNotEmpty()) Text(
+                            label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = when (it.state) {
+                                "paid", "paid_before" -> statusColors().ok
+                                "due", "part", "unsure" -> statusColors().warn
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                    }
                 }
             }
         }

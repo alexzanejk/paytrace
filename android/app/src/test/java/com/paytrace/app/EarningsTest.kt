@@ -39,6 +39,20 @@ class EarningsTest {
         assertEquals(550.0, e.owed, 0.001)
     }
 
+    @Test fun eachDayOfTheMonthSaysWhetherItIsPaid() {
+        val e = EarningsParser.parse("""{"success":true,"enabled":true,"day":"2026-11-08","month_days":[
+            {"day":"2026-11-08","total":1000,"commission":4,"state":"running"},
+            {"day":"2026-11-07","total":5000,"commission":20,"state":"due"},
+            {"day":"2026-11-06","total":2500,"commission":10,"state":"paid"},
+            {"day":"2026-11-05","total":0,"commission":0}]}""")!!
+        assertEquals(listOf("running", "due", "paid", ""), e.monthDays.map { it.state })
+        assertEquals("Due", EarningsFormat.stateLabel("due"))
+        assertEquals("Paid", EarningsFormat.stateLabel("paid"))
+        assertEquals("Paid", EarningsFormat.stateLabel("paid_before"))
+        assertEquals("Today, payable after 11:59 PM", EarningsFormat.stateLabel("running"))
+        assertEquals("", EarningsFormat.stateLabel("none"))
+    }
+
     @Test fun whenTheOwnerHasNotSwitchedItOnTheCardStaysHidden() {
         val e = EarningsParser.parse("""{"success":true,"enabled":false}""")
         assertNotNull(e)
