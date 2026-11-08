@@ -163,6 +163,19 @@ fun UssdCard(settings: AppSettings, tick: Int) {
             UssdProviders.all.forEach { p ->
                 WalletRow(settings, p, sims, expanded = provider == p, tick = tick, onTap = { provider = if (provider == p) "" else p })
             }
+            // Personal accounts (owner 2026-11-08): only while the owner has switched them on for this phone on the dashboard.
+            if (settings.personalAllowed) {
+                Text("3. Personal accounts on this phone", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "A personal bKash or Nagad account beside the agent one. It must be in the OTHER SIM: the SIM is how PayTrace tells " +
+                        "the two apart. Money it receives is counted as personal (Received and Sent).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                PersonalAccounts.providers.forEach { p ->
+                    PersonalRow(settings, p, sims, expanded = provider == "personal_$p", tick = tick, onTap = { provider = if (provider == "personal_$p") "" else "personal_$p" })
+                }
+            }
             Text(
                 "A PIN stays encrypted on this phone. It is never sent to the dashboard or anywhere else.",
                 style = MaterialTheme.typography.bodySmall,
@@ -190,7 +203,7 @@ fun UssdCard(settings: AppSettings, tick: Int) {
                 style = MaterialTheme.typography.bodyMedium,
             )
             Text(
-                "Even when sending money is on, this phone sends only what the dashboard asks for, at most Tk 10,000 at a time, and it " +
+                "Even when sending money is on, this phone sends only what the dashboard asks for, Tk 100 to Tk 50,000 at a time, and it " +
                     "stops without typing the PIN unless the wallet's own screen shows that number and that amount.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -266,7 +279,7 @@ private fun WalletRow(settings: AppSettings, provider: String, sims: List<SimNam
     val typedOk = PhoneNumbers.normalize(number) != null
     Card(Modifier.fillMaxWidth().clickable(onClick = onTap), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(label, style = MaterialTheme.typography.titleSmall)
+            Text(if (settings.personalAllowed && provider in PersonalAccounts.providers) "$label · Agent account" else label, style = MaterialTheme.typography.titleSmall)
             Text(
                 (if (ready) "✓ Ready" else "Not ready") +
                     " · " + (if (savedNumber.isEmpty()) "no number yet" else savedNumber) +
@@ -337,11 +350,15 @@ private fun WalletRow(settings: AppSettings, provider: String, sims: List<SimNam
                         FilterChip(
                             selected = slot == n,
                             onClick = {
-                                slot = n; settings.setUssdSlotOf(provider, n)
-                                // A SIM chosen by hand replaces whatever the app found or failed to find.
-                                found = -1; settings.setWalletSimFoundOf(provider, -1)
-                                byHand = true; settings.setWalletSimByHandOf(provider, true)
-                                findNote = "SIM ${n + 1} saved for $label."
+                                if (settings.personalAllowed && settings.personalNumberOf(provider).isNotEmpty() && settings.personalSlotOf(provider) == n) {
+                                    findNote = "SIM ${n + 1} holds your personal $label account. The agent account must be in the other SIM."
+                                } else {
+                                    slot = n; settings.setUssdSlotOf(provider, n)
+                                    // A SIM chosen by hand replaces whatever the app found or failed to find.
+                                    found = -1; settings.setWalletSimFoundOf(provider, -1)
+                                    byHand = true; settings.setWalletSimByHandOf(provider, true)
+                                    findNote = "SIM ${n + 1} saved for $label."
+                                }
                             },
                             label = { Text(SimNames.label(n, sims)) },
                         )
@@ -364,6 +381,103 @@ private fun WalletRow(settings: AppSettings, provider: String, sims: List<SimNam
                     ) { Text("Save PIN") }
                     if (pinSaved) OutlinedButton(onClick = { UssdSetup.pinStore(ctx, provider).set(""); pinSaved = false }) { Text("Remove PIN") }
                 }
+            }
+        }
+    }
+}
+
+/** One personal account: its number, its SIM (never the agent account's SIM) and its own PIN, kept encrypted on this phone. */
+@Composable
+private fun PersonalRow(settings: AppSettings, provider: String, sims: List<SimName>, expanded: Boolean, tick: Int, onTap: () -> Unit) {
+    val ctx = LocalContext.current
+    val label = UssdProviders.label(provider)
+    var number by remember(provider) { mutableStateOf(settings.personalNumberOf(provider)) }
+    var saved by remember(provider, tick) { mutableStateOf(settings.personalNumberOf(provider)) }
+    var slot by remember(provider, tick) { mutableStateOf(settings.personalSlotOf(provider)) }
+    var pin by remember(provider) { mutableStateOf("") }
+    var pinSaved by remember(provider, tick) { mutableStateOf(PersonalAccounts.pinSaved(ctx, provider)) }
+    var note by remember(provider) { mutableStateOf("") }
+    val agentNumber = settings.walletNumberOf(provider)
+    val agentSlot = settings.ussdSlotOf(provider)
+    val clash = slot >= 0 && PersonalAccounts.clash(agentNumber, agentSlot, slot)
+    val ready = saved.isNotEmpty() && slot >= 0 && !clash
+    Card(Modifier.fillMaxWidth().clickable(onClick = onTap), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("$label · Personal account", style = MaterialTheme.typography.titleSmall)
+            Text(
+                (if (ready) "✓ Saved" else "Not set up") +
+                    " · " + (if (saved.isEmpty()) "no number yet" else saved) +
+                    " · " + (if (slot < 0) "no SIM chosen" else SimNames.label(slot, sims)) +
+                    " · " + (if (pinSaved) "PIN saved" else "no PIN") +
+                    (if (clash) " · same SIM as the agent account!" else ""),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (ready) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+            )
+            if (expanded) {
+                Text("Your personal $label number", style = MaterialTheme.typography.bodyMedium)
+                OutlinedTextField(
+                    value = number,
+                    onValueChange = { v -> number = v.filter { it.isDigit() }.take(11) },
+                    label = { Text("01XXXXXXXXX") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        enabled = PhoneNumbers.normalize(number) != null && PhoneNumbers.normalize(number) != saved,
+                        onClick = {
+                            val n = PhoneNumbers.normalize(number) ?: return@Button
+                            if (n == agentNumber) { note = "That is the agent account's number. Type the personal one."; return@Button }
+                            settings.setPersonalNumberOf(provider, n); saved = n
+                            note = "Number saved. Now choose its SIM."
+                        },
+                    ) { Text("Save number") }
+                    if (saved.isNotEmpty()) OutlinedButton(onClick = {
+                        settings.setPersonalNumberOf(provider, ""); settings.setPersonalSlotOf(provider, -1)
+                        PersonalAccounts.pinStore(ctx, provider).set("")
+                        saved = ""; number = ""; slot = -1; pinSaved = false; note = "Personal $label account removed from this phone."
+                    }) { Text("Remove") }
+                }
+                Text("Which SIM is your personal $label number in?", style = MaterialTheme.typography.bodyMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(0, 1).forEach { n ->
+                        FilterChip(
+                            selected = slot == n,
+                            onClick = {
+                                if (PersonalAccounts.clash(agentNumber, agentSlot, n)) {
+                                    note = "SIM ${n + 1} holds your agent $label account. A personal account must be in the other SIM."
+                                } else {
+                                    slot = n; settings.setPersonalSlotOf(provider, n); note = "SIM ${n + 1} saved for personal $label."
+                                }
+                            },
+                            label = { Text(SimNames.label(n, sims)) },
+                        )
+                    }
+                }
+                Text(if (pinSaved) "Personal $label PIN is saved" else "Type the personal $label PIN", style = MaterialTheme.typography.bodyMedium)
+                OutlinedTextField(
+                    value = pin,
+                    onValueChange = { v -> pin = v.filter { it.isDigit() }.take(8) },
+                    label = { Text(if (pinSaved) "New PIN (to replace the saved one)" else "PIN") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(enabled = pin.length >= 4, onClick = { PersonalAccounts.pinStore(ctx, provider).set(pin); pin = ""; pinSaved = true }) { Text("Save PIN") }
+                    if (pinSaved) OutlinedButton(onClick = { PersonalAccounts.pinStore(ctx, provider).set(""); pinSaved = false }) { Text("Remove PIN") }
+                }
+                Text(
+                    if (provider == UssdProviders.BKASH)
+                        "The dashboard's Payout page can send money from this account by Send Money, using this SIM and this PIN. The PIN stays on this phone and is never sent anywhere."
+                    else
+                        "Sending from a personal Nagad account is not built yet. The PIN is kept so it is ready; it is never sent anywhere.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (note.isNotEmpty()) Text(note, style = MaterialTheme.typography.bodySmall)
             }
         }
     }

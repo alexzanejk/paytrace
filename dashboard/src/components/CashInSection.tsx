@@ -6,61 +6,44 @@ import { Disclosure } from "@/components/Disclosure";
 import { CashInCommand } from "@/components/CashInCommand";
 import { WALLETS, walletLabel } from "@/lib/phoneCommands";
 
-/** The one place on the dashboard that moves money: a cash-in this phone makes through the wallet's own menu.
+/** A cash-in this phone makes through the wallet's own menu, to one of your saved cash-in numbers.
  *
- *  It is folded away, and it says nothing but how to switch it on until the owner has set a daily limit. The limit, the
- *  10,000 cap on one command and the phone's own switch all have to be in place before a single taka can move. */
+ *  Since migration 065 (owner 2026-11-08) an agent Cash In has no daily limit: what guards it is the phone's own
+ *  "Send money from this phone" switch, the 100 to 50,000 Tk bounds on one cash-in (database and phone), the saved-number
+ *  rule, and the phone typing its PIN only on a wallet screen showing this number and this amount. To pay on received
+ *  money to a typed number, use the Payout page. */
 export function CashInSection({ deviceId }: { deviceId: string }) {
-  const [limit, setLimit] = useState<number | null>(null);
   const [usedToday, setUsedToday] = useState<number | null>(null);
 
   const load = useCallback(async () => {
-    const [{ data: rows }, { data: used }] = await Promise.all([
-      sb.from("cashin_limits").select("daily_limit").limit(1),
-      sb.rpc("cashin_sent_today", { p_device: deviceId }),
-    ]);
-    const row = (rows ?? [])[0] as { daily_limit: number } | undefined;
-    setLimit(row ? Number(row.daily_limit) : 0);
+    const { data: used } = await sb.rpc("cashin_sent_today", { p_device: deviceId });
     setUsedToday(used == null ? null : Number(used));
   }, [deviceId]);
 
   useEffect(() => { void load(); }, [load]);
 
-  const on = (limit ?? 0) > 0;
-  const left = on && usedToday != null ? Math.max(0, (limit ?? 0) - usedToday) : null;
-
   return (
-    <Disclosure
-      icon={Send}
-      title="Cash in from this phone"
-      summary={on ? (left == null ? "" : `${tk(left)} left today`) : "switched off"}
-    >
-      {!on ? (
+    <Disclosure icon={Send} title="Cash in from this phone" summary={usedToday ? `${tk(usedToday)} sent today` : ""}>
+      <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Cash-in is switched off. Set a daily limit on the Jobs page first; until then no cash-in can be asked for from
-          any phone. The phone it is asked of must also have its own cash-in switch turned on, in the app.
+          {usedToday != null ? `${tk(usedToday)} sent by cash-in from this phone today. ` : ""}No daily limit for an agent
+          Cash In; one cash-in is {tk(100)} to {tk(50000)}. The phone stops before typing its PIN unless the wallet&apos;s own
+          screen shows the number and the amount. To pay on received money to a number you type, use the Payout page.
         </p>
-      ) : (
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            {tk(left ?? 0)} of today&apos;s {tk(limit ?? 0)} is left for this phone. One cash-in can be at most {tk(10000)}.
-            The phone stops before typing its PIN unless the wallet&apos;s own screen shows the number and the amount.
-          </p>
-          {WALLETS.map((w) => (
-            <div key={w}>
-              <p className="mb-1 text-sm font-medium">{walletLabel(w)}</p>
-              <CashInCommand deviceId={deviceId} provider={w} />
-              {w === "rocket" ? (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Rocket asks for the PIN on a bare screen, so unlike the other two the wallet never repeats the number
-                  and the amount back. PayTrace still types both into Rocket&apos;s own boxes first and stops if that
-                  screen shows any other number or amount, but it cannot be checked the way bKash and Nagad are.
-                </p>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      )}
+        {WALLETS.map((w) => (
+          <div key={w}>
+            <p className="mb-1 text-sm font-medium">{walletLabel(w)}</p>
+            <CashInCommand deviceId={deviceId} provider={w} />
+            {w === "rocket" ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Rocket asks for the PIN on a bare screen, so unlike the other two the wallet never repeats the number
+                and the amount back. PayTrace still types both into Rocket&apos;s own boxes first and stops if that
+                screen shows any other number or amount, but it cannot be checked the way bKash and Nagad are.
+              </p>
+            ) : null}
+          </div>
+        ))}
+      </div>
     </Disclosure>
   );
 }

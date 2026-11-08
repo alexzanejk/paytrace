@@ -9,7 +9,7 @@ export type TxnType = "payment_received" | "send_money_received" | "cash_out" | 
  *  it for a customer; in: an agent did it for this wallet); payment = a merchant/bill payment from the wallet; bill = a
  *  utility bill; loan = a bKash digital loan repayment. All of them move the balance, so they are stored to keep the
  *  balance chain whole, and none of them can ever credit an order. */
-export type FlowKind = "b2b" | "cash_in" | "cash_out" | "payment" | "bill" | "loan";
+export type FlowKind = "b2b" | "cash_in" | "cash_out" | "payment" | "bill" | "loan" | "send_money";
 
 export interface Parsed {
   provider: Provider;
@@ -143,6 +143,11 @@ function parseBkash(text: string): ParseResult {
     // Money put INTO this wallet by an agent (real sample 2026-11-04). Held for a person: it could be a customer who paid at
     // an agent counter, or the owner's own top-up; it is never credited by itself.
     txnType = "transfer_in"; flow = "cash_in"; amount = num(m[1]); who = m[2];
+  } else if ((m = text.match(new RegExp(`Send\\s*Money\\s+Tk\\s*${NUM}\\s+to\\s+([\\dXx*]+)\\s+(?:is\\s+)?successful`, "i")))) {
+    // A personal account's own Send Money (owner 2026-11-08, personal accounts): money LEFT the wallet. Layout from
+    // general knowledge ("Send Money Tk 500.00 to 01712345678 successful. Ref 1. Fee Tk 5.00. Balance Tk ..."), not yet
+    // seen in a real sample; a mismatch only leaves it unread, as before.
+    txnType = "transfer_out"; flow = "send_money"; amount = num(m[1]); who = m[2];
   } else if ((m = text.match(new RegExp(`B2B\\s+Transfer\\s+Tk\\s*${NUM}\\s+to\\s+([\\dXx*]+)\\s+successful`, "i")))) {
     // e-money sent to the distributor (real sample 2026-11-04).
     txnType = "transfer_out"; flow = "b2b"; amount = num(m[1]); who = m[2];
@@ -187,6 +192,8 @@ function parseNagad(text: string): ParseResult {
   // a customer's Send Money (real samples 2026-11-04: 17 of them in 14 days, each one a hole in the balance chain).
   if (/^B2B\s+Received/i.test(header)) { txnType = "transfer_in"; flow = "b2b"; }
   else if (/^Cash\s*In\s+Successful/i.test(header)) { txnType = "transfer_out"; flow = "cash_in"; }
+  // A personal account's own Send Money ("Money Sent." header; layout from general knowledge, not yet a real sample).
+  else if (/^Money\s+Sent/i.test(header)) { txnType = "transfer_out"; flow = "send_money"; }
   else if (/cash\s*out/i.test(header)) txnType = "cash_out";
   else if (/payment\s+received/i.test(header)) txnType = "payment_received";
   else if (/money\s+received|received/i.test(header)) txnType = "send_money_received";
@@ -208,7 +215,7 @@ function parseNagad(text: string): ParseResult {
       commission: num(pick(text, new RegExp(`^\\s*Comm(?:ission)?\\s*:\\s*Tk\\.?\\s*${NUM}`, "im"))) ?? 0,
       // "Balance:" in customer receipts, "Bal:" in the B2B Received message.
       balance: num(pick(text, new RegExp(`^\\s*Bal(?:ance)?\\s*:\\s*Tk\\.?\\s*${NUM}`, "im"))),
-      counterparty: pick(text, /^\s*(?:Customer|Sender|From)\s*:\s*([\dXx*+\-]+)/im),
+      counterparty: pick(text, /^\s*(?:Customer|Sender|From|Receiver|To)\s*:\s*([\dXx*+\-]+)/im),
       occurredAt: parseDate(text),
       confidence: "exact",
       ...(flow ? { flowKind: flow } : {}),

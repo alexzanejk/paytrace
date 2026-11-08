@@ -33,7 +33,7 @@ export interface DeviceInfo {
   /** How often the phone has switched that dead service off and on by itself (needs the one-time adb grant). */
   accessibility_repairs?: number;
   /** Wallet numbers saved on the phone: which number is bKash, Nagad, Rocket, and which SIM each is in. */
-  wallets?: { provider: string; number: string; slot: number; found: boolean }[];
+  wallets?: { provider: string; number: string; slot: number; found: boolean; kind?: "agent" | "personal" }[];
   sim_keys?: string; // the names on the last SMS broadcast whose SIM the phone could not read (names only, never values)
   push_ready?: boolean;
   keepalive_test?: "pass" | "fail" | "short";
@@ -135,7 +135,7 @@ export function settingsLines(info: DeviceInfo | null | undefined): SettingsLine
     });
   }
   if (info.cashin_allowed === true) {
-    out.push({ text: "Sending money ON", tone: "idle", hint: "The phone will make a cash-in when the dashboard asks (still limited by the daily limit on the Jobs page and the Tk 10,000 cap per cash-in)." });
+    out.push({ text: "Sending money ON", tone: "idle", hint: "The phone will make a cash-in when the dashboard asks (Tk 100 to Tk 50,000 per cash-in; an agent Cash In has no daily limit)." });
   } else if (info.cashin_allowed === false) {
     out.push({ text: "Sending money off", tone: "idle", hint: "The phone refuses every cash-in from the dashboard, whatever it asks." });
   }
@@ -174,6 +174,6 @@ const WALLET_NAME: Record<string, string> = { bkash: "bKash", nagad: "Nagad", ro
 /** "bKash 01712345678 · SIM 1 (found by the app)" for each wallet number the phone reported. Empty for older builds. */
 export function walletLines(info: DeviceInfo | null | undefined): string[] {
   return (info?.wallets ?? []).map(
-    (w) => `${WALLET_NAME[w.provider] ?? w.provider} ${w.number} · SIM ${w.slot + 1}${w.found ? " (found by the app)" : " (picked by hand)"}`,
+    (w) => `${WALLET_NAME[w.provider] ?? w.provider}${w.kind === "personal" ? " personal" : ""} ${w.number} · SIM ${w.slot + 1}${w.found ? " (found by the app)" : " (picked by hand)"}`,
   );
 }

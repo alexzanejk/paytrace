@@ -10,6 +10,7 @@ import { Overview } from "@/pages/Overview";
 import { Review } from "@/pages/Review";
 import { Ledger } from "@/pages/Ledger";
 import { Payments } from "@/pages/Payments";
+import { Payouts } from "@/pages/Payouts";
 import { Orders } from "@/pages/Orders";
 import { Commission } from "@/pages/Commission";
 import { Crypto } from "@/pages/Crypto";
@@ -78,6 +79,7 @@ export default function App() {
       {tab === "review" && <Review />}
       {tab === "ledger" && <Ledger />}
       {tab === "payments" && <Payments />}
+      {tab === "payout" && <Payouts />}
       {tab === "orders" && <Orders settings={settings} />}
       {tab === "commission" && <Commission />}
       {tab === "crypto" && <Crypto />}

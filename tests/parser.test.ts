@@ -170,6 +170,20 @@ check("rocket B2B Cash-In is incoming b2b", p?.txnType === "transfer_in" && p?.f
 check("rocket mini-statement SMS still fails (no balance, no single amount)", parseSms("7103456789 Dr Tk500.00; 7103456790 Dr Tk20.00; 7103456791 Cr Tk.09", "rocket").kind === "failed");
 
 // A Rocket message in an unknown layout still falls back to the cautious reader.
+// A personal account's own Send Money (layouts from general knowledge, 2026-11-08; not yet a real sample).
+const bkashSendOut = "Send Money Tk 1,000.00 to 01712345678 successful. Ref 1. Fee Tk 5.00. Balance Tk 2,345.67. TrxID DK8ABC1234 at 08/11/2026 12:00";
+p = parsed(bkashSendOut, "bkash");
+check("bkash personal Send Money is outgoing money", p?.txnType === "transfer_out" && p?.flowKind === "send_money" && p?.amount === 1000 && p?.fee === 5 && p?.balance === 2345.67 && p?.counterparty === "01712345678");
+// The owner's real personal bKash Send Money receipt (recording 2026-11-08), as the wallet printed it.
+const bkashSendReal = "Send Money Tk 850.00 to 01719114383 successful. Ref a. Fee Tk 10.00. Balance Tk 14,660.08. TrxID DK817GU2FV at 08/11/2026 12:02";
+p = parsed(bkashSendReal, "bkash");
+check("the owner's real personal bKash Send Money reads as outgoing", p?.txnType === "transfer_out" && p?.flowKind === "send_money" && p?.amount === 850 && p?.fee === 10 && p?.balance === 14660.08 && p?.trxId === "DK817GU2FV");
+const nagadSendOut = "Money Sent.\nAmount: Tk 500.00\nReceiver: 01812345678\nRef: N/A\nTxnID: 76ABCDE1\nFee: Tk 0.00\nBalance: Tk 1234.56\n08/11/2026 12:00";
+p = parsed(nagadSendOut, "nagad");
+check("nagad personal Money Sent is outgoing money, never Send Money received", p?.txnType === "transfer_out" && p?.flowKind === "send_money" && p?.amount === 500 && p?.counterparty === "01812345678");
+const bkashReceived = "You have received Tk 500.00 from 01712345678. Fee Tk 0.00. Balance Tk 1,500.00. TrxID DK8RECV123 at 08/11/2026 12:00";
+check("money received is still Send Money received", parsed(bkashReceived, "bkash")?.txnType === "send_money_received");
+
 const rocketOther = "Your Rocket account received Tk 300.00. TxnId: 6891223763. Balance Tk 100.00";
 check("unknown rocket layout stays generic", parsed(rocketOther, "rocket")?.confidence === "generic");
 

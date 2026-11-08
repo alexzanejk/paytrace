@@ -1,4 +1,4 @@
-import { Bitcoin, BookOpen, BookText, Briefcase, ClipboardList, Gauge, Hash, KeyRound, ListChecks, Percent, Receipt, ScrollText, Settings2, Smartphone } from "lucide-react";
+import { Bitcoin, HandCoins, BookOpen, BookText, Briefcase, ClipboardList, Gauge, Hash, KeyRound, ListChecks, Percent, Receipt, ScrollText, Settings2, Smartphone } from "lucide-react";
 
 /** The menu. Ids are stable (bookmarks and `lib/filters.ts` use them). The labels are Admin Hub's own words (owner
  *  2026-11-03: PayTrace is Admin Hub's payment automation, so the two must say the same thing): Admin Hub has a
@@ -9,6 +9,7 @@ export const TABS = [
   { id: "orders", label: "Deposit orders", icon: ClipboardList, group: "Money" },
   { id: "payments", label: "Transactions", icon: Receipt, group: "Money" },
   { id: "review", label: "Review", icon: ListChecks, group: "Money" },
+  { id: "payout", label: "Payout", icon: HandCoins, group: "Money" },
   { id: "ledger", label: "Wallet ledger", icon: BookText, group: "Money" },
   { id: "commission", label: "Commission", icon: Percent, group: "Money" },
   { id: "crypto", label: "Crypto (USDT)", icon: Bitcoin, group: "Money" },

@@ -5,11 +5,10 @@ import { tk } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-/** The daily allowance for cash-ins the DASHBOARD asks a phone to make (the Phones page, each phone's "Cash in from this
- *  phone"). Nothing to do with the partner's own cash-in jobs above.
- *
- *  It starts at 0, which switches the whole thing off. One command is between 100 and 50,000 Tk whatever is set here:
- *  that cap is written into the database itself, and the phone checks it again. */
+/** The daily allowance for money sent from a PERSONAL account by Send Money (owner 2026-11-08: "for personal sent money
+ *  only, cash-in does not have a limit"). Since migration 065 an agent Cash In from the dashboard (Payout page, a phone's
+ *  Cash-in button) has no daily limit; one cash-in is still 100 to 50,000 Tk, in the database and on the phone.
+ *  It applies to payouts sent from a personal bKash account (migration 066); personal Nagad is not built yet. */
 export function CashInCommandLimit() {
   const [limit, setLimit] = useState<number | null>(null);
   const [text, setText] = useState("");
@@ -43,21 +42,23 @@ export function CashInCommandLimit() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><ShieldAlert className="h-4 w-4" aria-hidden /> Cash-in from the dashboard</CardTitle>
+        <CardTitle className="flex items-center gap-2"><ShieldAlert className="h-4 w-4" aria-hidden /> Daily limit for personal Send Money</CardTitle>
       </CardHeader>
       <CardContent className="grid gap-3">
         <p className="text-sm text-muted-foreground">
-          How much each phone may send in one day when YOU ask it to from the Phones page. {limit === 0
-            ? "It is 0 now, which means no cash-in can be asked for at all."
+          How much a personal account on one phone may send by Send Money in one day. {limit === 0
+            ? "It is 0 now, which means none."
             : `It is ${tk(limit ?? 0)} a day per phone now.`}
-          {" "}One cash-in is between {tk(100)} and {tk(50000)} and can only go to a saved cash-in number, and the phone must also be allowed to send money (Phones page).
+          {" "}It applies to payouts sent from a personal bKash account (personal Nagad is not built yet). An agent Cash In (Payout page, or a
+          phone's Cash-in button) has NO daily limit: one cash-in is between {tk(100)} and {tk(50000)}, and the phone must be
+          allowed to send money (Phones page).
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <input
             value={text}
             onChange={(e) => { setText(e.target.value); setSaved(false); }}
             inputMode="numeric"
-            aria-label="Taka each phone may cash in per day from the dashboard"
+            aria-label="Taka a personal account may send per day"
             className="h-9 w-40 rounded-md border border-input bg-background px-3 text-sm"
           />
           <Button size="sm" onClick={() => void save()} disabled={saving}>Save limit</Button>

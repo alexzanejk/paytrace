@@ -42,6 +42,8 @@ object UssdText {
         "no_accessibility" -> "PayTrace is not switched on in Accessibility settings."
         "accessibility_not_running" -> "Accessibility says PayTrace is switched on, but the phone never actually started it, so nothing was watching the screen. Switch PayTrace OFF and then ON again in Settings, Accessibility, Downloaded apps. On Xiaomi/Redmi also allow \"Display pop-up windows while running in the background\"."
         "no_call_permission" -> "The phone-call permission is missing."
+        "personal_off" -> "Personal accounts are switched off for this phone on the dashboard, so nothing was sent."
+        "no_personal" -> "The personal account is not set up on this phone (number and SIM), or the wallet opened the agent menu instead, so nothing was sent."
         "no_pin" -> "No Nagad PIN is saved on this phone."
         "busy" -> "Another check is still running."
         "network_refused" -> "The provider answered that the service is not available right now. Try again a little later."
@@ -689,6 +691,32 @@ object UssdRunner {
         }
     }
 
+    /** A payout from a PERSONAL bKash account (owner 2026-11-08): the wallet's own Send Money menu, from the personal
+     *  account's SIM, with the personal account's own PIN. Like a cash-in it moves money, so it is the plainest path:
+     *  the dialer way only, never tried again by itself, and only when the dashboard allows sending money AND personal
+     *  accounts on this phone. [SendMoneyFlow] stops on the agent menu (wrong SIM) and types the PIN only on the wallet's
+     *  confirmation of this number and this amount. */
+    fun runSendMoney(ctx: Context, order: CashInOrder, onFinish: (UssdOutcome) -> Unit) {
+        val app = ctx.applicationContext
+        val s = AppSettings(app)
+        fun fail(e: String) = onFinish(UssdOutcome(false, null, e))
+        if (order.provider != UssdProviders.BKASH) return fail("unsupported")
+        if (!order.sane()) return fail("bad_cash_in")
+        if (!s.ussdAllowed) return fail("not_allowed")
+        if (!s.cashInAllowed) return fail("cash_in_off")
+        if (!s.personalAllowed) return fail("personal_off")
+        val slot = s.personalSlotOf(order.provider)
+        if (s.personalNumberOf(order.provider).isEmpty() || slot !in 0..1) return fail("no_personal")
+        if (!UssdSetup.callPermission(app)) return fail("no_call_permission")
+        val pin = PersonalAccounts.pinStore(app, order.provider).get()
+        if (pin.isEmpty()) return fail("no_pin")
+        if (UssdSession.active() || UssdApi.active()) return fail("busy")
+        AccessibilityHeal.prepare(app) { note ->
+            if (!UssdSetup.accessibilityOn(app)) return@prepare fail("no_accessibility")
+            viaDialer(app, order.provider, 1, note, onFinish, s, pin, { SendMoneyFlow(order) { pin } }, retryable = false, slotOverride = slot)
+        }
+    }
+
     /** The wallet's own statement, asked for from the dashboard. Read-only: it brings back the list of recent
      *  transactions, or one entry of it, exactly as the wallet wrote them. Always the dialer way, like a cash-in: the
      *  direct request cannot carry a menu session (Android hides every answer that keeps one open). Safe to try twice
@@ -766,6 +794,8 @@ object UssdRunner {
         retryable: Boolean = true,
         /** True on the second pass, after the phone was asked to wake up. */
         woke: Boolean = false,
+        /** The SIM to pick instead of the wallet's agent SIM (a personal account's own SIM). */
+        slotOverride: Int? = null,
     ) {
         fun fail(e: String) = onFinish(UssdOutcome(false, null, e, trace = earlier))
         if (!UssdSetup.accessibilityOn(app)) return fail("no_accessibility")
@@ -780,7 +810,7 @@ object UssdRunner {
                 UssdSession.note("phone asleep or on the lock screen: waking it")
                 ScreenWake.wakeUp(UssdSession.launchContext() ?: app)
                 Handler(Looper.getMainLooper()).postDelayed({
-                    viaDialer(app, provider, n, earlier, onFinish, s, pin, special, retryable, woke = true)
+                    viaDialer(app, provider, n, earlier, onFinish, s, pin, special, retryable, woke = true, slotOverride = slotOverride)
                 }, ScreenWake.WAKE_MS)
                 return
             }
@@ -793,7 +823,7 @@ object UssdRunner {
         val dialer = try { (app.getSystemService(Context.TELECOM_SERVICE) as TelecomManager).defaultDialerPackage } catch (e: Exception) { null }
         val head = if (n > 1) earlier + "\n-- second try --" else earlier
         val flow = special?.invoke() ?: UssdProviders.flow(provider) { pin }
-        UssdSession.start(s.ussdSlotOf(provider), flow, RUN_MS, dialer, head) { outcome ->
+        UssdSession.start(slotOverride ?: s.ussdSlotOf(provider), flow, RUN_MS, dialer, head) { outcome ->
             // A cash-in is NEVER tried again by itself: it moves money, and a second run could send it twice.
             if (retryable && UssdRetry.shouldRetry(outcome.error, outcome.ok, outcome.pinSent, n)) {
                 Handler(Looper.getMainLooper()).postDelayed({ attempt(app, provider, n + 1, outcome.trace, onFinish) }, RETRY_PAUSE_MS)
@@ -888,6 +918,12 @@ object UssdCommands {
                 UssdRunner.runCashIn(ctx, order) { outcome ->
                     remember(ctx, provider, outcome)
                     report(ctx, id, outcome, "cashin")
+                }
+            }
+            "sendmoney" -> {
+                val order = CashInOrder(provider, cmd.optString("to_number"), cmd.optDouble("amount", -1.0))
+                UssdRunner.runSendMoney(ctx, order) { outcome ->
+                    report(ctx, id, outcome, "sendmoney")
                 }
             }
             "statement" -> {

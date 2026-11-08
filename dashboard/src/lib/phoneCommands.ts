@@ -81,6 +81,8 @@ const ERROR_TEXT: Record<string, string> = {
   dial_failed: "The phone could not start the code.",
   unsupported: "That phone's app is too old for this. Update the app.",
   cash_in_off: "Sending money is switched off for that phone. Turn it on in its card under \"What the dashboard may do\".",
+  personal_off: "Personal accounts are switched off for that phone. Turn them on in its card under \"What the dashboard may do\".",
+  no_personal: "The personal account is not set up in that phone's app (number and SIM), or the wallet opened the agent menu instead. Nothing was sent.",
   bad_cash_in: "The phone refused the amount or the number. Nothing was sent.",
   confirm_does_not_match: "The wallet's own screen did not show this number and this amount, so the phone stopped before the PIN. NOTHING was sent.",
   wallet_refused: "The wallet itself said no (for example the amount is under its minimum, or the PIN was wrong). Nothing was sent.",

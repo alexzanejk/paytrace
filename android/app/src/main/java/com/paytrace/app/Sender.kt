@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.BatteryManager
 import androidx.core.content.ContextCompat
-import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -127,12 +126,12 @@ object Sender {
         o.put("accessibility_repairs", s.a11yRepairs)
         // The wallet numbers saved on this phone and which SIM each was found in (-1 = not found, the chosen slot is sent too),
         // so the dashboard can say which number is bKash, Nagad and Rocket on this phone (owner 2026-11-03).
-        val wallets = JSONArray()
-        for (prov in UssdProviders.all) {
-            val n = s.walletNumberOf(prov)
-            if (n.isEmpty()) continue
-            wallets.put(JSONObject().put("provider", prov).put("number", n).put("slot", s.ussdSlotOf(prov)).put("found", s.walletSimFoundOf(prov) >= 0))
-        }
+        // Each says whether it is the agent or a personal account (owner 2026-11-08), so the server files its SMS under the right one.
+        val wallets = PersonalAccounts.walletsJson(
+            UssdProviders.all.map { prov -> Triple(prov, s.walletNumberOf(prov), Pair(s.ussdSlotOf(prov), s.walletSimFoundOf(prov) >= 0)) },
+            PersonalAccounts.providers.map { prov -> Triple(prov, s.personalNumberOf(prov), s.personalSlotOf(prov)) },
+            s.personalAllowed,
+        )
         if (wallets.length() > 0) o.put("wallets", wallets)
         // The extra names (never values) on the last SMS broadcast whose SIM this phone could not read: the dashboard shows
         // them, so an unknown phone model becomes a one-line fix instead of a guess (owner 2026-11-08).
