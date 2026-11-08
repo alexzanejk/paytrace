@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 /** The daily allowance for money sent from a PERSONAL account by Send Money (owner 2026-11-08: "for personal sent money
  *  only, cash-in does not have a limit"). Since migration 065 an agent Cash In from the dashboard (Payout page, a phone's
  *  Cash-in button) has no daily limit; one cash-in is still 100 to 50,000 Tk, in the database and on the phone.
- *  Sending from a personal account is not built yet, so this number waits for it. */
+ *  It applies to payouts sent from a personal bKash account (migration 066); personal Nagad is not built yet. */
 export function CashInCommandLimit() {
   const [limit, setLimit] = useState<number | null>(null);
   const [text, setText] = useState("");
@@ -49,7 +49,7 @@ export function CashInCommandLimit() {
           How much a personal account on one phone may send by Send Money in one day. {limit === 0
             ? "It is 0 now, which means none."
             : `It is ${tk(limit ?? 0)} a day per phone now.`}
-          {" "}Sending from a personal account is not built yet; this limit is ready for it. An agent Cash In (Payout page, or a
+          {" "}It applies to payouts sent from a personal bKash account (personal Nagad is not built yet). An agent Cash In (Payout page, or a
           phone's Cash-in button) has NO daily limit: one cash-in is between {tk(100)} and {tk(50000)}, and the phone must be
           allowed to send money (Phones page).
         </p>

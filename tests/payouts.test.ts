@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import {
-  checkNumbers, groupDigits, liveItemsByPayment, parsePct, payoutLine, payoutRefusal, recentNumbers, sendProblem, senderOptions, splitPayout,
+  checkNumbers, groupDigits, liveItemsByPayment, parsePct, payoutLine, payoutRefusal, recentNumbers, sendMethod, sendProblem, senderOptions, splitPayout,
   type PayoutRow,
 } from "../dashboard/src/lib/payouts.ts";
 import { accountTitle, checkLine, figures, sourceLine, type DayMoneyRow } from "../dashboard/src/lib/dayMoney.ts";
@@ -57,7 +57,13 @@ const phones = [
 ];
 const s = senderOptions(phones);
 check("senders: bKash/Nagad accounts of approved phones only, ready ones first", s.length === 3 && s[0]!.key === "d1:bkash:agent" && s[0]!.why === "", s);
-check("a personal account is listed but cannot send yet", s.some((o) => o.account === "personal" && o.why.includes("not built yet")));
+check("a personal account needs the phone's personal switch", s.some((o) => o.account === "personal" && o.why.includes("Personal accounts are switched off")));
+const s2 = senderOptions([{ ...phones[0]!, allow_personal: true, info: { wallets: [
+  { provider: "bkash", number: "01800000000", slot: 1, found: false, kind: "personal" as const },
+  { provider: "nagad", number: "01600000000", slot: 1, found: false, kind: "personal" as const },
+] } }]);
+check("with the switch on, a personal bKash account can send (Send Money)", s2.some((o) => o.account === "personal" && o.provider === "bkash" && o.why === "") && sendMethod("personal") === "send_money" && sendMethod("agent") === "cash_in");
+check("personal Nagad still waits for its recording", s2.some((o) => o.account === "personal" && o.provider === "nagad" && o.why.includes("not built yet")));
 check("a phone with sending switched off says so", s.some((o) => o.deviceId === "d2" && o.why.includes("switched off")));
 
 // ---- paid details ----

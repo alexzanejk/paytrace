@@ -7,8 +7,8 @@ import org.json.JSONObject
 /** Personal accounts (owner 2026-11-08): a phone may hold a personal bKash or Nagad account beside its agent one. The app
  *  shows their setup only while the owner has switched "Personal accounts on this phone" on in the dashboard (it arrives
  *  as `allow.personal` on the heartbeat reply, [RemoteSwitches]). An agent and a personal account of the same kind must be
- *  in different SIMs, because the SIM is the only thing on an SMS that tells the two apart. Nothing here moves money:
- *  sending from a personal account (Send Money) is not built yet; the PIN is saved now so it is ready. */
+ *  in different SIMs, because the SIM is the only thing on an SMS that tells the two apart. A personal bKash account can
+ *  send payouts by Send Money ([SendMoneyFlow], from its own SIM and PIN); personal Nagad is not built yet. */
 object PersonalAccounts {
     /** Wallets that can have a personal account here. */
     val providers = listOf(UssdProviders.BKASH, UssdProviders.NAGAD)

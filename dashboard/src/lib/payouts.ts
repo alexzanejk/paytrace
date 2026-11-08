@@ -143,9 +143,10 @@ export interface SenderOption {
 }
 
 /** The wallets a payout can be sent from: every bKash and Nagad account saved in the app of an approved phone. An agent
- *  sends by Cash In (needs the phone's send-money switch); a personal account will send by Send Money, not built yet. */
+ *  sends by Cash In (needs the phone's send-money switch); a personal bKash account sends by Send Money (also needs the
+ *  phone's personal-accounts switch). Personal Nagad waits for a recording of its Send Money menu. */
 export function senderOptions(
-  phones: Array<{ id: string; name: string; status: string; allow_cashin?: boolean; info: { wallets?: WalletAccount[] } | null }>,
+  phones: Array<{ id: string; name: string; status: string; allow_cashin?: boolean; allow_personal?: boolean; info: { wallets?: WalletAccount[] } | null }>,
 ): SenderOption[] {
   const out: SenderOption[] = [];
   for (const d of phones) {
@@ -153,9 +154,13 @@ export function senderOptions(
     for (const w of d.info?.wallets ?? []) {
       if (w.provider !== "bkash" && w.provider !== "nagad") continue;
       const account = w.kind === "personal" ? "personal" : "agent";
-      const why = account === "personal"
-        ? "Sending from a personal account (Send Money) is not built yet: it needs your recording of the Send Money menu."
-        : d.allow_cashin ? "" : "Sending money is switched off for this phone (Phones page, \"What the dashboard may do\").";
+      const why = !d.allow_cashin
+        ? "Sending money is switched off for this phone (Phones page, \"What the dashboard may do\")."
+        : account === "personal" && w.provider !== "bkash"
+          ? "Sending from a personal Nagad account is not built yet: it needs your recording of Nagad's Send Money menu."
+          : account === "personal" && !d.allow_personal
+            ? "Personal accounts are switched off for this phone (Phones page)."
+            : "";
       out.push({
         key: `${d.id}:${w.provider}:${account}`,
         deviceId: d.id,
@@ -169,11 +174,14 @@ export function senderOptions(
   return out.sort((a, b) => (a.why ? 1 : 0) - (b.why ? 1 : 0) || a.label.localeCompare(b.label));
 }
 
-/** Why a cash-in of this size cannot be sent, or "" (the wallet's and PayTrace's limits per send). */
+/** How a sender moves the money: an agent wallet by Cash In, a personal account by Send Money. */
+export const sendMethod = (account: "agent" | "personal"): PayoutMethod => (account === "personal" ? "send_money" : "cash_in");
+
+/** Why a send of this size cannot go, or "" (the wallet's and PayTrace's limits per send). */
 export function sendProblem(send: number, method: PayoutMethod): string {
   if (method === "manual") return "";
-  if (send < 100) return `Tk ${send} is under the Tk 100 one cash-in can send. Tick more transactions together.`;
-  if (send > 50000) return `Tk ${send.toLocaleString("en-IN")} is over the Tk 50,000 one cash-in can send. Tick fewer.`;
+  if (send < 100) return `Tk ${send} is under the Tk 100 one send can carry. Tick more transactions together.`;
+  if (send > 50000) return `Tk ${send.toLocaleString("en-IN")} is over the Tk 50,000 one send can carry. Tick fewer.`;
   return "";
 }
 

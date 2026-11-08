@@ -470,7 +470,10 @@ private fun PersonalRow(settings: AppSettings, provider: String, sims: List<SimN
                     if (pinSaved) OutlinedButton(onClick = { PersonalAccounts.pinStore(ctx, provider).set(""); pinSaved = false }) { Text("Remove PIN") }
                 }
                 Text(
-                    "Sending money from a personal account is not built yet. The PIN is kept so it is ready; it is never sent anywhere.",
+                    if (provider == UssdProviders.BKASH)
+                        "The dashboard's Payout page can send money from this account by Send Money, using this SIM and this PIN. The PIN stays on this phone and is never sent anywhere."
+                    else
+                        "Sending from a personal Nagad account is not built yet. The PIN is kept so it is ready; it is never sent anywhere.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

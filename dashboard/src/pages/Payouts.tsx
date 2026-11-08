@@ -6,7 +6,7 @@ import { PROVIDERS, PROVIDER_LABEL, type Payment } from "@/lib/types";
 import { rangeBounds, rangeLabel, periodRange } from "@/lib/period";
 import {
   PAYOUT_WORDS, UNSURE_HELP, checkNumbers, groupDigits, liveItemsByPayment, parsePct, payoutLine, payoutRefusal, recentNumbers,
-  sendProblem, senderOptions, splitPayout, type PayoutItemRow, type PayoutRow,
+  sendMethod, sendProblem, senderOptions, splitPayout, METHOD_WORDS, type PayoutItemRow, type PayoutRow,
 } from "@/lib/payouts";
 import { nudgePhone } from "@/lib/wake";
 import { useQuery } from "@/hooks/useQuery";
@@ -33,7 +33,7 @@ type Show = "open" | "paid" | "all";
 
 /** The Payout page (owner 2026-11-08): the same transactions as the Transactions page, but each can be ticked and paid on.
  *  Tick one or several, keep a share (20% unless changed), and send the rest in whole taka to a number you type twice.
- *  An agent wallet sends it by Cash In through its phone. A transaction is in at most one live payout, enforced by the
+ *  An agent wallet sends it by Cash In through its phone, a personal bKash account by Send Money. A transaction is in at most one live payout, enforced by the
  *  database, so nothing can be paid twice. */
 export function Payouts() {
   const devices = useDevices();
@@ -280,7 +280,7 @@ function PayoutPanel({
   const pct = parsePct(pctText);
   const split = pct == null ? null : splitPayout(total, pct);
 
-  const options = useMemo(() => senderOptions(devices.map((d) => ({ id: d.id, name: nameOf(d.id), status: d.status, allow_cashin: d.allow_cashin, info: d.info }))), [devices, nameOf]);
+  const options = useMemo(() => senderOptions(devices.map((d) => ({ id: d.id, name: nameOf(d.id), status: d.status, allow_cashin: d.allow_cashin, allow_personal: d.allow_personal, info: d.info }))), [devices, nameOf]);
   // The wallet that received the money sends it on, when it can.
   const first0 = chosen[0];
   const preferred = options.find((o) => !o.why && o.deviceId === first0?.device_id && o.provider === first0?.provider && o.account === "agent")
@@ -372,7 +372,7 @@ function PayoutPanel({
           </select>
           {sender?.why ? <span className="text-xs text-status-warn">{sender.why}</span> : null}
           {!options.length ? <span className="text-xs text-status-warn">No phone has a bKash or Nagad account saved in its app yet.</span> : null}
-          <span className="block text-xs text-muted-foreground">An agent wallet sends it by Cash In. There is no daily limit for an agent Cash In; one cash-in is Tk 100 to Tk 50,000.</span>
+          <span className="block text-xs text-muted-foreground">An agent wallet sends it by Cash In (no daily limit). A personal bKash account sends it by Send Money (it keeps the daily limit set on the Jobs page, and bKash charges its Send Money fee). One send is Tk 100 to Tk 50,000.</span>
         </label>
       ) : (
         <p className="text-xs text-muted-foreground">Use this when you paid outside PayTrace. The transactions are marked paid at once. Number and TrxID are optional but help later.</p>
@@ -429,7 +429,7 @@ function PayoutPanel({
             <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
             {byHand
               ? `Record that you paid ${tk(split!.send)}${nums.number ? ` to ${groupDigits(nums.number)}` : ""} and kept ${tk(split!.keep)}. The ${chosen.length} transaction${chosen.length === 1 ? "" : "s"} will show Paid.`
-              : `Send ${tk(split!.send)} by Cash In to ${groupDigits(nums.number!)} from ${sender!.label}. You keep ${tk(split!.keep)}. The phone types the PIN only on the wallet screen that shows this number and this amount.`}
+              : `Send ${tk(split!.send)} by ${METHOD_WORDS[sendMethod(sender!.account)]} to ${groupDigits(nums.number!)} from ${sender!.label}. You keep ${tk(split!.keep)}. The phone types the PIN only on the wallet screen that shows this number and this amount.`}
           </p>
           <div className="flex flex-wrap gap-2">
             <Button disabled={busy} onClick={() => void go()}>{busy ? "Working…" : byHand ? "Yes, mark paid" : "Yes, send it"}</Button>
