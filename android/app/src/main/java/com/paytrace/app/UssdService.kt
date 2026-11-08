@@ -657,6 +657,9 @@ object UssdSetup {
  *  really submitted is tried once more; after the PIN, never. */
 object UssdRunner {
     private const val RUN_MS = 90_000L
+    /** A statement pages through up to [StatementFlow.MAX_PAGES] pages after the menus, so it gets longer (the server
+     *  gives a running command 3 minutes). */
+    private const val STATEMENT_RUN_MS = 150_000L
     private const val DIAL_FALLBACK_MS = 3_500L
     private const val RETRY_PAUSE_MS = 4_000L
     /** After a bKash session was opened by the direct way and could not go on, let the network drop it before the dialer way starts. */
@@ -734,7 +737,7 @@ object UssdRunner {
         if (UssdSession.active() || UssdApi.active()) return fail("busy")
         AccessibilityHeal.prepare(app) { note ->
             if (!UssdSetup.accessibilityOn(app)) return@prepare fail("no_accessibility")
-            viaDialer(app, provider, 1, note, onFinish, s, pin, { StatementFlow(provider, item) { pin } })
+            viaDialer(app, provider, 1, note, onFinish, s, pin, { StatementFlow(provider, item) { pin } }, runMs = STATEMENT_RUN_MS)
         }
     }
 
@@ -796,6 +799,8 @@ object UssdRunner {
         woke: Boolean = false,
         /** The SIM to pick instead of the wallet's agent SIM (a personal account's own SIM). */
         slotOverride: Int? = null,
+        /** How long the whole run may take. */
+        runMs: Long = RUN_MS,
     ) {
         fun fail(e: String) = onFinish(UssdOutcome(false, null, e, trace = earlier))
         if (!UssdSetup.accessibilityOn(app)) return fail("no_accessibility")
@@ -810,7 +815,7 @@ object UssdRunner {
                 UssdSession.note("phone asleep or on the lock screen: waking it")
                 ScreenWake.wakeUp(UssdSession.launchContext() ?: app)
                 Handler(Looper.getMainLooper()).postDelayed({
-                    viaDialer(app, provider, n, earlier, onFinish, s, pin, special, retryable, woke = true, slotOverride = slotOverride)
+                    viaDialer(app, provider, n, earlier, onFinish, s, pin, special, retryable, woke = true, slotOverride = slotOverride, runMs = runMs)
                 }, ScreenWake.WAKE_MS)
                 return
             }
@@ -823,10 +828,14 @@ object UssdRunner {
         val dialer = try { (app.getSystemService(Context.TELECOM_SERVICE) as TelecomManager).defaultDialerPackage } catch (e: Exception) { null }
         val head = if (n > 1) earlier + "\n-- second try --" else earlier
         val flow = special?.invoke() ?: UssdProviders.flow(provider) { pin }
-        UssdSession.start(slotOverride ?: s.ussdSlotOf(provider), flow, RUN_MS, dialer, head) { outcome ->
+        UssdSession.start(slotOverride ?: s.ussdSlotOf(provider), flow, runMs, dialer, head) { outcome ->
             // A cash-in is NEVER tried again by itself: it moves money, and a second run could send it twice.
             if (retryable && UssdRetry.shouldRetry(outcome.error, outcome.ok, outcome.pinSent, n)) {
-                Handler(Looper.getMainLooper()).postDelayed({ attempt(app, provider, n + 1, outcome.trace, onFinish) }, RETRY_PAUSE_MS)
+                Handler(Looper.getMainLooper()).postDelayed({
+                    // The same kind of run again: a statement retried as a statement (it used to come back as a balance check).
+                    if (special != null) viaDialer(app, provider, n + 1, outcome.trace, onFinish, s, pin, special, retryable, slotOverride = slotOverride, runMs = runMs)
+                    else attempt(app, provider, n + 1, outcome.trace, onFinish)
+                }, RETRY_PAUSE_MS)
             } else {
                 onFinish(outcome)
             }
@@ -835,7 +844,7 @@ object UssdRunner {
         try {
             // The phone's screen may be off: wake it so the menu can be shown.
             val pm = app.getSystemService(Context.POWER_SERVICE) as PowerManager
-            pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "paytrace:ussd").acquire(RUN_MS + 5_000)
+            pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "paytrace:ussd").acquire(runMs + 5_000)
         } catch (e: Exception) {
             // The call may still work with the screen on.
         }

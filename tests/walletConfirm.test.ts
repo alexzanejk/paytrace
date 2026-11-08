@@ -31,5 +31,15 @@ check("two Tk 500 entries, as the judge needs to count them", nl.filter((l) => l
 const nd = readList(nagad);
 check("dashboard reads the nagad list the same way", nd.length === 4 && nd.every((r, i) => statementDay(r.date) === nl[i].day && Math.abs(r.amount) === nl[i].amount && (r.amount >= 0) === nl[i].in));
 
+// Paging (migration 069): bKash numbers its pages on (5, 6, ...); a wallet that starts each page at 1 again must not
+// lose its second page.
+const twoPages = ["1. 04/11/26 Cash Out Tk 500\n2. 04/11/26 B2B Tk -8000\nNext Page *", "1. 03/11/26 Cash In Tk -3000\n2. 03/11/26 Cash Out Tk 500"];
+const tp = readStatementLines(twoPages);
+check("a page numbered from 1 again carries on (3, 4)", tp.length === 4 && tp[2].no === 3 && tp[2].day === "2026-11-03" && tp[3].no === 4, tp);
+const tpd = readList(twoPages);
+check("the dashboard numbers them the same way", tpd.length === 4 && tpd.map((r) => r.no).join(",") === "1,2,3,4");
+check("bKash's own numbering is kept", readStatementLines(screens).map((l) => l.no).join(",") === "1,2,3,4,5");
+check("the same page twice is still read once", readStatementLines([nagad[0], nagad[0]]).length === 4);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

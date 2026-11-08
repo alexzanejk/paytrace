@@ -69,14 +69,21 @@ export function readRow(line: string): StatementRow | null {
 /** Every entry on every page the phone brought back, in the order the wallet listed them. */
 export function readList(screens: string[] | null | undefined): StatementRow[] {
   const rows: StatementRow[] = [];
-  const seen = new Set<number>();
+  const seen = new Map<number, string>();
+  let top = 0;
   for (const screen of screens ?? []) {
-    for (const line of String(screen).split("\n")) {
-      const row = readRow(line);
-      if (row && !seen.has(row.no)) {
-        seen.add(row.no);
-        rows.push(row);
-      }
+    const page = String(screen).split("\n").map(readRow).filter((r): r is StatementRow => r !== null);
+    // A page that numbers its entries from 1 again carries on after the last page (the same rule as the server's reader).
+    const key = (r: StatementRow) => `${r.date}|${r.type}|${r.amount}`;
+    // The same page brought back twice is a repeat, not a new page.
+    const repeat = page.every((r) => seen.get(r.no) === key(r));
+    const offset = page.length && !repeat && page[0].no <= top ? top : 0;
+    for (const row of page) {
+      const no = row.no + offset;
+      if (seen.has(no)) continue;
+      seen.set(no, key(row));
+      top = Math.max(top, no);
+      rows.push({ ...row, no });
     }
   }
   return rows.sort((a, b) => a.no - b.no);
