@@ -21,7 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 interface Settings { enabled: boolean; threshold: number; urgency: Urgency; instruction: string }
-interface NumberRow { id: string; provider: string; number: string; label: string | null; enabled: boolean; last_assigned_at: string | null }
+interface NumberRow { id: string; provider: string; number: string; label: string | null; enabled: boolean; last_assigned_at: string | null; removed_at?: string | null }
 interface JobRow {
   id: string; device_id: string; provider: string; number: string; balance: number | string; created_at: string; status: CashinStatus;
   amount: number | string | null; commission: number | string | null; submitted_at: string | null; attempts: number; diff: number | string | null; note: string | null;
@@ -235,6 +235,13 @@ function NumbersCard({ numbers, onChanged }: { numbers: NumberRow[]; onChanged: 
     setLabel("");
     onChanged();
   }
+  // Migration 074: a removed number is kept for the history but hidden here and never handed out again.
+  async function remove(row: NumberRow) {
+    const { error } = await sb.rpc("remove_cashin_number", { p_id: row.id });
+    if (error) setProblem(error.message);
+    else onChanged();
+  }
+  const shown = numbers.filter((n) => !n.removed_at);
   async function toggle(row: NumberRow) {
     const { error } = await sb.rpc("set_cashin_number_enabled", { p_id: row.id, p_enabled: !row.enabled });
     if (error) setProblem(error.message);
@@ -243,7 +250,7 @@ function NumbersCard({ numbers, onChanged }: { numbers: NumberRow[]; onChanged: 
 
   return (
     <Card>
-      <CardHeader><CardTitle>Our personal numbers to Cash In to</CardTitle></CardHeader>
+      <CardHeader><CardTitle>Our numbers the partners send to</CardTitle></CardHeader>
       <CardContent className="grid gap-4">
         <form onSubmit={add} className="grid gap-3 sm:grid-cols-[9rem_minmax(0,1fr)_minmax(0,9rem)_auto] sm:items-end">
           <div className="grid gap-1.5">
@@ -264,11 +271,11 @@ function NumbersCard({ numbers, onChanged }: { numbers: NumberRow[]; onChanged: 
           <Button type="submit" disabled={busy}>{busy ? "Adding…" : "Add"}</Button>
         </form>
         {problem ? <p role="alert" className="text-sm text-destructive">{problem}</p> : null}
-        {numbers.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No number yet. Add at least one for each wallet type you want cash-in jobs for.</p>
+        {shown.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No number yet. Add at least one bKash or Nagad number: every wallet on Taka sends to these.</p>
         ) : (
           <ul className="divide-y divide-border rounded-lg border border-border">
-            {numbers.map((n) => (
+            {shown.map((n) => (
               <li key={n.id} className="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
                 <div className="min-w-0">
                   <p className="flex items-center gap-2 text-sm"><ProviderChip provider={n.provider} /> <span className="font-mono">{n.number}</span></p>
@@ -276,7 +283,17 @@ function NumbersCard({ numbers, onChanged }: { numbers: NumberRow[]; onChanged: 
                     {n.label ? `${n.label} · ` : ""}{n.last_assigned_at ? `last given ${when(n.last_assigned_at)}` : "not given yet"}
                   </p>
                 </div>
-                <Switch checked={n.enabled} onCheckedChange={() => void toggle(n)} aria-label={`Use ${n.number}`} />
+                <div className="flex items-center gap-2">
+                  <Switch checked={n.enabled} onCheckedChange={() => void toggle(n)} aria-label={`Use ${n.number}`} />
+                  <Confirm
+                    title={`Remove ${n.number}?`}
+                    description="It is no longer given to any partner. A partner whose job shows it right now gets another of our numbers within a minute. Past jobs keep showing it. You can add it again later."
+                    confirmLabel="Remove"
+                    onConfirm={() => remove(n)}
+                  >
+                    <Button size="sm" variant="ghost" className="text-destructive">Remove</Button>
+                  </Confirm>
+                </div>
               </li>
             ))}
           </ul>
