@@ -8,6 +8,7 @@ export interface WalletInfo {
   number: string;
   slot: number;
   found: boolean;
+  kind: "agent" | "personal"; // migration 065: an older app reports none, and those were all agent accounts
 }
 
 export interface DeviceInfo {
@@ -94,7 +95,7 @@ export function cleanInfo(body: Record<string, unknown>, now: Date = new Date())
   if (a11yRepairs !== undefined) info.accessibility_repairs = a11yRepairs;
   if (Array.isArray(body.wallets)) {
     const wallets: WalletInfo[] = [];
-    for (const w of body.wallets.slice(0, 4)) {
+    for (const w of body.wallets.slice(0, 6)) {
       if (!w || typeof w !== "object") continue;
       const o = w as Record<string, unknown>;
       const provider = typeof o.provider === "string" && /^(bkash|nagad|rocket|upay)$/.test(o.provider) ? o.provider : null;
@@ -102,7 +103,8 @@ export function cleanInfo(body: Record<string, unknown>, now: Date = new Date())
       // Exactly SIM 1 or SIM 2; a slot like 5 is not rounded down to a SIM the phone may not have.
       const slot = o.slot === 0 || o.slot === "0" ? 0 : o.slot === 1 || o.slot === "1" ? 1 : undefined;
       const found = asBool(o.found);
-      if (provider && number && slot !== undefined) wallets.push({ provider, number, slot, found: found === true });
+      const kind = o.kind === "personal" ? "personal" : "agent";
+      if (provider && number && slot !== undefined) wallets.push({ provider, number, slot, found: found === true, kind });
     }
     if (wallets.length) info.wallets = wallets;
   }

@@ -32,6 +32,8 @@ import { newestOf } from "@/lib/appVersion";
 import { GROUP_CODE, GroupChoice } from "@/components/GroupChoice";
 import { CommissionCard } from "@/components/CommissionCard";
 import { B2BFloat } from "@/components/B2BFloat";
+import { DayMoney } from "@/components/DayMoney";
+import { rowsOf, type DayMoneyRow } from "@/lib/dayMoney";
 import type { B2BFloatRow } from "@/lib/ledger";
 import type { GapRow } from "@/lib/gaps";
 import { NOT_OURS_RULE, notOursLines, type NotOursRow } from "@/lib/notOurs";
@@ -70,6 +72,10 @@ export function Devices() {
       const floatRes = await sb.rpc("wallet_b2b_floats");
       const floats = (floatRes.data ?? []) as B2BFloatRow[];
       const floatsError = floatRes.error ? floatRes.error.message : "";
+      // Each account's day, every movement counted once (migration 065). A failure is shown on the card, never as zeros.
+      const moneyRes = await sb.rpc("device_day_money", { p_day: day });
+      const dayMoney = (moneyRes.data ?? []) as DayMoneyRow[];
+      const dayMoneyError = moneyRes.error ? moneyRes.error.message : "";
       // Balance moves no SMS explains (migration 063), still open; a missing table never stops the page.
       const gapRes = await sb.from("balance_gaps").select("*").is("explained_by", null).order("at", { ascending: false }).limit(200);
       const gaps = (gapRes.data ?? []) as GapRow[];
@@ -95,7 +101,7 @@ export function Devices() {
         // Keep the database in step, quietly: the phone's own update check does not read it, but other pages may.
         await sb.rpc("set_app_release", { p_version_code: fromLink, p_notes: release?.notes ?? null }).then(() => undefined, () => undefined);
       }
-      return { devices, totals, flows, balances, simBalances, floats, floatsError, gaps, notOurs, wallets, walletStats, rates, commission, groups, release, newestBuild, fromLink };
+      return { devices, totals, flows, balances, simBalances, floats, floatsError, dayMoney, dayMoneyError, gaps, notOurs, wallets, walletStats, rates, commission, groups, release, newestBuild, fromLink };
     },
     [day],
     { refreshMs: 10000 },
@@ -299,6 +305,8 @@ export function Devices() {
               notOurs={data?.notOurs ?? []}
               wallets={(data?.wallets ?? []).filter((w) => w.device_id === d.id)}
               walletStats={(data?.walletStats ?? []).filter((x) => x.device_id === d.id)}
+              dayMoney={rowsOf(data?.dayMoney ?? [], d.id)}
+              dayMoneyError={data?.dayMoneyError ?? ""}
               rates={(data?.rates ?? []).filter((r) => r.device_id === d.id)}
               commission={(data?.commission ?? []).find((c) => c.device_id === d.id)}
               newest={data?.newestBuild ?? null}
@@ -328,6 +336,8 @@ function DeviceCard({
   notOurs,
   wallets,
   walletStats,
+  dayMoney,
+  dayMoneyError,
   rates,
   commission,
   newest,
@@ -349,6 +359,8 @@ function DeviceCard({
   notOurs: NotOursRow[];
   wallets: DeviceWallet[];
   walletStats: WalletOrderStat[];
+  dayMoney: DayMoneyRow[];
+  dayMoneyError: string;
   rates: RateRow[];
   commission: CommissionBalance | undefined;
   newest: number | null;
@@ -492,6 +504,8 @@ function DeviceCard({
           )}
         </TableBody>
       </Table>
+
+      <DayMoney rows={dayMoney} error={dayMoneyError} dayLabel={dayLabel(day)} />
 
       <WalletsCard deviceId={d.id} wallets={wallets} reported={d.info?.wallets} stats={walletStats} defaultGroup={d.default_group ?? "main"} onChanged={onChanged} />
 

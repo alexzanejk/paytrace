@@ -10,6 +10,14 @@ class RemoteSwitchesTest {
         assertEquals(Switches(false, true), RemoteSwitches.parse("""{"allow":{"balance":false,"cashin":true}}"""))
     }
 
+    @Test fun personalIsOptional() {
+        assertEquals(Switches(true, false, true), RemoteSwitches.parse("""{"allow":{"balance":true,"cashin":false,"personal":true}}"""))
+        assertEquals(Switches(true, false, false), RemoteSwitches.parse("""{"allow":{"balance":true,"cashin":false,"personal":false}}"""))
+        // An older server sends no "personal": the other two still apply and the personal setting is left alone.
+        assertEquals(Switches(true, false, null), RemoteSwitches.parse("""{"allow":{"balance":true,"cashin":false}}"""))
+        assertEquals(Switches(true, false, null), RemoteSwitches.parse("""{"allow":{"balance":true,"cashin":false,"personal":"yes"}}"""))
+    }
+
     @Test fun anythingUnclearChangesNothing() {
         assertNull(RemoteSwitches.parse(null))
         assertNull(RemoteSwitches.parse(""))

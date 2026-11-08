@@ -7,8 +7,10 @@ import org.json.JSONObject
  *  may the dashboard check a balance or read a statement, and may it make this phone send money. They arrive on every
  *  heartbeat reply as `"allow":{"balance":true,"cashin":false}` and are stored in [AppSettings.ussdAllowed] and
  *  [AppSettings.cashInAllowed], which the commands already check. A reply without them (an old server, a lookup failure,
- *  a shared-secret setup) changes nothing. Nothing on the phone's own screen can change them any more. */
-data class Switches(val balance: Boolean, val cashIn: Boolean)
+ *  a shared-secret setup) changes nothing. Nothing on the phone's own screen can change them any more.
+ *  A third, optional `"personal"` (migration 065) shows or hides the Personal accounts section; a server that does not send
+ *  it leaves that setting as it was. */
+data class Switches(val balance: Boolean, val cashIn: Boolean, val personal: Boolean? = null)
 
 object RemoteSwitches {
     /** Reads the `allow` object. Anything that is not a plain true or false for BOTH values means "no change". */
@@ -18,7 +20,8 @@ object RemoteSwitches {
             val a = JSONObject(body).optJSONObject("allow") ?: return null
             val b = a.opt("balance")
             val c = a.opt("cashin")
-            if (b is Boolean && c is Boolean) Switches(b, c) else null
+            val pr = a.opt("personal")
+            if (b is Boolean && c is Boolean) Switches(b, c, pr as? Boolean) else null
         } catch (e: Exception) {
             null
         }
@@ -29,5 +32,6 @@ object RemoteSwitches {
         val s = AppSettings(ctx)
         if (s.ussdAllowed != sw.balance) s.ussdAllowed = sw.balance
         if (s.cashInAllowed != sw.cashIn) s.cashInAllowed = sw.cashIn
+        if (sw.personal != null && s.personalAllowed != sw.personal) s.personalAllowed = sw.personal
     }
 }

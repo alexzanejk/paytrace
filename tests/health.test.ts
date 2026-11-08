@@ -66,7 +66,13 @@ i = cleanInfo({ wallets: [
   { provider: "rocket", number: "01912345678", slot: 5 },
   "junk",
 ] }, at);
-check("wallet numbers are kept only when provider, 11-digit number and slot are sane", JSON.stringify(i.wallets) === JSON.stringify([{ provider: "bkash", number: "01712345678", slot: 1, found: true }]), i.wallets);
+check("wallet numbers are kept only when provider, 11-digit number and slot are sane", JSON.stringify(i.wallets) === JSON.stringify([{ provider: "bkash", number: "01712345678", slot: 1, found: true, kind: "agent" }]), i.wallets);
+i = cleanInfo({ wallets: [
+  { provider: "bkash", number: "01712345678", slot: 0, found: true, kind: "agent" },
+  { provider: "bkash", number: "01812345678", slot: 1, found: false, kind: "personal" },
+  { provider: "nagad", number: "01912345678", slot: 0, kind: "boss" },
+] }, at);
+check("each account keeps agent or personal; anything else reads as agent", (i.wallets ?? []).map((w) => w.kind).join(",") === "agent,personal,agent", i.wallets);
 i = cleanInfo({ wallets: "01712345678" }, at);
 check("wallets that are not a list are dropped", i.wallets === undefined);
 i = cleanInfo({ accessibility_on: true, accessibility_running: "false", accessibility_repairs: "3" }, at);

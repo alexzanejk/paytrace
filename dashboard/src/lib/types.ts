@@ -89,6 +89,8 @@ export interface Device {
   /** What the dashboard may ask this phone to do. Balance checks default to allowed, sending money to not allowed. */
   allow_balance?: boolean;
   allow_cashin?: boolean;
+  /** The phone app may show its Personal accounts section (migration 065; off by default). */
+  allow_personal?: boolean;
 }
 
 export interface EventRow {

@@ -340,6 +340,16 @@ class AppSettings(ctx: Context) {
         get() = p.getBoolean("cash_in_allowed", false)
         set(v) { p.edit().putBoolean("cash_in_allowed", v).apply() }
 
+    /** Whether the owner lets this phone show its Personal accounts section (dashboard switch, migration 065; off by default). */
+    var personalAllowed: Boolean
+        get() = p.getBoolean("personal_allowed", false)
+        set(v) { p.edit().putBoolean("personal_allowed", v).apply() }
+    /** A personal account's number and SIM (-1 = no SIM chosen yet). Its PIN is in PersonalAccounts.pinStore. */
+    fun personalNumberOf(provider: String): String = p.getString("personal_number_$provider", "") ?: ""
+    fun setPersonalNumberOf(provider: String, v: String) { p.edit().putString("personal_number_$provider", v.filter { it.isDigit() }.take(13)).apply() }
+    fun personalSlotOf(provider: String): Int = p.getInt("personal_slot_$provider", -1).let { if (it in 0..1) it else -1 }
+    fun setPersonalSlotOf(provider: String, v: Int) { p.edit().putInt("personal_slot_$provider", if (v in 0..1) v else -1).apply() }
+
     /** How many runs in a row the direct way failed on this phone (see UssdDirectHealth). Reset whenever it works. */
     var ussdDirectFails: Int
         get() = p.getInt("ussd_direct_fails", 0)
