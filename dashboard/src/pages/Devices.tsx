@@ -2,13 +2,10 @@ import { useState } from "react";
 import { BatteryMedium, BellRing, ChevronLeft, ChevronRight, Check, HeartPulse, ListOrdered, Pencil, Smartphone, X } from "lucide-react";
 import { must, sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
-import { PROVIDER_LABEL, PROVIDERS, type Device, type DeviceBalance,
-  type DeviceSimBalance, type DeviceWallet } from "@/lib/types";
+import { PROVIDER_LABEL, type Device, type DeviceBalance, type DeviceWallet } from "@/lib/types";
 import { addDays, dayLabel, dhakaDay, groupSummary, summarize, type DayTotal } from "@/lib/period";
 import { openPaymentsWith } from "@/lib/filters";
 import { infoProblems } from "@/lib/deviceHealth";
-import { cn } from "@/lib/utils";
-import { FLOW_KINDS, FLOW_WORDS, agreement, groupFlows, hasFlows, type FlowRow } from "@/lib/flows";
 import { useQuery } from "@/hooks/useQuery";
 import { wakePhone, WAKE_TEXT } from "@/lib/wake";
 import { Screen } from "@/components/Screen";
@@ -16,7 +13,6 @@ import { PageHeader } from "@/components/PageHeader";
 import { StatCard, STAT_GRID } from "@/components/StatCard";
 import { Confirm } from "@/components/Confirm";
 import { DeviceChip } from "@/components/DeviceChip";
-import { ProviderChip } from "@/components/ProviderChip";
 import { DeviceHealthBadge } from "@/components/DeviceHealthBadge";
 import { DeviceDetails } from "@/components/DeviceDetails";
 import { WalletsCard } from "@/components/WalletsCard";
@@ -33,7 +29,7 @@ import { GROUP_CODE, GroupChoice } from "@/components/GroupChoice";
 import { CommissionCard } from "@/components/CommissionCard";
 import { B2BFloat } from "@/components/B2BFloat";
 import { DayMoney } from "@/components/DayMoney";
-import { rowsOf, type DayMoneyRow } from "@/lib/dayMoney";
+import { dayTotals, rowsOf, type DayCheckRow, type DayMoneyRow } from "@/lib/dayMoney";
 import type { B2BFloatRow } from "@/lib/ledger";
 import type { GapRow } from "@/lib/gaps";
 import { NOT_OURS_RULE, notOursLines, type NotOursRow } from "@/lib/notOurs";
@@ -42,7 +38,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { EmptyRow } from "@/components/Empty";
 import { useNow } from "@/hooks/useNow";
 import { deviceHealth } from "@/lib/deviceHealth";
 import { depositCoverage, type WalletOrderStat } from "@/lib/walletNumbers";
@@ -63,10 +58,7 @@ export function Devices() {
         await sb.from("devices").select("*").neq("status", "revoked").order("created_at", { ascending: true }).limit(200),
       ) as Device[];
       const totals = must(await sb.from("device_day_totals").select("*").eq("day", day)) as DayTotal[];
-      // Cash Out / Cash In / B2B per wallet for the same day (view device_day_flows, migration 048).
-      const flows = must(await sb.from("device_day_flows").select("*").eq("day", day)) as FlowRow[];
       const balances = must(await sb.from("device_balances").select("*")) as DeviceBalance[];
-      const simBalances = must(await sb.from("device_sim_balances").select("*")) as DeviceSimBalance[];
       // The B2B float, through an admin-only function (migration 060: the view itself is refused for the signed-in admin).
       // A failure never stops the page, but it is SHOWN on the B2B card, never turned into zeros without a word.
       const floatRes = await sb.rpc("wallet_b2b_floats");
@@ -76,6 +68,10 @@ export function Devices() {
       const moneyRes = await sb.rpc("device_day_money", { p_day: day });
       const dayMoney = (moneyRes.data ?? []) as DayMoneyRow[];
       const dayMoneyError = moneyRes.error ? moneyRes.error.message : "";
+      // Whether every balance change of the day is accounted for (migration 069). Shown on the card, never hidden.
+      const checkRes = await sb.rpc("device_day_check", { p_day: day });
+      const dayChecks = (checkRes.data ?? []) as DayCheckRow[];
+      const dayCheckError = checkRes.error ? checkRes.error.message : "";
       // Balance moves no SMS explains (migration 063), still open; a missing table never stops the page.
       const gapRes = await sb.from("balance_gaps").select("*").is("explained_by", null).order("at", { ascending: false }).limit(200);
       const gaps = (gapRes.data ?? []) as GapRow[];
@@ -101,7 +97,7 @@ export function Devices() {
         // Keep the database in step, quietly: the phone's own update check does not read it, but other pages may.
         await sb.rpc("set_app_release", { p_version_code: fromLink, p_notes: release?.notes ?? null }).then(() => undefined, () => undefined);
       }
-      return { devices, totals, flows, balances, simBalances, floats, floatsError, dayMoney, dayMoneyError, gaps, notOurs, wallets, walletStats, rates, commission, groups, release, newestBuild, fromLink };
+      return { devices, totals, balances, floats, floatsError, dayMoney, dayMoneyError, dayChecks, dayCheckError, gaps, notOurs, wallets, walletStats, rates, commission, groups, release, newestBuild, fromLink };
     },
     [day],
     { refreshMs: 10000 },
@@ -295,10 +291,7 @@ export function Devices() {
               device={d}
               day={day}
               sum={perDevice.get(d.id)}
-              totals={totals.filter((t) => t.device_id === d.id)}
-              flows={(data?.flows ?? []).filter((f) => f.device_id === d.id)}
               balances={(data?.balances ?? []).filter((b) => b.device_id === d.id)}
-              simBalances={(data?.simBalances ?? []).filter((b) => b.device_id === d.id)}
               floats={(data?.floats ?? []).filter((f) => f.device_id === d.id)}
               floatsError={data?.floatsError ?? ""}
               gaps={(data?.gaps ?? []).filter((g) => g.device_id === d.id)}
@@ -307,6 +300,8 @@ export function Devices() {
               walletStats={(data?.walletStats ?? []).filter((x) => x.device_id === d.id)}
               dayMoney={rowsOf(data?.dayMoney ?? [], d.id)}
               dayMoneyError={data?.dayMoneyError ?? ""}
+              dayChecks={(data?.dayChecks ?? []).filter((c) => c.device_id === d.id)}
+              dayCheckError={data?.dayCheckError ?? ""}
               rates={(data?.rates ?? []).filter((r) => r.device_id === d.id)}
               commission={(data?.commission ?? []).find((c) => c.device_id === d.id)}
               newest={data?.newestBuild ?? null}
@@ -326,10 +321,7 @@ function DeviceCard({
   device: d,
   day,
   sum,
-  totals,
-  flows,
   balances,
-  simBalances,
   floats,
   floatsError,
   gaps,
@@ -338,6 +330,8 @@ function DeviceCard({
   walletStats,
   dayMoney,
   dayMoneyError,
+  dayChecks,
+  dayCheckError,
   rates,
   commission,
   newest,
@@ -349,10 +343,7 @@ function DeviceCard({
   device: Device;
   day: string;
   sum: ReturnType<typeof summarize> | undefined;
-  totals: DayTotal[];
-  flows: FlowRow[];
   balances: DeviceBalance[];
-  simBalances: DeviceSimBalance[];
   floats: B2BFloatRow[];
   floatsError: string;
   gaps: GapRow[];
@@ -361,6 +352,8 @@ function DeviceCard({
   walletStats: WalletOrderStat[];
   dayMoney: DayMoneyRow[];
   dayMoneyError: string;
+  dayChecks: DayCheckRow[];
+  dayCheckError: string;
   rates: RateRow[];
   commission: CommissionBalance | undefined;
   newest: number | null;
@@ -375,9 +368,11 @@ function DeviceCard({
   const [waking, setWaking] = useState(false);
   const [wakeNote, setWakeNote] = useState("");
   const s = sum ?? summarize([]);
-  const byProvider = groupSummary(totals, (r) => r.provider);
-  const flowsBy = groupFlows(flows, (r) => r.provider);
-  const shown = PROVIDERS.filter((p) => byProvider.has(p) || hasFlows(flowsBy.get(p)) || balances.some((b) => b.provider === p));
+  // The headline counts every movement once, SMS or statement (the same figures as the blocks below); the SMS-only
+  // totals are the fallback if the day's figures could not be loaded.
+  const merged = dayMoneyError ? null : dayTotals(dayMoney);
+  const received = merged ? merged.received : s.received;
+  const cashOut = merged ? merged.cashOut : s.cashOut;
   const problems = infoProblems(d.info).length;
 
   /** Sends one wake-up push to this phone right now. If it arrives, the phone is back within a minute or two. */
@@ -432,13 +427,13 @@ function DeviceCard({
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <div>
           <p className="text-xs text-muted-foreground">Received</p>
-          <p className="whitespace-nowrap text-base font-semibold tabular sm:text-lg">{tk(s.received.amount)}</p>
-          <p className="text-xs text-muted-foreground">{s.received.n} payments</p>
+          <p className="whitespace-nowrap text-base font-semibold tabular sm:text-lg">{tk(received.amount)}</p>
+          <p className="text-xs text-muted-foreground">{received.n} payments</p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Cash Out</p>
-          <p className="whitespace-nowrap text-base font-semibold tabular sm:text-lg">{tk(s.cashOut.amount)}</p>
-          <p className="text-xs text-muted-foreground">{s.cashOut.n} receipts</p>
+          <p className="whitespace-nowrap text-base font-semibold tabular sm:text-lg">{tk(cashOut.amount)}</p>
+          <p className="text-xs text-muted-foreground">{cashOut.n} receipts</p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground">Commission</p>
@@ -446,66 +441,7 @@ function DeviceCard({
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        Money through each wallet on {dayLabel(day)} (12:00 AM to 11:59 PM Bangladesh time). Received and Cash Out came IN; Cash In and B2B went OUT. Cash Out is shown twice: what the SMS said and what the wallet's own statement listed, with whether they agree.
-        Hover a heading for what is counted.
-      </p>
-      <Table className="[&_td]:px-2 [&_th]:px-2 sm:[&_td]:px-3 sm:[&_th]:px-3">
-        <TableHeader>
-          <TableRow>
-            <TableHead>Gateway</TableHead>
-            <TableHead className="text-right" title="Payments and Send Money that came in (from the SMS).">Received</TableHead>
-            {FLOW_KINDS.map((k) => (
-              <TableHead key={k} className="text-right" title={FLOW_WORDS[k].meaning}>{FLOW_WORDS[k].label}</TableHead>
-            ))}
-            <TableHead className="text-right">Last balance</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {shown.length === 0 ? (
-            <EmptyRow cols={7} text={`No transactions yet for ${dayLabel(day)}.`} />
-          ) : (
-            shown.map((p) => {
-              const ps = byProvider.get(p);
-              const fl = flowsBy.get(p);
-              const bal = balances.find((b) => b.provider === p);
-              const sims = simBalances.filter((b) => b.provider === p).sort((a, b) => (a.sim_slot ?? 9) - (b.sim_slot ?? 9));
-              return (
-                <TableRow key={p}>
-                  <TableCell><ProviderChip provider={p} /></TableCell>
-                  <TableCell className="text-right tabular">{ps && ps.received.n ? tk(ps.received.amount) : "–"}</TableCell>
-                  {FLOW_KINDS.map((k) => {
-                    const agree = k === "cash_out_stmt" && fl ? agreement(fl) : null;
-                    return (
-                      <TableCell key={k} className="text-right">
-                        <span className="tabular">{fl && fl[k].n ? tk(fl[k].amount) : "–"}</span>
-                        {fl && fl[k].n ? <span className="block text-xs text-muted-foreground">{fl[k].n}</span> : null}
-                        {agree && agree.text ? (
-                          <span className={cn("block whitespace-nowrap text-xs", agree.tone === "ok" ? "text-status-ok" : agree.tone === "warn" ? "text-status-warn" : "text-muted-foreground")}>
-                            {agree.text}
-                          </span>
-                        ) : null}
-                      </TableCell>
-                    );
-                  })}
-                  <TableCell className="text-right">
-                    <span className="tabular">{bal ? tk(bal.balance) : "–"}</span>
-                    {bal ? <span className="block text-xs text-muted-foreground">as of {when(bal.at)}</span> : null}
-                    {/* Two wallets of the same kind on two SIMs: each account's own last balance. */}
-                    {sims.length > 1 ? sims.map((s) => (
-                      <span key={s.sim_slot ?? "x"} className="block text-xs text-muted-foreground">
-                        {s.sim_slot == null ? "SIM not known" : `SIM ${s.sim_slot + 1}`}: {tk(s.balance)}
-                      </span>
-                    )) : null}
-                  </TableCell>
-                </TableRow>
-              );
-            })
-          )}
-        </TableBody>
-      </Table>
-
-      <DayMoney rows={dayMoney} error={dayMoneyError} dayLabel={dayLabel(day)} />
+      <DayMoney rows={dayMoney} checks={dayChecks} error={dayMoneyError} checkError={dayCheckError} dayLabel={dayLabel(day)} today={day === dhakaDay()} />
 
       <WalletsCard deviceId={d.id} wallets={wallets} reported={d.info?.wallets} stats={walletStats} defaultGroup={d.default_group ?? "main"} onChanged={onChanged} />
 
