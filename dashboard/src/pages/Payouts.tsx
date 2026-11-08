@@ -6,7 +6,7 @@ import { PROVIDERS, PROVIDER_LABEL, type Payment } from "@/lib/types";
 import { rangeBounds, rangeLabel, periodRange } from "@/lib/period";
 import {
   PAYOUT_WORDS, UNSURE_HELP, checkNumbers, groupDigits, liveItemsByPayment, parsePct, payoutLine, payoutRefusal, recentNumbers,
-  sendMethod, sendProblem, senderOptions, splitPayout, METHOD_WORDS, type PayoutItemRow, type PayoutRow,
+  parseFee, sendMethod, sendProblem, senderOptions, splitPayout, METHOD_WORDS, type PayoutItemRow, type PayoutRow,
 } from "@/lib/payouts";
 import { nudgePhone } from "@/lib/wake";
 import { useQuery } from "@/hooks/useQuery";
@@ -82,8 +82,11 @@ export function Payouts() {
       const known = new Set(recent.map((p) => p.id));
       const missing = [...new Set(items.map((i) => i.payout_id))].filter((id) => !known.has(id));
       const older = missing.length ? (must(await sb.from("payouts").select("*").in("id", missing)) as PayoutRow[]) : [];
-      const settings = must(await sb.from("payout_settings").select("keep_pct").limit(1)) as { keep_pct: number | string }[];
-      return { rows, total: res.count ?? 0, items, payouts: [...recent, ...older], keepPct: Number(settings[0]?.keep_pct ?? 20) };
+      const settings = must(await sb.from("payout_settings").select("keep_pct,send_money_fee").limit(1)) as { keep_pct: number | string; send_money_fee?: number | string }[];
+      return {
+        rows, total: res.count ?? 0, items, payouts: [...recent, ...older],
+        keepPct: Number(settings[0]?.keep_pct ?? 20), sendFee: Number(settings[0]?.send_money_fee ?? 10),
+      };
     },
     [device, provider, startIso, endIso, term, limit],
     { refreshMs: 10000 },
@@ -168,6 +171,7 @@ export function Payouts() {
           key={[...ticked].sort().join(",")}
           chosen={chosen}
           defaultPct={data?.keepPct ?? 20}
+          defaultFee={data?.sendFee ?? 10}
           devices={devices.list}
           nameOf={devices.nameOf}
           recent={recentNumbers(data?.payouts ?? [])}
@@ -255,10 +259,11 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String((e as {
 
 /** The panel that appears once something is ticked: the split, the sender, the number (typed twice), and the confirm. */
 function PayoutPanel({
-  chosen, defaultPct, devices, nameOf, recent, onDone, onClear,
+  chosen, defaultPct, defaultFee, devices, nameOf, recent, onDone, onClear,
 }: {
   chosen: Payment[];
   defaultPct: number;
+  defaultFee: number;
   devices: ReturnType<typeof useDevices>["list"];
   nameOf: (id: string | null | undefined) => string;
   recent: string[];
@@ -275,11 +280,10 @@ function PayoutPanel({
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
   const [saveDefault, setSaveDefault] = useState(false);
+  const [feeText, setFeeText] = useState(String(defaultFee));
 
   const total = chosen.reduce((s, r) => s + Number(r.amount), 0);
   const pct = parsePct(pctText);
-  const split = pct == null ? null : splitPayout(total, pct);
-
   const options = useMemo(() => senderOptions(devices.map((d) => ({ id: d.id, name: nameOf(d.id), status: d.status, allow_cashin: d.allow_cashin, allow_personal: d.allow_personal, info: d.info }))), [devices, nameOf]);
   // The wallet that received the money sends it on, when it can.
   const first0 = chosen[0];
@@ -287,13 +291,17 @@ function PayoutPanel({
     ?? options.find((o) => !o.why && o.provider === first0?.provider) ?? options.find((o) => !o.why);
   const [senderKey, setSenderKey] = useState(preferred?.key ?? "");
   const sender = options.find((o) => o.key === senderKey);
+  // A personal Send Money costs the sender a bKash fee; it comes off what is sent, never off your share (owner 2026-11-08).
+  const personal = !byHand && sender?.account === "personal";
+  const fee = personal ? parseFee(feeText) : 0;
+  const split = pct == null || fee == null ? null : splitPayout(total, pct, fee);
 
   const nums = checkNumbers(first, second);
   const sizeProblem = split ? sendProblem(split.send, byHand ? "manual" : "cash_in") : "";
   const mixed = new Set(chosen.map((r) => `${r.device_id}:${r.provider}`)).size > 1;
 
   const ready = !!split && !sizeProblem && (byHand ? (first.trim() ? !!nums.number : true) : !!nums.number && !!sender && !sender.why);
-  const blockedBy = !split ? "Type the share you keep (0 to 100)." : sizeProblem
+  const blockedBy = pct == null ? "Type the share you keep (0 to 100)." : fee == null ? "Type the bKash fee to set aside (0 to 500 taka)." : !split ? "" : sizeProblem
     || (byHand ? (first.trim() && !nums.number ? nums.problem : "") : !sender ? "Choose the wallet that sends it." : sender.why || nums.problem);
 
   async function go() {
@@ -302,6 +310,11 @@ function PayoutPanel({
     try {
       if (saveDefault && pct !== defaultPct) {
         const r = await sb.rpc("set_payout_settings", { p_keep_pct: pct });
+        if (r.error) throw r.error;
+      }
+      // The database takes the fee from its own setting, so a changed fee is saved first, then used.
+      if (personal && fee != null && fee !== defaultFee) {
+        const r = await sb.rpc("set_payout_send_fee", { p_fee: fee });
         if (r.error) throw r.error;
       }
       if (byHand) {
@@ -351,6 +364,17 @@ function PayoutPanel({
           <p className="text-2xl font-bold tabular text-primary">{split ? tk(split.send) : "–"}</p>
         </div>
       </div>
+      {personal ? (
+        <label className="block space-y-1 text-sm">
+          <span className="text-muted-foreground">bKash Send Money fee, taken off what is sent (not off your share)</span>
+          <Input className="w-40" inputMode="decimal" value={feeText} onChange={(e) => { setFeeText(e.target.value); setConfirming(false); }} aria-label="bKash fee to set aside, taka" />
+          <span className="block text-xs text-muted-foreground">
+            bKash only says the real fee after sending (free to your Priyo numbers up to their monthly total, Tk 5 or Tk 10 otherwise;
+            Tk 10 on Tk 850 in your recording). This much is set aside; the real fee from bKash's receipt is shown on the payout
+            afterwards. A changed figure becomes the new default.
+          </span>
+        </label>
+      ) : null}
 
       <div className="flex flex-wrap gap-2 text-sm" role="group" aria-label="How it is paid">
         <Button variant={byHand ? "outline" : "default"} size="sm" onClick={() => { setByHand(false); setConfirming(false); }}>Send from a phone</Button>
@@ -429,7 +453,7 @@ function PayoutPanel({
             <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
             {byHand
               ? `Record that you paid ${tk(split!.send)}${nums.number ? ` to ${groupDigits(nums.number)}` : ""} and kept ${tk(split!.keep)}. The ${chosen.length} transaction${chosen.length === 1 ? "" : "s"} will show Paid.`
-              : `Send ${tk(split!.send)} by ${METHOD_WORDS[sendMethod(sender!.account)]} to ${groupDigits(nums.number!)} from ${sender!.label}. You keep ${tk(split!.keep)}. The phone types the PIN only on the wallet screen that shows this number and this amount.`}
+              : `Send ${tk(split!.send)} by ${METHOD_WORDS[sendMethod(sender!.account)]} to ${groupDigits(nums.number!)} from ${sender!.label}.${split!.fee ? ` ${tk(split!.fee)} is set aside for the bKash fee.` : ""} You keep ${tk(split!.keep)}. The phone types the PIN only on the wallet screen that shows this number and this amount.`}
           </p>
           <div className="flex flex-wrap gap-2">
             <Button disabled={busy} onClick={() => void go()}>{busy ? "Working…" : byHand ? "Yes, mark paid" : "Yes, send it"}</Button>

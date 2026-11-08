@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import {
-  checkNumbers, groupDigits, liveItemsByPayment, parsePct, payoutLine, payoutRefusal, recentNumbers, sendMethod, sendProblem, senderOptions, splitPayout,
+  checkNumbers, feeLine, groupDigits, parseFee, liveItemsByPayment, parsePct, payoutLine, payoutRefusal, recentNumbers, sendMethod, sendProblem, senderOptions, splitPayout,
   type PayoutRow,
 } from "../dashboard/src/lib/payouts.ts";
 import { accountTitle, checkLine, figures, sourceLine, type DayMoneyRow } from "../dashboard/src/lib/dayMoney.ts";
@@ -12,13 +12,24 @@ function check(name: string, cond: boolean, extra?: unknown) {
 }
 
 // ---- the split is the database's (live test 2026-11-08: 800 at 20% sent 640 kept 160; 497 at 20% kept 100 sent 397) ----
-check("800 at 20% sends 640 and keeps 160", JSON.stringify(splitPayout(800, 20)) === JSON.stringify({ keep: 160, send: 640 }));
-check("497 at 20% sends whole taka 397 and keeps 100", JSON.stringify(splitPayout(497, 20)) === JSON.stringify({ keep: 100, send: 397 }));
+check("800 at 20% sends 640 and keeps 160", JSON.stringify(splitPayout(800, 20)) === JSON.stringify({ keep: 160, send: 640, fee: 0 }));
+check("497 at 20% sends whole taka 397 and keeps 100", JSON.stringify(splitPayout(497, 20)) === JSON.stringify({ keep: 100, send: 397, fee: 0 }));
 check("500 at 20% is the owner's example: 400 sent", splitPayout(500, 20).send === 400);
 check("0% sends all, 100% sends nothing", splitPayout(600, 0).send === 600 && splitPayout(600, 100).send === 0);
 const sql = readFileSync(new URL("../supabase/migrations/20261108_065_payouts.sql", import.meta.url), "utf8");
 check("the database rounds the same way (floor of total minus kept share)", sql.includes("floor(p_total - round(p_total * p_keep_pct / 100, 2))"));
 
+// The bKash Send Money fee comes off what is sent, never off the share kept (owner 2026-11-08).
+check("1000 at 20% with a Tk 10 fee: Tk 200 kept, Tk 10 set aside, Tk 790 sent", JSON.stringify(splitPayout(1000, 20, 10)) === JSON.stringify({ keep: 200, send: 790, fee: 10 }));
+check("the fee never touches the share kept (497 at 20%, fee 10: kept 100, sent 387)", JSON.stringify(splitPayout(497, 20, 10)) === JSON.stringify({ keep: 100, send: 387, fee: 10 }));
+const sql67 = readFileSync(new URL("../supabase/migrations/20261108_067_send_money_fee.sql", import.meta.url), "utf8");
+check("the database takes the fee off the same way", sql67.includes("v_send := floor(v_total - round(v_total * p_keep_pct / 100, 2) - v_fee);"));
+check("fee: 10, 5.5 and 0 read; junk and over 500 refused", parseFee("10") === 10 && parseFee("Tk 5.5") === 5.5 && parseFee("0") === 0 && parseFee("600") === null && parseFee("x") === null);
+check("fee line: still waiting for the SMS", feeLine(10, null).startsWith("Tk 10 set aside"));
+check("fee line: exact", feeLine(10, 10) === "bKash fee Tk 10, exactly what was set aside");
+check("fee line: a Priyo number cost nothing, so the set-aside stays with you", feeLine(10, 0).includes("Tk 10 stays with you"));
+check("fee line: bKash charged more", feeLine(5, 10).includes("Tk 5 more came out of the wallet"));
+check("no fee line on an agent cash-in", feeLine(0, null) === "");
 check("keep share: 20, 12.5 and 100 read; junk and over 100 refused", parsePct("20") === 20 && parsePct("12.5%") === 12.5 && parsePct("100") === 100 && parsePct("101") === null && parsePct("x") === null && parsePct("") === null);
 
 // ---- the typed number ----

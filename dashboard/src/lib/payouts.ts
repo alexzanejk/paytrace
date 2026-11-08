@@ -22,6 +22,8 @@ export interface PayoutRow {
   from_account: "agent" | "personal" | null;
   to_number: string | null;
   total_amount: number | string;
+  fee_reserved?: number | string;
+  fee_actual?: number | string | null;
   keep_pct: number | string;
   keep_amount: number | string;
   send_amount: number | string;
@@ -44,11 +46,31 @@ export interface PayoutItemRow {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const num = (v: number | string | null | undefined) => (v == null ? 0 : Number(v) || 0);
 
-/** The same split as the database's payout_split: whole taka sent, the rest kept (80% of Tk 497 sends Tk 397). */
-export function splitPayout(total: number, keepPct: number): { keep: number; send: number } {
+/** The same split as the database's create_payout: whole taka sent, the rest kept (80% of Tk 497 sends Tk 397). A
+ *  personal Send Money also sets aside bKash's fee, taken off what is sent, never off the share kept (owner 2026-11-08). */
+export function splitPayout(total: number, keepPct: number, fee = 0): { keep: number; send: number; fee: number } {
   const keep2 = round2((total * keepPct) / 100);
-  const send = Math.max(0, Math.floor(round2(total - keep2) + 1e-9));
-  return { keep: round2(total - send), send };
+  const send = Math.max(0, Math.floor(round2(total - keep2 - fee) + 1e-9));
+  return { keep: round2(total - send - fee), send, fee };
+}
+
+/** A typed fee to set aside: 0 to 500 taka, up to two decimals; null when it is not one. */
+export function parseFee(text: string): number | null {
+  const t = text.replace(/[\s,]/g, "").replace(/^tk/i, "");
+  if (!/^\d{1,3}(\.\d{1,2})?$/.test(t)) return null;
+  const n = Number(t);
+  return n <= 500 ? n : null;
+}
+
+/** The fee line on a paid personal send: what was set aside and what bKash really charged. */
+export function feeLine(reserved: number, actual: number | null): string {
+  if (!reserved && actual == null) return "";
+  if (actual == null) return `${taka(reserved)} set aside for the bKash fee (the real fee shows when bKash's SMS arrives)`;
+  const diff = round2(reserved - actual);
+  if (Math.abs(diff) < 0.005) return `bKash fee ${taka(actual)}, exactly what was set aside`;
+  return diff > 0
+    ? `bKash fee ${taka(actual)}; ${taka(reserved)} was set aside, so ${taka(diff)} stays with you`
+    : `bKash fee ${taka(actual)}; only ${taka(reserved)} was set aside, so ${taka(-diff)} more came out of the wallet`;
 }
 
 /** A typed keep share: 0 to 100, up to two decimals; null when it is not one. */
@@ -123,7 +145,8 @@ export function payoutLine(p: PayoutRow, phoneName: (id: string | null) => strin
   const how = ` by ${METHOD_WORDS[p.method]}`;
   const trx = p.trx_id ? ` · TrxID ${p.trx_id}` : "";
   const kept = ` · kept ${taka(num(p.keep_amount))} (${num(p.keep_pct)}%) of ${taka(num(p.total_amount))}`;
-  return `${taka(num(p.send_amount))}${to}${how}${from}${trx}${kept}`;
+  const fee = feeLine(num(p.fee_reserved), p.fee_actual == null ? null : num(p.fee_actual));
+  return `${taka(num(p.send_amount))}${to}${how}${from}${trx}${kept}${fee ? " · " + fee : ""}`;
 }
 
 /** What an unsure payout needs from the owner. */
