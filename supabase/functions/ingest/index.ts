@@ -13,7 +13,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import { parseSms, senderMatchesProvider, type Provider } from "./parser.ts";
 import { cleanInfo, healthProblem, type DeviceInfo } from "./health.ts";
-import { b2bMessage, confirmedMessage, makeNotifier, notConfirmedMessage, problemMessage, recoveredMessage, reviewMessage, testMessage, unreadMessage } from "./notify.ts";
+import { b2bMessage, confirmedMessage, gapMessage, makeNotifier, notConfirmedMessage, problemMessage, recoveredMessage, reviewMessage, testMessage, unreadMessage } from "./notify.ts";
 import { readStatementLines } from "./statement.ts";
 import { runWatchdog } from "./watchdog.ts";
 import { runWake } from "./wake.ts";
@@ -236,6 +236,7 @@ async function recordStatement(commandId: string, screens: string[], deviceName:
     const r = data as {
       count?: number; provider?: string; added?: { day?: string; type?: string; amount?: number | string }[];
       confirmed?: { trx_id?: string; amount?: number | string; provider?: string; result?: string; detail?: string }[];
+      gaps?: { gap_id?: string; amount?: number | string; kind?: string; day?: string; line_amount?: number | string }[];
     } | null;
     // Migration 061: the pull re-judged the wallet's chain holds; tell the owner about each one it released.
     for (const c of r?.confirmed ?? []) {
@@ -247,8 +248,38 @@ async function recordStatement(commandId: string, screens: string[], deviceName:
         await notify.send(b2bMessage({ direction: "out", provider: r?.provider ?? "", amount: -amount, phone: deviceName, how: "statement", day: a.day ?? null, dashboardUrl: DASHBOARD_URL }));
       }
     }
+    // Migration 063: the pull explained balance movements no SMS had accounted for. A B2B in found this way is what
+    // the owner asked to know about (rubel's bKash, 7 Nov): it now counts in the wallet's B2B float.
+    for (const g of r?.gaps ?? []) {
+      const amount = Number(g.line_amount ?? g.amount);
+      if (g.kind === "b2b_in" && Number.isFinite(amount) && amount > 0) {
+        await notify.send(b2bMessage({ direction: "in", provider: r?.provider ?? "", amount, phone: deviceName, how: "statement", day: g.day ?? null, dashboardUrl: DASHBOARD_URL }));
+      }
+    }
   } catch (e) {
     console.error("statement record failed", e instanceof Error ? e.name : "error");
+  }
+}
+
+/** A balance that moved more than its SMS explains is a GAP (migration 063): money came in or left with no message
+ *  (bKash prints nothing for a B2B in). Record it against this SMS, ask the wallet's statement at once while the entry
+ *  is still among its newest, and wake the phone. Until the statement (or the owner) explains it, an unexplained IN is
+ *  held back from "your money" like B2B. Nothing here can touch the payment path. */
+async function recordGap(paymentId: string, deviceName: string): Promise<void> {
+  try {
+    const { data, error } = await db.rpc("balance_gap_record", { p_payment: paymentId });
+    if (error) { console.error("balance_gap_record failed", error.code); return; }
+    const r = data as { gap?: string | null; amount?: number | string; pull?: boolean; why?: string | null; device_id?: string; explained?: boolean } | null;
+    if (!r?.gap) return;
+    if (r.pull && r.device_id) await wakeDevice(r.device_id);
+    const { data: pay } = await db.from("payments").select("provider,balance").eq("id", paymentId).maybeSingle();
+    // Tell the owner only when PayTrace cannot find out by itself (no statement could be asked) and the statement had
+    // not already explained it: then the Phones page is the only place it gets settled.
+    if (!r.pull && !r.explained) {
+      await notify.send(gapMessage({ provider: pay?.provider ?? "", amount: Number(r.amount) || 0, phone: deviceName, balance: pay?.balance == null ? null : Number(pay.balance), why: r.why ?? "", dashboardUrl: DASHBOARD_URL }));
+    }
+  } catch (e) {
+    console.error("gap record failed", e instanceof Error ? e.name : "error");
   }
 }
 
@@ -610,6 +641,35 @@ async function storeSms(src: SmsSource): Promise<Response> {
     return json({ success: true, message: "provider disabled on server", ignored: true });
   }
 
+  // ---- not one of this phone's wallets (migration 064): a wallet that is not set up in the app on that phone is not
+  //      ours. Stored for the record only: no totals, no balance, no chain, no gap, no job, no alert. A phone with no
+  //      wallet set up at all is treated as before (the rule cannot tell what is ours there). ----
+  if (deviceId) {
+    const { data: ours, error: oursError } = await db.rpc("wallet_is_ours", { p_device: deviceId, p_provider: d.provider, p_sim: simSlot });
+    if (!oursError && ours === false) {
+      const outgoingNow = d.txnType === "transfer_out" || d.txnType === "transfer_in";
+      const { data: kept, error: keepError } = await db
+        .from("payments")
+        .insert({
+          provider: d.provider, txn_type: outgoingNow ? "unknown" : d.txnType, trx_id: d.trxId,
+          amount: d.amount, fee: d.fee, commission: d.commission, balance: d.balance,
+          counterparty: d.counterparty, occurred_at: d.occurredAt,
+          raw_message: raw, status: "ignored", review_reason: "not_ours",
+          balance_delta: null, chain_status: "unverified",
+          device_id: deviceId, sim_slot: simSlot,
+        })
+        .select("id")
+        .single();
+      if (keepError) {
+        if (keepError.code === "23505") return json({ success: true, message: "Duplicate: already recorded", duplicate: true });
+        await log("error", d.provider, { code: keepError.code });
+        return json({ success: false, message: "could not save" }, 500);
+      }
+      if (!src.rerun) await log("created", d.provider, { trx_id: d.trxId, type: d.txnType, amount: d.amount, device_id: deviceId, sim_slot: simSlot, not_ours: true }, kept.id);
+      return json({ success: true, message: "stored: not one of this phone's wallets", payment_id: kept.id, status: "ignored", not_ours: true });
+    }
+  }
+
   // ---- balance chain: a forged SMS cannot know the live account balance ----
   // Money the agent SENT OUT (B2B to the distributor, a cash-in, a bill) lowers the balance: judge it as a negative amount.
   // Money that came in on the agent's own side (B2B from the distributor, a cash-in from an agent) raises it like a payment.
@@ -688,6 +748,9 @@ async function storeSms(src: SmsSource): Promise<Response> {
   }
 
   await log("created", d.provider, { trx_id: d.trxId, type: d.txnType, amount: d.amount, device_id: deviceId, chain: chainStatus, ...(src.rerun ? { rerun: true } : {}) }, inserted.id);
+
+  // The balance moved more than this message explains: money came in or left with no SMS (migration 063).
+  if (chainStatus === "mismatch" && d.balance != null && deviceId && !src.rerun) defer(recordGap(inserted.id, src.deviceName ?? ""));
 
   // B2B money moved (owner 2026-11-05): say so at once. OUT spends the owner's money; IN raises the wallet's B2B float.
   if (!src.rerun && (reviewReason === "b2b_transfer_out" || reviewReason === "b2b_received")) {

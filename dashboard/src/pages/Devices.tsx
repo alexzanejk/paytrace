@@ -31,6 +31,8 @@ import { GROUP_CODE, GroupChoice } from "@/components/GroupChoice";
 import { CommissionCard } from "@/components/CommissionCard";
 import { B2BFloat } from "@/components/B2BFloat";
 import type { B2BFloatRow } from "@/lib/ledger";
+import type { GapRow } from "@/lib/gaps";
+import { NOT_OURS_RULE, notOursLines, type NotOursRow } from "@/lib/notOurs";
 import type { CommissionBalance, RateRow } from "@/lib/commission";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -66,6 +68,12 @@ export function Devices() {
       const floatRes = await sb.rpc("wallet_b2b_floats");
       const floats = (floatRes.data ?? []) as B2BFloatRow[];
       const floatsError = floatRes.error ? floatRes.error.message : "";
+      // Balance moves no SMS explains (migration 063), still open; a missing table never stops the page.
+      const gapRes = await sb.from("balance_gaps").select("*").is("explained_by", null).order("at", { ascending: false }).limit(200);
+      const gaps = (gapRes.data ?? []) as GapRow[];
+      // Messages ignored as "not ours" in the last 7 days (migration 064); a missing view never stops the page.
+      const notOursRes = await sb.from("device_not_ours").select("*");
+      const notOurs = (notOursRes.data ?? []) as NotOursRow[];
       const wallets = must(await sb.from("device_wallets").select("*").order("created_at", { ascending: true })) as DeviceWallet[];
       // Deposit orders per wallet in the last 24 h (view wallet_order_stats, migration 052). A missing view never stops the page.
       const statRes = await sb.from("wallet_order_stats").select("*");
@@ -77,7 +85,7 @@ export function Devices() {
       // The newest app version (update system). A missing table never stops the page.
       const rel = await sb.from("app_release").select("version_code,notes").limit(1);
       const release = (rel.data?.[0] ?? null) as { version_code: number; notes: string | null } | null;
-      return { devices, totals, flows, balances, simBalances, floats, floatsError, wallets, walletStats, rates, commission, groups, release };
+      return { devices, totals, flows, balances, simBalances, floats, floatsError, gaps, notOurs, wallets, walletStats, rates, commission, groups, release };
     },
     [day],
     { refreshMs: 10000 },
@@ -274,6 +282,8 @@ export function Devices() {
               simBalances={(data?.simBalances ?? []).filter((b) => b.device_id === d.id)}
               floats={(data?.floats ?? []).filter((f) => f.device_id === d.id)}
               floatsError={data?.floatsError ?? ""}
+              gaps={(data?.gaps ?? []).filter((g) => g.device_id === d.id)}
+              notOurs={data?.notOurs ?? []}
               wallets={(data?.wallets ?? []).filter((w) => w.device_id === d.id)}
               walletStats={(data?.walletStats ?? []).filter((x) => x.device_id === d.id)}
               rates={(data?.rates ?? []).filter((r) => r.device_id === d.id)}
@@ -301,6 +311,8 @@ function DeviceCard({
   simBalances,
   floats,
   floatsError,
+  gaps,
+  notOurs,
   wallets,
   walletStats,
   rates,
@@ -320,6 +332,8 @@ function DeviceCard({
   simBalances: DeviceSimBalance[];
   floats: B2BFloatRow[];
   floatsError: string;
+  gaps: GapRow[];
+  notOurs: NotOursRow[];
   wallets: DeviceWallet[];
   walletStats: WalletOrderStat[];
   rates: RateRow[];
@@ -468,7 +482,7 @@ function DeviceCard({
 
       <WalletsCard deviceId={d.id} wallets={wallets} reported={d.info?.wallets} stats={walletStats} defaultGroup={d.default_group ?? "main"} onChanged={onChanged} />
 
-      <B2BFloat deviceId={d.id} floats={floats} loadError={floatsError} balances={balances} onChanged={onChanged} />
+      <B2BFloat deviceId={d.id} floats={floats} loadError={floatsError} balances={balances} gaps={gaps} onChanged={onChanged} />
 
       <CommissionCard device={d} rates={rates} balance={commission} onChanged={onChanged} />
 
@@ -502,6 +516,15 @@ function DeviceCard({
           {d.allow_balance !== false ? <StatementSection deviceId={d.id} wallets={d.info?.wallets} /> : null}
         </div>
       ) : null}
+      {(() => {
+        const ignored = notOursLines(notOurs, d.id, d.info?.wallets);
+        return ignored.length ? (
+          <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm" role="note">
+            {ignored.map((line) => <p key={line}>{line}</p>)}
+            <p className="mt-1 text-xs text-muted-foreground">{NOT_OURS_RULE}</p>
+          </div>
+        ) : null;
+      })()}
       {showHealth ? <DeviceDetails info={d.info} /> : null}
     </Card>
   );
