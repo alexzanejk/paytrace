@@ -109,7 +109,11 @@ fun JobCard(job: Job, onSent: suspend (Double, Double) -> String?) {
             Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
                 Text(job.instruction, Modifier.padding(16.dp), style = MaterialTheme.typography.bodyLarge)
             }
-            Text(if (cashIn) "Cash in to this number" else "Wallet address", style = MaterialTheme.typography.labelLarge, color = on)
+            // A Taka job may send to our number of ANY type (a Rocket wallet to our bKash number); the server names it in `network`.
+            Text(
+                if (!cashIn) "Wallet address" else if (job.network.isNotBlank()) "Send to our ${job.network} number" else "Send to this number",
+                style = MaterialTheme.typography.labelLarge, color = on,
+            )
             Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
                 Row(
                     Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
@@ -137,13 +141,13 @@ fun JobCard(job: Job, onSent: suspend (Double, Double) -> String?) {
 
     if (confirm) {
         SendDialog(
-            title = if (cashIn) "How much did you cash in?" else "How much did you send?",
-            text = if (cashIn) "Type the exact cash-in amount, then the cash-in commission your wallet gave you for it (for example 0.38 on 100). A cash-in sends no SMS, so PayTrace checks these numbers against the next cash-out message."
+            title = "How much did you send?",
+            text = if (cashIn) "Type the exact amount you sent to our number, then the commission your wallet gave you or the charge you paid (0 if none). PayTrace checks these numbers against the next cash-out message."
             else "Type exactly what left the wallet, then the P2P charge. PayTrace checks it against the next cash-out message.",
             initialAmount = "",
             initialCharge = "",
-            amountLabel = if (cashIn) "Cash-in amount (Tk)" else "Amount you sent (Tk)",
-            chargeLabel = if (cashIn) "Cash-in commission you got (Tk)" else "P2P charge (Tk)",
+            amountLabel = "Amount you sent (Tk)",
+            chargeLabel = if (cashIn) "Commission or charge (Tk)" else "P2P charge (Tk)",
             onSubmit = onSent,
             onClose = { confirm = false },
         )
