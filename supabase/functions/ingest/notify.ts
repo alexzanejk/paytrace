@@ -171,6 +171,22 @@ export function b2bMessage(p: {
   return lines.join("\n");
 }
 
+/** A balance gap PayTrace could not ask the wallet about (migration 063): the next SMS printed a balance that moved
+ *  more than it explains, and no statement pull could be started, so the owner has to settle it on the Phones page. */
+export function gapMessage(p: { provider: string; amount: number; phone: string; balance: number | null; why: string; dashboardUrl: string }): string {
+  const wallet = PROVIDER[p.provider] ?? clean(p.provider, 20);
+  const who = clean(p.phone) || "a phone";
+  const inn = p.amount > 0;
+  const lines = [
+    inn ? `\u{1F7E1} ${taka(p.amount)} came into ${who}'s ${wallet} wallet with no SMS` : `\u{1F7E1} ${taka(-p.amount)} left ${who}'s ${wallet} wallet with no SMS`,
+    inn ? "Probably B2B from the distributor. It is held back from \"your money\" until it is explained." : "Probably a cash-in or B2B the agent made.",
+    `PayTrace could not ask the wallet's statement: ${clean(p.why, 80) || "unknown reason"}.`,
+  ];
+  if (p.balance != null) lines.push(`Balance now ${taka(p.balance)}.`);
+  lines.push(`Mark what it was on the Phones page: ${p.dashboardUrl}/#/devices`);
+  return lines.join("\n");
+}
+
 export const testMessage = () =>
   [
     "✅ PayTrace test message",

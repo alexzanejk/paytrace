@@ -135,6 +135,10 @@ export interface B2BFloatRow {
   last_out_at: string | null;
   last_out_amount: number | string | null;
   last_in_at: string | null;
+  // Since migration 063 (missing until it is live): unexplained ins / outs, and what is held back from "your money".
+  pending_in?: number | string | null;
+  pending_out?: number | string | null;
+  reserved?: number | string | null;
 }
 
 /** balance - float, never shown below zero as "yours" (a float set too high only means no job starts). */

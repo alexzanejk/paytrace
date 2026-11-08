@@ -31,6 +31,7 @@ import { GROUP_CODE, GroupChoice } from "@/components/GroupChoice";
 import { CommissionCard } from "@/components/CommissionCard";
 import { B2BFloat } from "@/components/B2BFloat";
 import type { B2BFloatRow } from "@/lib/ledger";
+import type { GapRow } from "@/lib/gaps";
 import type { CommissionBalance, RateRow } from "@/lib/commission";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -66,6 +67,9 @@ export function Devices() {
       const floatRes = await sb.rpc("wallet_b2b_floats");
       const floats = (floatRes.data ?? []) as B2BFloatRow[];
       const floatsError = floatRes.error ? floatRes.error.message : "";
+      // Balance moves no SMS explains (migration 063), still open; a missing table never stops the page.
+      const gapRes = await sb.from("balance_gaps").select("*").is("explained_by", null).order("at", { ascending: false }).limit(200);
+      const gaps = (gapRes.data ?? []) as GapRow[];
       const wallets = must(await sb.from("device_wallets").select("*").order("created_at", { ascending: true })) as DeviceWallet[];
       // Deposit orders per wallet in the last 24 h (view wallet_order_stats, migration 052). A missing view never stops the page.
       const statRes = await sb.from("wallet_order_stats").select("*");
@@ -77,7 +81,7 @@ export function Devices() {
       // The newest app version (update system). A missing table never stops the page.
       const rel = await sb.from("app_release").select("version_code,notes").limit(1);
       const release = (rel.data?.[0] ?? null) as { version_code: number; notes: string | null } | null;
-      return { devices, totals, flows, balances, simBalances, floats, floatsError, wallets, walletStats, rates, commission, groups, release };
+      return { devices, totals, flows, balances, simBalances, floats, floatsError, gaps, wallets, walletStats, rates, commission, groups, release };
     },
     [day],
     { refreshMs: 10000 },
@@ -274,6 +278,7 @@ export function Devices() {
               simBalances={(data?.simBalances ?? []).filter((b) => b.device_id === d.id)}
               floats={(data?.floats ?? []).filter((f) => f.device_id === d.id)}
               floatsError={data?.floatsError ?? ""}
+              gaps={(data?.gaps ?? []).filter((g) => g.device_id === d.id)}
               wallets={(data?.wallets ?? []).filter((w) => w.device_id === d.id)}
               walletStats={(data?.walletStats ?? []).filter((x) => x.device_id === d.id)}
               rates={(data?.rates ?? []).filter((r) => r.device_id === d.id)}
@@ -301,6 +306,7 @@ function DeviceCard({
   simBalances,
   floats,
   floatsError,
+  gaps,
   wallets,
   walletStats,
   rates,
@@ -320,6 +326,7 @@ function DeviceCard({
   simBalances: DeviceSimBalance[];
   floats: B2BFloatRow[];
   floatsError: string;
+  gaps: GapRow[];
   wallets: DeviceWallet[];
   walletStats: WalletOrderStat[];
   rates: RateRow[];
@@ -468,7 +475,7 @@ function DeviceCard({
 
       <WalletsCard deviceId={d.id} wallets={wallets} reported={d.info?.wallets} stats={walletStats} defaultGroup={d.default_group ?? "main"} onChanged={onChanged} />
 
-      <B2BFloat deviceId={d.id} floats={floats} loadError={floatsError} balances={balances} onChanged={onChanged} />
+      <B2BFloat deviceId={d.id} floats={floats} loadError={floatsError} balances={balances} gaps={gaps} onChanged={onChanged} />
 
       <CommissionCard device={d} rates={rates} balance={commission} onChanged={onChanged} />
 
