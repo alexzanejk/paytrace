@@ -167,6 +167,11 @@ check("bkash customer payment still reads as payment_received", parsed("You have
 const rocketB2BIn = "B2B: Cash-In from A/C: ***238 Tk500.00, Your A/C Balance: Tk546.59.TxnId: 7103456789 Date:01-NOV-26 11:14:45 pm.";
 p = parsed(rocketB2BIn, "rocket");
 check("rocket B2B Cash-In is incoming b2b", p?.txnType === "transfer_in" && p?.flowKind === "b2b" && p?.amount === 500 && p?.balance === 546.59 && p?.trxId === "7103456789");
+// The agent's own cash-in to a customer (owner's real message, 2026-11-08): money OUT, with commission. It was read as money received.
+const rocketCashIn = "B2C: Cash-In to A/C: ***024 Tk28,300.00 Comm:Tk134.37;, Your A/C Balance: Tk181.51 TxnId: 7139105204 Date:08-NOV-26 08:02:01 pm.";
+p = parsed(rocketCashIn, "rocket");
+check("rocket agent Cash-In to a customer is money out with its commission", p?.txnType === "transfer_out" && p?.flowKind === "cash_in" && p?.amount === 28300 && p?.commission === 134.37 && p?.balance === 181.51 && p?.trxId === "7139105204" && p?.confidence === "exact");
+check("rocket customer Cash-Out still reads as cash_out", parsed("B2C: Cash-Out from A/C: ***366 Tk25,000.00 Comm:Tk105.01; A/C Balance: Tk28,347.14.TxnId: 7139000001 Date:08-NOV-26 06:29:38 pm.", "rocket")?.txnType === "cash_out");
 check("rocket mini-statement SMS still fails (no balance, no single amount)", parseSms("7103456789 Dr Tk500.00; 7103456790 Dr Tk20.00; 7103456791 Cr Tk.09", "rocket").kind === "failed");
 
 // A Rocket message in an unknown layout still falls back to the cautious reader.

@@ -262,9 +262,39 @@ function parseRocketB2B(text: string): ParseResult | null {
   };
 }
 
+// Agent cash-in (owner's real message, 2026-11-08): the AGENT put e-money into a customer's account. Money OUT, with commission:
+//   "B2C: Cash-In to A/C: ***024 Tk28,300.00 Comm:Tk134.37;, Your A/C Balance: Tk181.51 TxnId: 7139105204 Date:08-NOV-26 ..."
+// 28,347.14 - 28,300 + 134.37 = 181.51. Before this, the generic reader took it for money RECEIVED and held it for review.
+function parseRocketCashIn(text: string): ParseResult | null {
+  const m = text.match(new RegExp(`B2C\\s*:?\\s*Cash[\\s-]*In\\s+to\\s+A/C\\s*:?\\s*([*\\dXx]+)\\s+Tk\\.?\\s*${NUM}`, "i"));
+  if (!m) return null;
+  const amount = num(m[2]);
+  if (amount == null) return null;
+  const trx = pick(text, /TxnId\s*:?\s*([A-Z0-9]{6,})/i);
+  if (!trx) return { kind: "failed", reason: "rocket: no TxnId" };
+  return {
+    kind: "parsed",
+    data: {
+      provider: "rocket",
+      txnType: "transfer_out",
+      trxId: trx.toUpperCase(),
+      amount,
+      fee: num(pick(text, new RegExp(`Fee\\s*:?\\s*Tk\\.?\\s*${NUM}`, "i"))) ?? 0,
+      commission: num(pick(text, new RegExp(`Comm(?:ission)?\\s*:?\\s*Tk\\.?\\s*${NUM}`, "i"))) ?? 0,
+      balance: num(pick(text, new RegExp(`A/C\\s*Balance\\s*:?\\s*Tk\\.?\\s*${NUM}`, "i"))),
+      counterparty: m[1],
+      occurredAt: parseDate(text),
+      confidence: "exact",
+      flowKind: "cash_in",
+    },
+  };
+}
+
 function parseRocket(text: string): ParseResult | null {
   const b2b = parseRocketB2B(text);
   if (b2b) return b2b;
+  const cashIn = parseRocketCashIn(text);
+  if (cashIn) return cashIn;
   const m = text.match(
     new RegExp(`Cash[\\s-]*Out\\s+from\\s+A/C\\s*:?\\s*([*\\dXx]+)\\s+Tk\\.?\\s*${NUM}`, "i"),
   );
