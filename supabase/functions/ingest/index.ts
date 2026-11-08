@@ -580,6 +580,17 @@ async function handle(req: Request): Promise<Response> {
     }
     return json({ success: true, done: data === true });
   }
+  // "We just did a B2B" from the phone's Home button (migration 070): this wallet's statement is read now, so the entry is
+  // saved before it can scroll off the wallet's list. Nothing is counted from the tap itself.
+  if (body.action === "b2b_done") {
+    if (!device) return json({ success: false, message: "not paired" }, 403);
+    const { data, error } = await db.rpc("statement_now", { p_device: device.id, p_provider: String(body.provider ?? ""), p_why: "b2b", p_by: "app" });
+    if (error) {
+      console.error("statement_now failed", error.code);
+      return json({ success: false, message: "could not save" }, 500);
+    }
+    return json({ success: true, ...((data ?? { ok: false }) as Record<string, unknown>) });
+  }
 
   const str = (k: string) => (body[k] == null ? "" : String(body[k]).slice(0, 2000));
   const raw = str("raw_message");

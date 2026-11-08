@@ -24,13 +24,22 @@ package com.paytrace.app
  *  PayTrace does NOT try to understand these on the phone. It collects them word for word and sends them on, so the
  *  reading can be corrected later without a new app on every phone — the same reason SMS is parsed on the server. */
 object StatementRead {
-    /** The wallet offers another page ("# NEXT"). */
-    fun hasNextPage(text: String): Boolean = Regex("""#\s*NEXT""", RegexOption.IGNORE_CASE).containsMatchIn(text)
+    /** What the wallet wants typed for its next page, or null when it offers none: bKash writes "# NEXT", Nagad
+     *  "Next Page *" (the owner's real Nagad list, 2026-11-04; it was never paged before 069 because only "#" was known). */
+    fun nextKey(text: String): String? = when {
+        Regex("""#\s*NEXT""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "#"
+        Regex("""NEXT\s*PAGE\s*\*|\*\s*NEXT""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "*"
+        else -> null
+    }
 
-    /** The numbers of the entries listed on this page, as the wallet numbered them. */
+    /** The wallet offers another page. */
+    fun hasNextPage(text: String): Boolean = nextKey(text) != null
+
+    /** The numbers of the entries listed on this page, as the wallet numbered them ("1 02/11/26 ..." on bKash,
+     *  "1. 04/11/26 ..." on Nagad). */
     fun entriesOn(text: String): List<Int> =
         text.lines().mapNotNull { line ->
-            Regex("""^\s*(\d{1,2})\s+\d""").find(line)?.groupValues?.get(1)?.toIntOrNull()
+            Regex("""^\s*(\d{1,3})\.?\s+\d""").find(line)?.groupValues?.get(1)?.toIntOrNull()
         }
 
     fun lists(text: String): Boolean = entriesOn(text).isNotEmpty() || hasNextPage(text)
@@ -118,8 +127,9 @@ class StatementFlow(
         pages++
         if (item == null) {
             // Just the list: page on while the wallet offers another one.
-            return if (StatementRead.hasNextPage(clean) && pages < MAX_PAGES) {
-                answered(clean); UssdAction.Reply(NEXT)
+            val next = StatementRead.nextKey(clean)
+            return if (next != null && pages < MAX_PAGES) {
+                answered(clean); UssdAction.Reply(next)
             } else {
                 UssdAction.Done(null, null, collected.toList())
             }
@@ -128,8 +138,9 @@ class StatementFlow(
         if (StatementRead.listsEntry(clean, item)) {
             stage = 4; answered(clean); return UssdAction.Reply(item.toString())
         }
-        return if (StatementRead.hasNextPage(clean) && pages < MAX_PAGES) {
-            answered(clean); UssdAction.Reply(NEXT)
+        val next = StatementRead.nextKey(clean)
+        return if (next != null && pages < MAX_PAGES) {
+            answered(clean); UssdAction.Reply(next)
         } else {
             UssdAction.Fail("entry_not_found")
         }
@@ -138,11 +149,11 @@ class StatementFlow(
     private fun answered(text: String) { lastAnswered = text }
 
     companion object {
-        /** What the wallet wants typed to move to the next page of the list. */
+        /** bKash's key for the next page (Nagad's is "*", read from the page itself: [StatementRead.nextKey]). */
         const val NEXT = "#"
-        /** Four entries to a page, so three pages is twelve transactions: far enough back to find a missing one, and
-         *  short enough that the menu session does not run out of time. */
-        const val MAX_PAGES = 3
-        const val MAX_SCREENS = 12
+        /** Four entries to a page, so eight pages is 32 transactions (owner 2026-11-08: "no missing data"): far enough
+         *  back that the pulls during the day overlap, so nothing scrolls away between two of them. */
+        const val MAX_PAGES = 8
+        const val MAX_SCREENS = 20
     }
 }

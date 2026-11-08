@@ -329,6 +329,13 @@ fun Home(
         BalanceCard(earnings, onOpenEarnings)
         if (earnings != null && earnings.enabled) PaidRecentCard(earnings)
 
+        // The wallets this phone can read a statement for (bKash and Nagad, agent PIN saved), while the dashboard allows it.
+        val b2bWallets = remember(tick) {
+            if (!settings.ussdAllowed) emptyList()
+            else listOf(UssdProviders.BKASH, UssdProviders.NAGAD).filter { UssdSetup.pinSaved(ctx, it) }
+        }
+        if (b2bWallets.isNotEmpty()) B2bCard(settings, b2bWallets)
+
         SectionTitle("Jobs", jobs.size)
         if (jobs.isEmpty()) EmptyJobsCard()
         jobs.forEach { job -> JobCard(job, onSent = { amount, charge -> onSent(job.kind, job.provider, amount, charge) }) }

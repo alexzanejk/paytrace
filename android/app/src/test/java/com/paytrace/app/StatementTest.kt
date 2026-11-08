@@ -115,4 +115,33 @@ class StatementTest {
         assertTrue(StatementRead.entriesOn(detail).isEmpty())
         assertTrue(!StatementRead.lists(detail))
     }
+
+    @Test fun nagadIsPagedWithItsOwnStar() {
+        // The owner's real Nagad list (2026-11-04) ends with "Next Page *". Until 069 the phone only knew bKash's "#",
+        // so Nagad's statement stopped at its first four entries.
+        val nagadMain = "Nagad\n1. Cash In\n2. Register Customer\n3. B2B\n4. Bill Pay\n5. EMI Payment\n6. My Nagad"
+        val myNagad = "My Nagad\n1. Balance Enquiry\n2. Mini Statement\n3. Change PIN\n0. Main Menu"
+        val n1 = "Statement List\n1. 04/11/26 Cash Out Tk 500\n2. 04/11/26 Commission(Cash Out) Tk 2.05\n" +
+            "3. 04/11/26 B2B Tk -8000\n4. 04/11/26 Cash Out Tk 500\nNext Page *"
+        val n2 = "Statement List\n5. 03/11/26 Cash In Tk -3000\n6. 03/11/26 Cash Out Tk 500"
+        assertEquals(listOf(1, 2, 3, 4), StatementRead.entriesOn(n1))
+        assertEquals("*", StatementRead.nextKey(n1))
+        assertEquals("#", StatementRead.nextKey(page1))
+        assertEquals(null, StatementRead.nextKey(n2))
+        val f = StatementFlow(UssdProviders.NAGAD, null, pin)
+        f.onScreen(nagadMain); f.onScreen(myNagad); f.onScreen("Enter PIN:")
+        assertEquals(UssdAction.Reply("*"), f.onScreen(n1))
+        assertEquals(UssdAction.Done(null, null, listOf(n1, n2)), f.onScreen(n2))
+    }
+
+    @Test fun atMostEightPagesAreRead() {
+        val f = StatementFlow(UssdProviders.BKASH, null, pin)
+        f.onScreen(menu); f.onScreen(myBkash); f.onScreen(askPin)
+        val pages = (0 until 9).map { p ->
+            (1..4).joinToString("\n") { i -> "${p * 4 + i} 0${(p % 8) + 1}/11/26 Cash Out -Tk ${p * 4 + i}00.00" } + "\n# NEXT"
+        }
+        for (p in 0 until 7) assertEquals(UssdAction.Reply("#"), f.onScreen(pages[p]))
+        val done = f.onScreen(pages[7]) as UssdAction.Done
+        assertEquals(8, done.screens.size)
+    }
 }
