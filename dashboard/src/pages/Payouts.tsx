@@ -6,7 +6,7 @@ import { PROVIDERS, PROVIDER_LABEL, type Payment } from "@/lib/types";
 import { rangeBounds, rangeLabel, periodRange } from "@/lib/period";
 import {
   PAYOUT_WORDS, UNSURE_HELP, checkNumbers, groupDigits, liveItemsByPayment, parsePct, payoutLine, payoutRefusal, recentNumbers,
-  parseFee, sendMethod, sendProblem, senderOptions, splitPayout, METHOD_WORDS, type PayoutItemRow, type PayoutRow,
+  parseFee, sendMethod, sendProblem, senderOptions, splitPayout, ROCKET_NOTE, METHOD_WORDS, type PayoutItemRow, type PayoutRow,
 } from "@/lib/payouts";
 import { nudgePhone } from "@/lib/wake";
 import { useQuery } from "@/hooks/useQuery";
@@ -395,6 +395,7 @@ function PayoutPanel({
             ))}
           </select>
           {sender?.why ? <span className="text-xs text-status-warn">{sender.why}</span> : null}
+          {sender?.provider === "rocket" && !sender.why ? <span className="text-xs text-status-warn">{ROCKET_NOTE}</span> : null}
           {!options.length ? <span className="text-xs text-status-warn">No phone has a bKash or Nagad account saved in its app yet.</span> : null}
           <span className="block text-xs text-muted-foreground">An agent wallet sends it by Cash In (no daily limit). A personal bKash account sends it by Send Money (it keeps the daily limit set on the Jobs page, and bKash charges its Send Money fee). One send is Tk 100 to Tk 50,000.</span>
         </label>

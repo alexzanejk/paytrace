@@ -67,7 +67,8 @@ const phones = [
   { id: "d3", name: "gone", status: "revoked", allow_cashin: true, info: { wallets: [{ provider: "bkash", number: "01711111111", slot: 0, found: true }] } },
 ];
 const s = senderOptions(phones);
-check("senders: bKash/Nagad accounts of approved phones only, ready ones first", s.length === 3 && s[0]!.key === "d1:bkash:agent" && s[0]!.why === "", s);
+check("senders: bKash/Nagad/Rocket accounts of approved phones only, ready ones first", s.length === 4 && s[0]!.key === "d1:bkash:agent" && s[0]!.why === "", s);
+check("a Rocket agent wallet can send (owner 2026-11-09)", s.some((o) => o.key === "d1:rocket:agent" && o.why === ""));
 check("a personal account needs the phone's personal switch", s.some((o) => o.account === "personal" && o.why.includes("Personal accounts are switched off")));
 const s2 = senderOptions([{ ...phones[0]!, allow_personal: true, info: { wallets: [
   { provider: "bkash", number: "01800000000", slot: 1, found: false, kind: "personal" as const },

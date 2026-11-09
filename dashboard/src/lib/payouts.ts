@@ -165,9 +165,16 @@ export interface SenderOption {
   why: string;
 }
 
-/** The wallets a payout can be sent from: every bKash and Nagad account saved in the app of an approved phone. An agent
- *  sends by Cash In (needs the phone's send-money switch); a personal bKash account sends by Send Money (also needs the
- *  phone's personal-accounts switch). Personal Nagad waits for a recording of its Send Money menu. */
+/** The wallets a payout can be sent from: every bKash, Nagad and Rocket account saved in the app of an approved phone. An
+ *  agent sends by Cash In (needs the phone's send-money switch); a personal bKash account sends by Send Money (also needs the
+ *  phone's personal-accounts switch). Personal Nagad and Rocket wait for a recording of their Send Money menu. */
+/** Wallets that can send money at all. Rocket was added 2026-11-09 (its phone-side Cash In existed since 2026-11-02). */
+export const SENDS = ["bkash", "nagad", "rocket"];
+
+/** Rocket's PIN screen never repeats the number and amount back (the owner accepted this 2026-11-02), so say so before sending. */
+export const ROCKET_NOTE =
+  "Rocket asks for the PIN on a bare screen that does not repeat the number and amount, so the wallet cannot confirm them back. PayTrace types both into Rocket's own boxes first and stops if a box is refused.";
+
 export function senderOptions(
   phones: Array<{ id: string; name: string; status: string; allow_cashin?: boolean; allow_personal?: boolean; info: { wallets?: WalletAccount[] } | null }>,
 ): SenderOption[] {
@@ -175,12 +182,12 @@ export function senderOptions(
   for (const d of phones) {
     if (d.status !== "approved") continue;
     for (const w of d.info?.wallets ?? []) {
-      if (w.provider !== "bkash" && w.provider !== "nagad") continue;
+      if (!SENDS.includes(w.provider)) continue;
       const account = w.kind === "personal" ? "personal" : "agent";
       const why = !d.allow_cashin
         ? "Sending money is switched off for this phone (Phones page, \"What the dashboard may do\")."
         : account === "personal" && w.provider !== "bkash"
-          ? "Sending from a personal Nagad account is not built yet: it needs your recording of Nagad's Send Money menu."
+          ? `Sending from a personal ${WALLET[w.provider]} account is not built yet: it needs your recording of its Send Money menu.`
           : account === "personal" && !d.allow_personal
             ? "Personal accounts are switched off for this phone (Phones page)."
             : "";

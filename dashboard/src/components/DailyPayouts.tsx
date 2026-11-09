@@ -9,6 +9,7 @@ import {
   type CommissionDayRow, type CommissionPayRow, type PayDayRow,
 } from "@/lib/commissionPays";
 import { nudgePhone } from "@/lib/wake";
+import { ROCKET_NOTE } from "@/lib/payouts";
 import { useQuery } from "@/hooks/useQuery";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -208,6 +209,7 @@ function PartnerDays({
                 {options.length === 0 ? <option value="">No wallet can send</option> : null}
                 {options.map((o) => <option key={o.key} value={o.key} disabled={!!o.why}>{o.label}{o.why ? " (not available)" : ""}</option>)}
               </select>
+              {option?.provider === "rocket" ? <span className="block text-xs text-status-warn">{ROCKET_NOTE}</span> : null}
               <p className="text-sm">
                 Sent: <b className="text-lg tabular text-primary">{tk(split.send)}</b>
                 {option?.method === "send_money" ? <span className="text-muted-foreground"> (bKash fee {tk(fee)} taken off the commission)</span> : null}
