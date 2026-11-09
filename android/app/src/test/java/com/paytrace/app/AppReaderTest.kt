@@ -62,13 +62,30 @@ class AppReaderTest {
             assertTrue(p.keyGap() in 280L..650L)
             assertTrue(p.settle() in 1_800L..3_200L)
             assertTrue(p.readPause() in 1_300L..2_600L)
-            assertTrue(p.swipeMs() in 380L..720L)
+            assertTrue(p.swipeMs() in 600L..1_000L)
+            assertTrue(p.holdMs() in 220L..380L)
             val (x, y) = p.pointIn(100, 200, 300, 260)
             assertTrue(x in 160f..240f && y in 218f..242f)
             val sw = p.swipe()
             assertTrue(sw[1] > sw[2] + 0.25)
+            // About a third of the screen, never most of it: every row is seen whole at least once.
+            assertTrue(sw[1] - sw[2] < 0.43)
         }
         // Not the same gap twice in a row every time: it varies.
         assertTrue((1..20).map { p.keyGap() }.toSet().size > 10)
+    }
+
+    @Test fun aJumpIsNoticed() {
+        // Build 173 on the Vivo: the list flung past 3 rows between two reads that shared nothing.
+        assertTrue(AppReader.jumped(setOf("a", "b", "c"), setOf("x", "y")))
+        assertFalse(AppReader.jumped(setOf("a", "b", "c"), setOf("c", "d")))
+        assertFalse(AppReader.jumped(emptySet(), setOf("x")))
+        assertFalse(AppReader.jumped(setOf("a"), emptySet()))
+    }
+
+    @Test fun rowsFoundGoingBackAreSentInTimeOrder() {
+        // Read in this order: a jump to 10:00, then back to the missed 11:00.
+        val rows = linkedMapOf("12:00" to 1_200L, "10:00" to 1_000L, "11:00" to 1_100L, "10:00 again" to 1_000L)
+        assertEquals(listOf("12:00", "11:00", "10:00", "10:00 again"), AppReader.ordered(rows))
     }
 }
