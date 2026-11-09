@@ -35,8 +35,7 @@ object AppReader {
     /** The server fails a command running for 3 minutes. */
     const val RUN_MS = 150_000L
     private const val TICK_MS = 700L
-    private const val ACT_GAP_MS = 1_400L
-    private const val KEY_GAP_MS = 350L
+    private val pace = HumanPace()
     /** No progress for this long on a screen we do not know: stop and say what was on it. */
     private const val STUCK_MS = 25_000L
     private const val LOGIN_WAIT_MS = 15_000L
@@ -135,6 +134,7 @@ object AppReader {
         val rows = LinkedHashMap<String, Long>()
         var seenApp = 0L
         var lastAct = 0L
+        var nextActAt = 0L
         var progressAt = SystemClock.elapsedRealtime()
         var pinTypedAt = 0L
         var scrolls = 0
@@ -173,12 +173,13 @@ object AppReader {
                         if (seenApp == 0L && now - started > 20_000) return finish(false, "app_not_opened", "the app did not open")
                         if (seenApp > 0 && now - seenApp > 20_000) return finish(rows.isNotEmpty(), "app_closed", "the app left the screen")
                     } else {
+                        if (seenApp == 0L) nextActAt = now + pace.settle()
                         seenApp = now
                         val nodes = ArrayList<AccessibilityNodeInfo>()
                         collect(root, nodes, 0)
                         val texts = nodes.mapNotNull { n -> n.text?.toString()?.trim()?.takeIf { it.isNotEmpty() } }
                         lastScreen = AppRecorder.safeLines(texts).joinToString(" / ").take(600)
-                        val canAct = now - lastAct >= ACT_GAP_MS
+                        val canAct = now >= nextActAt
                         val found = rowsOn(nodes)
                         val loginKey = nodes.firstOrNull { n -> n.text?.toString()?.trim()?.lowercase(Locale.ROOT) in LOGIN }
                         val digits = (0..9).all { d -> nodes.any { it.text?.toString()?.trim() == d.toString() } }
@@ -189,10 +190,12 @@ object AppReader {
                                 } else if (canAct) {
                                     note("login screen: typing the saved PIN on the app's keypad")
                                     pinTypedAt = now
-                                    lastAct = now + keys.size * KEY_GAP_MS + 800
                                     progressAt = now
-                                    keys.forEachIndexed { i, k -> main.postDelayed({ pressText(svc, k) }, i * KEY_GAP_MS) }
-                                    main.postDelayed({ if (!pressAny(svc, LOGIN)) note("login button not found") }, keys.size * KEY_GAP_MS + 500)
+                                    var at = 0L
+                                    for (k in keys) { at += pace.keyGap(); main.postDelayed({ pressText(svc, k) }, at) }
+                                    at += pace.afterKeys()
+                                    main.postDelayed({ if (!pressAny(svc, LOGIN)) note("login button not found") }, at)
+                                    nextActAt = now + at + pace.settle()
                                 }
                             }
                             found.isNotEmpty() -> {
@@ -207,12 +210,13 @@ object AppReader {
                                     if (idleScrolls >= 4) return finish(true, null, "end of the list")
                                     if (scrolls >= MAX_SCROLLS) return finish(true, null, "scroll limit")
                                     scrolls++
-                                    lastAct = now
-                                    if (!scrollDown(svc, root) || idleScrolls >= 2) swipeUp(svc)
+                                    nextActAt = now + pace.readPause()
+                                    // A finger swipe; the list's own scroll only when swipes have stopped bringing new rows.
+                                    if (idleScrolls >= 2 && scrollDown(svc, root)) note("scrolled by the list") else swipeUp(svc)
                                 }
                             }
-                            canAct && pressAny(svc, TAB, root) -> { lastAct = now; note("opened the transactions tab") }
-                            canAct && pressAny(svc, INBOX, root) -> { lastAct = now; note("opened the inbox") }
+                            canAct && pressAny(svc, TAB, root) -> { nextActAt = now + pace.settle(); note("opened the transactions tab") }
+                            canAct && pressAny(svc, INBOX, root) -> { nextActAt = now + pace.settle(); note("opened the inbox") }
                             else -> if (now - progressAt > STUCK_MS) return finish(rows.isNotEmpty(), "unexpected_screen", "a screen PayTrace does not know")
                         }
                     }
@@ -224,7 +228,7 @@ object AppReader {
         }
         note("opening $pkg, reading back to ${cut}")
         launch()
-        main.postDelayed(tick, 1_800)
+        main.postDelayed(tick, pace.settle())
     }
 
     private fun bkashRoot(svc: AccessibilityService): AccessibilityNodeInfo? {
@@ -269,22 +273,29 @@ object AppReader {
         val nodes = ArrayList<AccessibilityNodeInfo>()
         collect(root, nodes, 0)
         val hit = nodes.firstOrNull { it.text?.toString()?.trim()?.lowercase(Locale.ROOT) in labels } ?: return false
+        // Tap where the finger would: on the tappable thing around the words (a key, a tab), at a slightly different spot
+        // each time. Only when the screen gives no position is the button pressed the invisible way.
+        var target: AccessibilityNodeInfo = hit
         var p: AccessibilityNodeInfo? = hit
         var hops = 0
         while (p != null && hops < 4) {
-            if (p.isClickable) return p.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (p.isClickable) { target = p; break }
             p = p.parent
             hops++
         }
-        return tap(svc, hit)
+        if (tap(svc, target)) return true
+        return target.isClickable && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
     }
 
     private fun tap(svc: AccessibilityService, node: AccessibilityNodeInfo): Boolean {
         val r = Rect()
         node.getBoundsInScreen(r)
         if (r.isEmpty) return false
-        val path = Path().apply { moveTo(r.exactCenterX(), r.exactCenterY()) }
-        return svc.dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, 60)).build(), null, null)
+        val (x, y) = pace.pointIn(r.left, r.top, r.right, r.bottom)
+        val path = Path().apply { moveTo(x, y) }
+        return try {
+            svc.dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, pace.tapMs())).build(), null, null)
+        } catch (e: Exception) { false }
     }
 
     private fun scrollDown(svc: AccessibilityService, root: AccessibilityNodeInfo): Boolean {
@@ -297,8 +308,28 @@ object AppReader {
 
     private fun swipeUp(svc: AccessibilityService) {
         val dm = svc.resources.displayMetrics
-        val x = dm.widthPixels / 2f
-        val path = Path().apply { moveTo(x, dm.heightPixels * 0.72f); lineTo(x, dm.heightPixels * 0.32f) }
-        try { svc.dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, 450)).build(), null, null) } catch (e: Exception) { }
+        val (fx, fy0, fy1) = pace.swipe().let { Triple(it[0], it[1], it[2]) }
+        val x = (dm.widthPixels * fx).toFloat()
+        val path = Path().apply { moveTo(x, (dm.heightPixels * fy0).toFloat()); lineTo(x + (dm.widthPixels * 0.01f), (dm.heightPixels * fy1).toFloat()) }
+        try { svc.dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, pace.swipeMs())).build(), null, null) } catch (e: Exception) { }
     }
+}
+
+/** Human pacing for driving the bKash app (owner 2026-11-10: "perform humanly, not too fast, smooth like a human"):
+ *  uneven gaps between PIN digits, a pause after every new screen, a reading pause between scrolls, finger taps at a
+ *  slightly different point inside a button each time, and swipes of varying length and speed. Pure given its Random. */
+class HumanPace(private val rnd: java.util.Random = java.util.Random()) {
+    private fun between(a: Long, b: Long): Long = a + (rnd.nextDouble() * (b - a)).toLong()
+    private fun between(a: Double, b: Double): Double = a + rnd.nextDouble() * (b - a)
+    fun keyGap(): Long = between(280L, 650L)
+    fun afterKeys(): Long = between(500L, 950L)
+    fun settle(): Long = between(1_800L, 3_200L)
+    fun readPause(): Long = between(1_300L, 2_600L)
+    fun tapMs(): Long = between(55L, 120L)
+    fun swipeMs(): Long = between(380L, 720L)
+    /** A point in the middle part of a box (30% to 70% across and down), never its edge. */
+    fun pointIn(left: Int, top: Int, right: Int, bottom: Int): Pair<Float, Float> =
+        (left + (right - left) * between(0.3, 0.7)).toFloat() to (top + (bottom - top) * between(0.3, 0.7)).toFloat()
+    /** A swipe up the screen as fractions of its size: x, start y, end y. */
+    fun swipe(): DoubleArray = doubleArrayOf(between(0.42, 0.58), between(0.70, 0.78), between(0.30, 0.40))
 }

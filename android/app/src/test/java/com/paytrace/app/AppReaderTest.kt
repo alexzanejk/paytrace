@@ -55,4 +55,20 @@ class AppReaderTest {
         assertTrue(out[1].startsWith("ক্যাশ আউট | 0131XXXX331 | 09:54pm 08/11/26 | + ৳1000"))
         assertTrue(out[0].contains("rows: 300"))
     }
+
+    @Test fun pacedLikeAPerson() {
+        val p = HumanPace(java.util.Random(7))
+        repeat(200) {
+            assertTrue(p.keyGap() in 280L..650L)
+            assertTrue(p.settle() in 1_800L..3_200L)
+            assertTrue(p.readPause() in 1_300L..2_600L)
+            assertTrue(p.swipeMs() in 380L..720L)
+            val (x, y) = p.pointIn(100, 200, 300, 260)
+            assertTrue(x in 160f..240f && y in 218f..242f)
+            val sw = p.swipe()
+            assertTrue(sw[1] > sw[2] + 0.25)
+        }
+        // Not the same gap twice in a row every time: it varies.
+        assertTrue((1..20).map { p.keyGap() }.toSet().size > 10)
+    }
 }
