@@ -41,6 +41,14 @@
         android:name="android.hardware.telephony"
         android:required="false" />
 
+    <!-- Lets the bKash-app reader (AppRecorder) find the bKash app among the launcher's apps (Android 11+ package visibility). -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"

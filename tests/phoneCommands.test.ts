@@ -82,8 +82,8 @@ test("a cash-in is described in full, so nothing is sent on a glance", () => {
 // ---- Phone controls (2026-11-02) ----
 {
   const ctl: PhoneCommand = { id: "c", kind: "restart", provider: null, status: "queued", balance: null, error: null, created_at: "2026-11-02T10:00:00Z", finished_at: null };
-  // The phone's PhoneActions.KINDS names exactly these five; a sixth here would be queued and answered "unsupported".
-  check("the five phone controls, in this order", JSON.stringify(PHONE_ACTION_KINDS) === JSON.stringify(["restart", "inbox", "resend", "screen", "ring"]));
+  // The phone's PhoneActions.KINDS names exactly these six; another here would be queued and answered "unsupported".
+  check("the six phone controls, in this order", JSON.stringify(PHONE_ACTION_KINDS) === JSON.stringify(["restart", "inbox", "resend", "screen", "ring", "apprecord"]));
   check("every control has a button, a busy line, a done line and a why", PHONE_ACTIONS.every((a) => a.label && a.busy && a.done && a.help));
   check("wallet commands are not controls", !isPhoneAction("balance") && !isPhoneAction("cashin") && !isPhoneAction("statement") && !isPhoneAction(null));
   check("controls carry no wallet", ctl.provider === null && isPhoneAction(ctl.kind));

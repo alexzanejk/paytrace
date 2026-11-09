@@ -23,9 +23,11 @@ object PhoneActions {
     const val RESEND = "resend"
     const val SCREEN = "screen"
     const val RING = "ring"
+    /** Test: read the bKash app's screens while a person uses it (owner 2026-11-10). Reads only, never taps. */
+    const val APP_RECORD = AppRecorder.KIND
 
     /** The dashboard's list (lib/phoneCommands.ts PHONE_ACTIONS) must name exactly these. */
-    val KINDS: Set<String> = setOf(RESTART, INBOX, RESEND, SCREEN, RING)
+    val KINDS: Set<String> = setOf(RESTART, INBOX, RESEND, SCREEN, RING, APP_RECORD)
 
     fun isAction(kind: String?): Boolean = kind != null && kind in KINDS
 
@@ -58,6 +60,11 @@ object PhoneActions {
             RING -> {
                 ring(app)
                 done(UssdOutcome(true, null, null))
+            }
+            APP_RECORD -> {
+                // Reading a wallet's screens is a balance-check kind of thing: it follows the same dashboard switch.
+                if (!AppSettings(app).ussdAllowed) return done(UssdOutcome(false, null, "not_allowed"))
+                Handler(Looper.getMainLooper()).post { AppRecorder.start(app, done) }
             }
             else -> done(UssdOutcome(false, null, "unsupported"))
         }
