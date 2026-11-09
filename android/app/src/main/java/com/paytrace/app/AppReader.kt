@@ -41,6 +41,9 @@ object AppReader {
     private const val LOGIN_WAIT_MS = 15_000L
     private const val MAX_SCROLLS = 60
     private const val MAX_ROWS = 400
+    /** Going back after the list moved too far: at most this many swipes for one jump, and this many in one read. */
+    private const val BACKS_PER_JUMP = 4
+    private const val MAX_BACKS = 12
     /** Read back at least this far every time, and never more than [FAR_MS]; overlap is harmless (the server dedupes). */
     const val NEAR_MS = 6 * 3_600_000L
     const val FAR_MS = 48 * 3_600_000L
@@ -86,6 +89,14 @@ object AppReader {
 
     /** The PIN as the keys to press, or null when it is not 4 to 6 plain digits. */
     fun pinKeys(pin: String): List<String>? = pin.trim().takeIf { Regex("^\\d{4,6}$").matches(it) }?.map { it.toString() }
+
+    /** True when two reads of the list share no row: the list moved further than one screen between them, so rows in
+     *  between were never seen. */
+    fun jumped(before: Set<String>, now: Set<String>): Boolean = before.isNotEmpty() && now.isNotEmpty() && now.none { it in before }
+
+    /** The rows newest first by their time (rows found while going back are older than some already kept). Rows of the
+     *  same minute keep the order they were read in. */
+    fun ordered(rows: Map<String, Long>): List<String> = rows.entries.sortedByDescending { it.value }.map { it.key }
 
     /** Header plus the rows (newest first), at most [TOTAL_CHARS] in all, in chunks of [CHUNK_CHARS]. The newest rows win. */
     fun pack(header: String, rows: List<String>): List<String> {
@@ -139,6 +150,12 @@ object AppReader {
         var pinTypedAt = 0L
         var scrolls = 0
         var idleScrolls = 0
+        var prevFound: Set<String> = emptySet()
+        var gapFrom: Set<String>? = null
+        var backSteps = 0
+        var totalBacks = 0
+        // Forward swipes over rows already read after going back are not "the end of the list".
+        var graceScrolls = 0
         var lastScreen = ""
         var finished = false
 
@@ -158,7 +175,7 @@ object AppReader {
             val oldest = rows.values.minOrNull()
             val version = try { app.packageManager.getPackageInfo(pkg, 0).versionName ?: "?" } catch (e: Exception) { "?" }
             val header = "bKash app transactions\npackage: $pkg\nversion: $version\nstopped: $why\noldest: ${oldest ?: 0}\ncutoff: $cut"
-            done(UssdOutcome(true, null, null, screens = pack(header, rows.keys.toList())))
+            done(UssdOutcome(true, null, null, screens = pack(header, ordered(rows))))
         }
 
         val tick = object : Runnable {
@@ -199,20 +216,36 @@ object AppReader {
                                 }
                             }
                             found.isNotEmpty() -> {
+                                val keysNow = found.map { it.first }.toSet()
+                                // The list moved more than a screen since the last read: go back until it meets rows
+                                // already read, so nothing in between is missed.
+                                if (gapFrom == null && jumped(prevFound, keysNow) && totalBacks < MAX_BACKS) {
+                                    gapFrom = rows.keys.toSet(); backSteps = 0; note("the list moved too far, going back")
+                                }
+                                prevFound = keysNow
                                 var added = 0
                                 for ((key, at) in found) if (!rows.containsKey(key) && rows.size < MAX_ROWS) { rows[key] = at; added++ }
                                 if (added > 0) { progressAt = now; idleScrolls = 0 }
+                                val back = gapFrom
+                                if (back != null && keysNow.any { it in back }) { gapFrom = null; graceScrolls = backSteps + 1; note("back on rows already read") }
+                                if (gapFrom != null) {
+                                    if (canAct) {
+                                        if (backSteps >= BACKS_PER_JUMP) { gapFrom = null; graceScrolls = backSteps + 1; note("could not find the rows above, going on") }
+                                        else { backSteps++; totalBacks++; progressAt = now; nextActAt = now + pace.readPause(); swipe(svc, up = false) }
+                                    }
+                                    main.postDelayed(this, TICK_MS); return
+                                }
                                 val oldest = rows.values.minOrNull() ?: Long.MAX_VALUE
                                 if (oldest < cut) return finish(true, null, "reached the cut-off")
                                 if (rows.size >= MAX_ROWS) return finish(true, null, "row limit")
                                 if (canAct) {
-                                    if (added == 0) idleScrolls++
+                                    if (added == 0) { if (graceScrolls > 0) graceScrolls-- else idleScrolls++ }
                                     if (idleScrolls >= 4) return finish(true, null, "end of the list")
                                     if (scrolls >= MAX_SCROLLS) return finish(true, null, "scroll limit")
                                     scrolls++
                                     nextActAt = now + pace.readPause()
                                     // A finger swipe; the list's own scroll only when swipes have stopped bringing new rows.
-                                    if (idleScrolls >= 2 && scrollDown(svc, root)) note("scrolled by the list") else swipeUp(svc)
+                                    if (idleScrolls >= 2 && scrollDown(svc, root)) note("scrolled by the list") else swipe(svc, up = true)
                                 }
                             }
                             canAct && pressAny(svc, TAB, root) -> { nextActAt = now + pace.settle(); note("opened the transactions tab") }
@@ -306,12 +339,27 @@ object AppReader {
         return list.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
     }
 
-    private fun swipeUp(svc: AccessibilityService) {
+    /** A finger drag up (to older rows) or down (back to newer ones), then a short still hold before lifting, so the
+     *  list does not fling on by itself. */
+    private fun swipe(svc: AccessibilityService, up: Boolean) {
         val dm = svc.resources.displayMetrics
-        val (fx, fy0, fy1) = pace.swipe().let { Triple(it[0], it[1], it[2]) }
-        val x = (dm.widthPixels * fx).toFloat()
-        val path = Path().apply { moveTo(x, (dm.heightPixels * fy0).toFloat()); lineTo(x + (dm.widthPixels * 0.01f), (dm.heightPixels * fy1).toFloat()) }
-        try { svc.dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, pace.swipeMs())).build(), null, null) } catch (e: Exception) { }
+        val (fx, low, high) = pace.swipe().let { Triple(it[0], it[1], it[2]) }
+        val x0 = (dm.widthPixels * fx).toFloat()
+        val x1 = x0 + dm.widthPixels * 0.01f
+        val y0 = (dm.heightPixels * (if (up) low else high)).toFloat()
+        val y1 = (dm.heightPixels * (if (up) high else low)).toFloat()
+        val path = Path().apply { moveTo(x0, y0); lineTo(x1, y1) }
+        val hold = Path().apply { moveTo(x1, y1); lineTo(x1 + 1f, y1) }
+        try {
+            val move = GestureDescription.StrokeDescription(path, 0, pace.swipeMs(), true)
+            svc.dispatchGesture(GestureDescription.Builder().addStroke(move).build(), object : AccessibilityService.GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription?) {
+                    try {
+                        svc.dispatchGesture(GestureDescription.Builder().addStroke(move.continueStroke(hold, 0, pace.holdMs(), false)).build(), null, null)
+                    } catch (e: Exception) { }
+                }
+            }, null)
+        } catch (e: Exception) { }
     }
 }
 
@@ -326,10 +374,14 @@ class HumanPace(private val rnd: java.util.Random = java.util.Random()) {
     fun settle(): Long = between(1_800L, 3_200L)
     fun readPause(): Long = between(1_300L, 2_600L)
     fun tapMs(): Long = between(55L, 120L)
-    fun swipeMs(): Long = between(380L, 720L)
+    /** A slow drag (the first Vivo read, build 173, used 0.4-0.7 s swipes: the list flung past 3 of 78 rows). */
+    fun swipeMs(): Long = between(600L, 1_000L)
+    /** The finger stays still this long before lifting, so the list stops where the finger stopped (no fling). */
+    fun holdMs(): Long = between(220L, 380L)
     /** A point in the middle part of a box (30% to 70% across and down), never its edge. */
     fun pointIn(left: Int, top: Int, right: Int, bottom: Int): Pair<Float, Float> =
         (left + (right - left) * between(0.3, 0.7)).toFloat() to (top + (bottom - top) * between(0.3, 0.7)).toFloat()
-    /** A swipe up the screen as fractions of its size: x, start y, end y. */
-    fun swipe(): DoubleArray = doubleArrayOf(between(0.42, 0.58), between(0.70, 0.78), between(0.30, 0.40))
+    /** A swipe up the screen as fractions of its size: x, start y, end y (about a third of the screen, so every row is
+     *  seen whole at least once). */
+    fun swipe(): DoubleArray = doubleArrayOf(between(0.42, 0.58), between(0.70, 0.78), between(0.36, 0.44))
 }
