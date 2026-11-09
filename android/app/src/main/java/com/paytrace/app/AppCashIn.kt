@@ -142,10 +142,13 @@ object AppCashIn {
         if (running || AppReader.active() || UssdSession.active() || UssdApi.active()) return fail("busy")
         val keys = AppReader.pinKeys(UssdSetup.pinStore(app, UssdProviders.BKASH).get()) ?: return fail("no_pin")
         val pkg = AppRecorder.findApp(app) ?: return fail("no_bkash_app")
-        when (ScreenWake.state(app)) {
+        // Asleep (or behind a swipe lock): the app is opened BY the wake window further down, exactly like the USSD runs
+        // open the dialer, so the lock screen is pushed aside first (owner 2026-11-10: "if the phone screen is off it
+        // just wakes and does not slide to proceed like it does on USSD").
+        val woke = when (ScreenWake.state(app)) {
             ScreenGate.State.LOCKED_SECURE -> return fail("phone_locked")
-            ScreenGate.State.WAKE_NEEDED -> ScreenWake.wakeUp(app)
-            ScreenGate.State.READY -> {}
+            ScreenGate.State.WAKE_NEEDED -> true
+            ScreenGate.State.READY -> false
         }
         val own = s.walletNumberOf(UssdProviders.BKASH).takeIf { it.isNotBlank() }
         running = true
@@ -186,9 +189,8 @@ object AppCashIn {
         fun stop(error: String, why: String) =
             finish(UssdOutcome(false, null, if (held) "no_answer_after_hold" else error), why)
 
-        fun launch() {
-            try { svc.startActivity(app.packageManager.getLaunchIntentForPackage(pkg)!!.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { note("could not open the app") }
-        }
+        AppReader.holdScreen(app, RUN_MS + 5_000, "appcashin")
+        fun launch() = AppReader.openBkash(svc, app, pkg, woke) { note(it) }
 
         /** The box being typed into (never the password box). */
         fun box(): AccessibilityNodeInfo? {

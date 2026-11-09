@@ -8,6 +8,7 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
 import java.text.SimpleDateFormat
@@ -138,10 +139,13 @@ object AppReader {
         if (running || AppCashIn.running || UssdSession.active() || UssdApi.active()) return fail("busy")
         val keys = pinKeys(UssdSetup.pinStore(app, UssdProviders.BKASH).get()) ?: return fail("no_pin")
         val pkg = AppRecorder.findApp(app) ?: return fail("no_bkash_app")
-        when (ScreenWake.state(app)) {
+        // Asleep (or behind a swipe lock): the app is opened BY the wake window further down, exactly like the USSD runs
+        // open the dialer, so the lock screen is pushed aside first (owner 2026-11-10: "if the phone screen is off it
+        // just wakes and does not slide to proceed like it does on USSD").
+        val woke = when (ScreenWake.state(app)) {
             ScreenGate.State.LOCKED_SECURE -> return fail("phone_locked")
-            ScreenGate.State.WAKE_NEEDED -> ScreenWake.wakeUp(app)
-            ScreenGate.State.READY -> {}
+            ScreenGate.State.WAKE_NEEDED -> true
+            ScreenGate.State.READY -> false
         }
         running = true
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -172,9 +176,8 @@ object AppReader {
         var lastScreen = ""
         var finished = false
 
-        fun launch() {
-            try { svc.startActivity(app.packageManager.getLaunchIntentForPackage(pkg)!!.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { note("could not open the app") }
-        }
+        AppReader.holdScreen(app, RUN_MS + 5_000, "appread")
+        fun launch() = AppReader.openBkash(svc, app, pkg, woke) { note(it) }
 
         fun finish(ok: Boolean, error: String?, why: String) {
             if (finished) return
@@ -300,6 +303,28 @@ object AppReader {
         note("opening $pkg, reading back to ${cut}")
         launch()
         main.postDelayed(tick, pace.settle())
+    }
+
+    /** Keeps the screen on for the whole run: a screen that goes dark mid-run locks again and the app cannot be read. */
+    @Suppress("DEPRECATION")
+    internal fun holdScreen(app: Context, ms: Long, tag: String) {
+        try {
+            (app.getSystemService(Context.POWER_SERVICE) as PowerManager)
+                .newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "paytrace:$tag").acquire(ms)
+        } catch (e: Exception) { }
+    }
+
+    /** Opens the bKash app. A phone that was asleep gets it through the wake window, which first pushes the swipe lock
+     *  aside (the same way the USSD runs open the dialer); a phone already awake gets it straight away. */
+    internal fun openBkash(svc: Context, app: Context, pkg: String, woke: Boolean, note: (String) -> Unit) {
+        val open = app.packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ?: return note("could not open the app")
+        if (woke) {
+            note("phone was asleep: opening the bKash app through the wake window")
+            ScreenWake.wakeUp(svc, open)
+        } else {
+            try { svc.startActivity(open) } catch (e: Exception) { note("could not open the app") }
+        }
     }
 
     internal fun bkashRoot(svc: AccessibilityService): AccessibilityNodeInfo? {
