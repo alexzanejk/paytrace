@@ -17,6 +17,8 @@ import {
 import { nudgePhone } from "@/lib/wake";
 import { Button } from "@/components/ui/button";
 import { PhoneTrace } from "@/components/PhoneTrace";
+import { SendWayChoice } from "@/components/SendWayChoice";
+import { type SendWay, wayWords } from "@/lib/sendWay";
 
 /** Asks this phone to CASH IN: it opens the wallet's own menu and sends money to one of your saved cash-in numbers.
  *
@@ -34,6 +36,7 @@ export function CashInCommand({ deviceId, provider }: { deviceId: string; provid
   const [confirming, setConfirming] = useState(false);
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);
+  const [way, setWay] = useState<SendWay>("ussd");
   const timer = useRef<number | null>(null);
 
   const load = useCallback(async () => {
@@ -64,12 +67,13 @@ export function CashInCommand({ deviceId, provider }: { deviceId: string; provid
     if (amount == null || !chosen) return;
     setProblem("");
     setBusy(true);
-    const { error } = await sb.rpc("queue_phone_command", {
+    const { error } = await sb.rpc("queue_phone_command_via", {
       p_device: deviceId,
       p_kind: "cashin",
       p_provider: provider,
       p_amount: amount,
       p_to_number: chosen.number,
+      p_via: way,
     });
     setBusy(false);
     setConfirming(false);
@@ -111,6 +115,8 @@ export function CashInCommand({ deviceId, provider }: { deviceId: string; provid
         <p className="text-xs text-rose-600">Type a whole amount between {tk(LEAST_PER_CASH_IN)} and {tk(MOST_PER_CASH_IN)} (paisa allowed, two decimals at most).</p>
       ) : null}
 
+      <SendWayChoice deviceId={deviceId} provider={provider} account="agent" method="cash_in" value={way} onChange={(w) => { setWay(w); setConfirming(false); }} />
+
       <div className="flex flex-wrap items-center gap-2">
         <label className="text-sm text-muted-foreground" htmlFor={`ci-to-${deviceId}-${provider}`}>Send to</label>
         {numbers.length === 0 ? (
@@ -138,7 +144,7 @@ export function CashInCommand({ deviceId, provider }: { deviceId: string; provid
         <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">
           <p className="flex items-start gap-2 font-medium">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-            <span>{cashInSummary(label, amount, numberLabel(chosen), tk as (n: number) => string)}</span>
+            <span>{cashInSummary(label, amount, numberLabel(chosen), tk as (n: number) => string)} Sent {wayWords(way)}.</span>
           </p>
           <p className="mt-1 text-muted-foreground">
             This really sends the money. Check the amount and the number: it cannot be taken back.

@@ -189,6 +189,10 @@ export function actionLine(c: PhoneCommand | null, when: (t: string) => string):
 }
 
 // The one failure a phone control can report on its own; the rest come from the shared list above.
+ERROR_TEXT.no_answer_after_hold = "The bKash app was told to send (tap and hold) but no result screen came back. The money may have gone: check the bKash app or its statement before sending again.";
+ERROR_TEXT.app_stopped_before_send = "The bKash app Cash In stopped before the tap and hold, so nothing was sent. The phone's log below says where.";
+ERROR_TEXT.insufficient_balance = "The bKash wallet has less than the amount, so nothing was sent.";
+ERROR_TEXT.pin_refused = "The bKash app did not accept the PIN on the Cash In. It was not typed again and nothing was sent. Check the bKash PIN saved in the phone app.";
 ERROR_TEXT.pin_not_entered = "The bKash app's PIN box did not show the right number of digits while PayTrace typed (the app was slow or a tap was lost), so PayTrace did NOT press Log in. No wrong PIN was sent. It tries again at the next half hour.";
 ERROR_TEXT.login_failed = "The bKash app was still asking for the PIN after PayTrace typed it once. PayTrace never types it twice (bKash locks after wrong tries), and stops reading the app on this phone until you press \"Read bKash app now\" again. Check the bKash PIN saved in the phone app.";
 ERROR_TEXT.app_not_opened = "The bKash app did not open on the phone.";

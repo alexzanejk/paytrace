@@ -23,6 +23,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { SendWayChoice } from "@/components/SendWayChoice";
+import { type SendWay, wayWords } from "@/lib/sendWay";
 
 /** Only money RECEIVED can be paid out (the database's payout_refusal says the same). */
 const PAYABLE_TYPES = ["cash_out", "send_money_received", "payment_received"];
@@ -293,6 +295,8 @@ function PayoutPanel({
     ?? options.find((o) => !o.why && o.provider === first0?.provider) ?? options.find((o) => !o.why);
   const [senderKey, setSenderKey] = useState(preferred?.key ?? "");
   const sender = options.find((o) => o.key === senderKey);
+  // USSD or the bKash app (owner 2026-11-10); the app only for a bKash agent Cash In from a phone that can do it.
+  const [way, setWay] = useState<SendWay>("ussd");
   // A personal Send Money costs the sender a bKash fee; it comes off what is sent, never off your share (owner 2026-11-08).
   const personal = !byHand && sender?.account === "personal";
   const fee = personal ? parseFee(feeText) : 0;
@@ -333,9 +337,9 @@ function PayoutPanel({
         });
         if (r.error) throw r.error;
       } else if (sender) {
-        const r = await sb.rpc("create_payout", {
+        const r = await sb.rpc("create_payout_via", {
           p_payments: chosen.map((r) => r.id), p_device: sender.deviceId, p_provider: sender.provider, p_to_number: nums.number,
-          p_keep_pct: pct, p_from_account: sender.account, p_note: note || null,
+          p_keep_pct: pct, p_from_account: sender.account, p_note: note || null, p_via: way,
         });
         if (r.error) throw r.error;
         nudgePhone(sender.deviceId);
@@ -418,6 +422,9 @@ function PayoutPanel({
           {sender?.why ? <span className="text-xs text-status-warn">{sender.why}</span> : null}
           {sender?.provider === "rocket" && !sender.why ? <span className="text-xs text-status-warn">{ROCKET_NOTE}</span> : null}
           {!options.length ? <span className="text-xs text-status-warn">No phone has a bKash or Nagad account saved in its app yet.</span> : null}
+          {sender && !sender.why ? (
+            <SendWayChoice deviceId={sender.deviceId} provider={sender.provider} account={sender.account} value={way} onChange={(w) => { setWay(w); setConfirming(false); }} />
+          ) : null}
           <span className="block text-xs text-muted-foreground">An agent wallet sends it by Cash In (no daily limit). A personal bKash account sends it by Send Money (it keeps the daily limit set on the Jobs page, and bKash charges its Send Money fee). One send is Tk 100 to Tk 50,000.</span>
         </label>
       ) : (
@@ -475,7 +482,7 @@ function PayoutPanel({
             <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
             {byHand
               ? `Record that you paid ${tk(split!.send)}${nums.number ? ` to ${groupDigits(nums.number)}` : ""} and kept ${tk(split!.keep)}. The ${chosen.length} transaction${chosen.length === 1 ? "" : "s"} will show Paid.`
-              : `Send ${tk(split!.send)} by ${METHOD_WORDS[sendMethod(sender!.account)]} to ${groupDigits(nums.number!)} from ${sender!.label}.${split!.fee ? ` ${tk(split!.fee)} is set aside for the bKash fee.` : ""} You keep ${tk(split!.keep)}. The phone types the PIN only on the wallet screen that shows this number and this amount.`}
+              : `Send ${tk(split!.send)} by ${METHOD_WORDS[sendMethod(sender!.account)]} to ${groupDigits(nums.number!)} from ${sender!.label}, ${wayWords(way)}.${split!.fee ? ` ${tk(split!.fee)} is set aside for the bKash fee.` : ""} You keep ${tk(split!.keep)}. ${way === "app" ? "The phone sends only when the bKash app shows this number and this amount." : "The phone types the PIN only on the wallet screen that shows this number and this amount."}`}
           </p>
           <div className="flex flex-wrap gap-2">
             <Button disabled={busy} onClick={() => void go()}>{busy ? "Working…" : byHand ? "Yes, mark paid" : "Yes, send it"}</Button>

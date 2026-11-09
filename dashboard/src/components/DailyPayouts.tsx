@@ -15,6 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { SendWayChoice } from "@/components/SendWayChoice";
+import { type SendWay, wayWords } from "@/lib/sendWay";
 
 const addDays = (day: string, n: number) => {
   const d = new Date(day + "T00:00:00Z");
@@ -127,6 +129,8 @@ function PartnerDays({
     [partnerId, devices, nameOf],
   );
   const option = options.find((o) => o.key === (optionKey || options.find((x) => !x.why)?.key));
+  // USSD or the bKash app (owner 2026-11-10); the app only for a bKash Cash In from a phone that can do it.
+  const [way, setWay] = useState<SendWay>("ussd");
   const due = rows.filter((r) => ticked.has(r.day)).reduce((s, r) => s + Number(r.due), 0);
   const carry = carryOf(pays, partnerId);
   const split = splitCommission(due, carry, !byHand && option?.method === "send_money" ? fee : 0);
@@ -149,8 +153,9 @@ function PartnerDays({
         const r = await sb.rpc("manual_commission_pay", { p_device: partnerId, p_days: days, p_trx: trx || null, p_note: note || null });
         if (r.error) throw r.error;
       } else if (option) {
-        const r = await sb.rpc("create_commission_pay", {
+        const r = await sb.rpc("create_commission_pay_via", {
           p_device: partnerId, p_days: days, p_method: option.method, p_from_device: option.fromDevice, p_provider: option.provider, p_note: note || null,
+          p_via: way,
         });
         if (r.error) throw r.error;
         nudgePhone(option.fromDevice);
@@ -210,6 +215,9 @@ function PartnerDays({
                 {options.map((o) => <option key={o.key} value={o.key} disabled={!!o.why}>{o.label}{o.why ? " (not available)" : ""}</option>)}
               </select>
               {option?.provider === "rocket" ? <span className="block text-xs text-status-warn">{ROCKET_NOTE}</span> : null}
+              {option && !option.why ? (
+                <SendWayChoice deviceId={option.fromDevice} provider={option.provider} method={option.method} value={way} onChange={(w) => { setWay(w); setConfirming(false); }} />
+              ) : null}
               <p className="text-sm">
                 Sent: <b className="text-lg tabular text-primary">{tk(split.send)}</b>
                 {option?.method === "send_money" ? <span className="text-muted-foreground"> (bKash fee {tk(fee)} taken off the commission)</span> : null}
@@ -232,7 +240,7 @@ function PartnerDays({
                 <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
                 {byHand
                   ? `Record ${ticked.size} day${ticked.size === 1 ? "" : "s"} of ${nameOf(partnerId)}'s commission (${tk(split.total)}) as paid.`
-                  : `Send ${tk(split.send)} to ${number} by ${option!.method === "cash_in" ? "Cash In" : "Send Money"} (${option!.label}). The phone types the PIN only on the wallet screen that shows this number and this amount.`}
+                  : `Send ${tk(split.send)} to ${number} by ${option!.method === "cash_in" ? "Cash In" : "Send Money"} (${option!.label}), ${wayWords(way)}. ${way === "app" ? "The phone sends only when the bKash app shows this number and this amount." : "The phone types the PIN only on the wallet screen that shows this number and this amount."}`}
               </p>
               <div className="flex gap-2">
                 <Button disabled={busy} onClick={() => void go()}>{busy ? "Working…" : byHand ? "Yes, mark paid" : "Yes, pay it"}</Button>
