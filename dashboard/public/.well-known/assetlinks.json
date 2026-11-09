@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.paytrace.dashboard",
+      "sha256_cert_fingerprints": ["53:E2:B1:52:81:9F:9E:DE:67:8A:01:B9:A5:2F:5D:19:51:57:93:DA:2A:06:46:9E:C1:65:F4:50:8D:A1:6B:4F"]
+    }
+  }
+]

@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { LogOut, Menu, Moon, ShieldCheck, Sun, X } from "lucide-react";
+import { InstallButton } from "@/components/InstallCard";
 import { cn } from "@/lib/utils";
 import { sb } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -92,6 +93,7 @@ export function AppShell({
             {total === 0 ? "No phones yet" : `${online} of ${total} phone${total === 1 ? "" : "s"} online`}
           </span>
         </button>
+        <InstallButton onDone={() => setOpen(false)} />
         <Button variant="ghost" size="sm" onClick={toggle} className="justify-start" aria-pressed={dark}>
           {dark ? <Sun aria-hidden /> : <Moon aria-hidden />} {dark ? "Light mode" : "Dark mode"}
         </Button>

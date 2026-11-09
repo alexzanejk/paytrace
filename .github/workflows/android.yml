@@ -91,6 +91,12 @@ jobs:
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/sig.txt"
           FP="$(grep -m1 'certificate SHA-256 digest' "$RUNNER_TEMP/sig.txt" | sed 's/.*: //')"
           mkdir -p app/build/outputs/final && cp "$APK" app/build/outputs/final/paytrace.apk
+          # The dashboard app (module :dashboard, built by the same assembleRelease with the same key). Its key must be the
+          # one in dashboard/public/.well-known/assetlinks.json, or it shows an address bar instead of opening full screen.
+          DASH=dashboard/build/outputs/apk/release/dashboard-release.apk
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs "$DASH" > "$RUNNER_TEMP/dash-sig.txt"
+          DFP="$(grep -m1 'certificate SHA-256 digest' "$RUNNER_TEMP/dash-sig.txt" | sed 's/.*: //')"
+          cp "$DASH" app/build/outputs/final/paytrace-dashboard.apk
           rm -f "$KS"
           # Later steps need to know whether this build carries the permanent key (only those may be published for updates).
           echo "SIGNING=$KIND" >> "$GITHUB_ENV"
@@ -99,6 +105,7 @@ jobs:
             echo "### PayTrace APK build $PAYTRACE_VERSION_CODE"
             echo "- Signing key: **$KIND**"
             echo "- Key fingerprint: \`$FP\`"
+            echo "- Dashboard app: paytrace-dashboard.apk, key fingerprint \`$DFP\`"
             if [ "$FIREBASE" = yes ]; then echo "- Firebase wake-up pushes: **included**"; else echo "- Firebase wake-up pushes: not included (no GOOGLE_SERVICES_JSON secret yet)"; fi
             if [ "$KIND" = throwaway ]; then
               echo "- ⚠️ No permanent key is set up yet, so Android will **not** install this over an older build."
@@ -112,7 +119,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: paytrace-apk
-          path: android/app/build/outputs/final/paytrace.apk
+          path: |
+            android/app/build/outputs/final/paytrace.apk
+            android/app/build/outputs/final/paytrace-dashboard.apk
           if-no-files-found: error
 
       # A download link that needs no GitHub login. The APK is attached to a release of this PUBLIC repository, so
@@ -131,26 +140,30 @@ jobs:
           CODE="$PAYTRACE_VERSION_CODE"
           TAG="v1.0.$CODE"
           APK=android/app/build/outputs/final/paytrace.apk
+          DASH=android/app/build/outputs/final/paytrace-dashboard.apk
           LINK="https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/paytrace.apk"
+          DLINK="https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/paytrace-dashboard.apk"
           NOTES="$RUNNER_TEMP/notes.md"
           {
             head -c 1000 android/release-notes.txt 2>/dev/null || true
             printf '\n\nInstall **paytrace.apk** below on the payment phones.\n'
             printf '\nThis link always gives the newest build: %s\n' "$LINK"
+            printf '\n**paytrace-dashboard.apk** is the PayTrace Dashboard app for the owner'"'"'s own phone: %s\n' "$DLINK"
           } > "$NOTES"
           # A re-run of the same build number finds its own release already there.
           if gh release view "$TAG" > /dev/null 2>&1; then
             ok=yes
-            gh release upload "$TAG" "$APK" --clobber || ok=no
+            gh release upload "$TAG" "$APK" "$DASH" --clobber || ok=no
             gh release edit "$TAG" --notes-file "$NOTES" --latest || ok=no
           else
             ok=yes
-            gh release create "$TAG" "$APK" --title "PayTrace 1.0.$CODE" --notes-file "$NOTES" --latest || ok=no
+            gh release create "$TAG" "$APK" "$DASH" --title "PayTrace 1.0.$CODE" --notes-file "$NOTES" --latest || ok=no
           fi
           if [ "$ok" = yes ]; then
             {
               echo "- Download link (no login needed): $LINK"
               echo "- Just this build: https://github.com/${GITHUB_REPOSITORY}/releases/download/$TAG/paytrace.apk"
+              echo "- Dashboard app (no login needed): $DLINK"
             } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "- Download link: could not be published (the workflow may not be allowed to write to this repository)." >> "$GITHUB_STEP_SUMMARY"

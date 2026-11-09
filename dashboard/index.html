@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex,nofollow" />
     <meta name="theme-color" content="#eef2f7" />
+    <!-- Installable as an app (2026-11-09): Android "Install app", iPhone Share > Add to Home Screen. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="PayTrace" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <script>
       // Light by default; the sidebar switch remembers a dark choice. Runs before first paint so the page never flashes.
       try { if (localStorage.getItem("pt-theme") === "dark") document.documentElement.classList.add("dark"); } catch (e) {}
