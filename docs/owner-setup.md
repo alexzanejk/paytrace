@@ -705,3 +705,19 @@ and the cash-in job) now start from Your money, not from the balance.
 - A **B2B OUT** on any wallet sends you a Telegram message at once and shows a red line on that wallet for 24 hours. A
   B2B in also sends a short message, because it moves the float.
 - If the float ever looks wrong, set the opening again with today's B2B amount; the count restarts from that moment.
+
+## The dashboard on your phone (2026-11-09)
+
+**Any phone, no download:** open the dashboard and press **Install app** in the menu (or Settings, "The dashboard as an
+app"). On Android in Chrome it installs at once. On an iPhone use **Safari**: Share button, then **Add to Home Screen**.
+It gets the PayTrace icon, opens full screen, and is always the newest dashboard. Your login and two-step code are the same.
+
+**Android app:** download it once from
+`https://github.com/alexzanejk/paytrace/releases/latest/download/paytrace-dashboard.apk` (also a button on the Settings
+card), allow your browser to install apps when Android asks, and open **PayTrace Dashboard**. It is the live dashboard in a
+real app window, so it never needs updating for dashboard changes. If it shows an address bar at the top, the dashboard is
+not yet serving its app link: open `https://paytrace.ashkawser54.workers.dev/.well-known/assetlinks.json` in a browser and
+tell me what you see.
+
+**iPhone app (App Store / TestFlight):** not built. It needs an Apple Developer account in your name ($99 a year). The
+Add to Home Screen way above works on an iPhone today.

@@ -5,6 +5,7 @@ import { useQuery } from "@/hooks/useQuery";
 import { Screen } from "@/components/Screen";
 import { TwoStepCard } from "@/components/TwoStepCard";
 import { AlertsCard } from "@/components/AlertsCard";
+import { InstallCard } from "@/components/InstallCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -43,6 +44,8 @@ export function SettingsPage({ onSaved }: { onSaved: (s: Settings) => void }) {
   return (
     <Screen loading={loading} error={error} hasData={!!data}>
       <div className="grid max-w-3xl gap-4">
+        <InstallCard />
+
         <Card>
           <CardHeader>
             <CardTitle>Server settings</CardTitle>

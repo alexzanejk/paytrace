@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PayTrace Dashboard</string>
+    <!-- The dashboard's address. To move the app to another address (the own domain, say), change it here AND in
+         asset_statements and the manifest's VIEW filter, and serve /.well-known/assetlinks.json on that address too. -->
+    <string name="launch_url" translatable="false">https://paytrace.ashkawser54.workers.dev/</string>
+    <string name="asset_statements" translatable="false">
+        [{ \"relation\": [\"delegate_permission/common.handle_all_urls\"],
+           \"target\": { \"namespace\": \"web\", \"site\": \"https://paytrace.ashkawser54.workers.dev\" } }]
+    </string>
+</resources>
