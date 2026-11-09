@@ -43,9 +43,9 @@ const phones = [
   { id: "S", name: "SADIKUR", status: "approved", allow_cashin: false, allow_personal: true, info: { wallets: [{ provider: "bkash", number: "01900000000", kind: "personal" }] } },
 ];
 const o = sendOptions("A", phones);
-check("options: the partner's own bKash agent wallet and every personal bKash", o.length === 3 && o[0]!.method === "cash_in" && o[0]!.fromDevice === "A" && o.filter((x) => x.method === "send_money").length === 2, o);
+check("options: the partner's own bKash and Rocket agent wallets and every personal bKash", o.length === 4 && o[0]!.method === "cash_in" && o[0]!.fromDevice === "A" && o.filter((x) => x.method === "send_money").length === 2, o);
 check("a phone with sending switched off says so", o.some((x) => x.fromDevice === "S" && x.why.includes("switched off")));
-check("Rocket is not offered (no flow)", !o.some((x) => x.provider === "rocket"));
+check("a Rocket agent wallet is offered by Cash In (owner 2026-11-09)", o.some((x) => x.provider === "rocket" && x.method === "cash_in" && x.label.includes("Rocket agent wallet")));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

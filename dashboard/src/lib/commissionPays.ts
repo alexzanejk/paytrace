@@ -112,6 +112,9 @@ export function payLine(p: CommissionPayRow, phoneName: (id: string | null) => s
 export const UNSURE_HELP =
   "The phone stopped after typing the PIN, so PayTrace cannot tell whether the money went. Check the wallet (its SMS or statement), then say which. The days stay taken until you do, so they can never be paid twice.";
 
+const SENDS = ["bkash", "nagad", "rocket"];
+const WALLET_NAME: Record<string, string> = { bkash: "bKash", nagad: "Nagad", rocket: "Rocket" };
+
 /** Sending options for a partner: Cash In from their own agent wallets, Send Money from any personal bKash. */
 export interface SendOption { key: string; method: "cash_in" | "send_money"; fromDevice: string; provider: string; label: string; why: string }
 
@@ -122,10 +125,10 @@ export function sendOptions(
   const out: SendOption[] = [];
   const partner = phones.find((p) => p.id === partnerId);
   for (const w of partner?.info?.wallets ?? []) {
-    if (w.kind === "personal" || (w.provider !== "bkash" && w.provider !== "nagad")) continue;
+    if (w.kind === "personal" || !SENDS.includes(w.provider)) continue;
     out.push({
       key: `cash_in:${partnerId}:${w.provider}`, method: "cash_in", fromDevice: partnerId, provider: w.provider,
-      label: `Cash In from ${partner!.name}'s own ${w.provider === "nagad" ? "Nagad" : "bKash"} agent wallet (no charge)`,
+      label: `Cash In from ${partner!.name}'s own ${WALLET_NAME[w.provider] ?? w.provider} agent wallet (no charge)`,
       why: partner!.status !== "approved" ? "That phone is not approved." : partner!.allow_cashin ? "" : "Sending money is switched off for that phone (Phones page).",
     });
   }
