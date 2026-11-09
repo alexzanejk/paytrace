@@ -33,7 +33,15 @@ class AppRecorderTest {
         val out = AppRecorder.pack("bKash app read (test)", screens)
         assertTrue(out.size <= AppRecorder.CHUNKS)
         assertTrue(out.all { it.length <= AppRecorder.CHUNK_CHARS })
+        // The server refuses a message over 20,000 characters; the whole answer stays well under it.
+        assertTrue(out.sumOf { it.length } <= AppRecorder.TOTAL_CHARS)
         assertTrue(out[0].contains("screens: 40"))
+        val few = AppRecorder.pack("h", listOf("a", "b"))
+        assertEquals(listOf("h\nscreens: 2, sent: 2", "a\n=====\nb"), few)
         assertTrue(out[1].startsWith("screen 0 "))
+        // Too many to send: the first two and the LAST screens are kept, the middle is left out and said so.
+        val all = out.drop(1).joinToString("")
+        assertTrue(all.contains("screen 39 "))
+        assertTrue(all.contains("screens in the middle left out"))
     }
 }

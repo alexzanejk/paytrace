@@ -35,6 +35,9 @@ object AppRecorder {
     private const val MAX_NODES = 800
     const val CHUNKS = 12
     const val CHUNK_CHARS = 2000
+    /** The server refuses a message over 20,000 characters (and newlines count twice once sent), so the whole answer is
+     *  kept well under it. The first test on the Vivo (2026-11-10) filled all 12 screens and was refused three times. */
+    const val TOTAL_CHARS = 14_000
 
     @Volatile private var running = false
 
@@ -61,17 +64,27 @@ object AppRecorder {
     /** The header and the screens packed into at most [CHUNKS] texts of [CHUNK_CHARS] (what command_result carries).
      *  Screens that do not fit are counted in the header instead of being cut silently. */
     fun pack(header: String, screens: List<String>): List<String> {
-        val out = ArrayList<String>()
-        val body = StringBuilder()
-        var kept = 0
-        val room = (CHUNKS - 1) * CHUNK_CHARS
-        for (s in screens) {
-            val add = (if (body.isEmpty()) "" else "\n=====\n") + s
-            if (body.length + add.length > room) break
-            body.append(add)
-            kept++
+        val room = minOf((CHUNKS - 1) * CHUNK_CHARS, TOTAL_CHARS - header.length - 80)
+        val sep = "\n=====\n"
+        val fits = { list: List<String> -> list.sumOf { it.length } + sep.length * list.size <= room }
+        // Everything if it fits. Otherwise the first two screens (how the app opens and logs in) and as many of the LAST
+        // screens as fit (the end of the list and the transaction that was opened), with the middle left out and said so.
+        val chosen: List<String> = if (fits(screens)) screens else {
+            val head = screens.take(2).filter { it.length <= room / 3 }
+            val tail = ArrayList<String>()
+            var used = head.sumOf { it.length + sep.length } + 60
+            for (s in screens.drop(minOf(2, screens.size)).asReversed()) {
+                val cut = s.take(room / 2)
+                if (used + cut.length + sep.length > room) break
+                tail.add(0, cut)
+                used += cut.length + sep.length
+            }
+            val left = screens.size - minOf(2, screens.size) - tail.size
+            head + listOf("($left screens in the middle left out)") + tail
         }
-        out.add((header + "\nscreens: ${screens.size}, sent: $kept").take(CHUNK_CHARS))
+        val body = chosen.joinToString(sep).take(room)
+        val out = ArrayList<String>()
+        out.add((header + "\nscreens: ${screens.size}, sent: ${chosen.size}").take(CHUNK_CHARS))
         var i = 0
         while (i < body.length && out.size < CHUNKS) {
             out.add(body.substring(i, minOf(body.length, i + CHUNK_CHARS)))
