@@ -35,7 +35,7 @@ object AppReader {
     /** The server fails a command running for 3 minutes. */
     const val RUN_MS = 150_000L
     private const val TICK_MS = 700L
-    private val pace = HumanPace()
+    internal val pace = HumanPace()
     /** No progress for this long on a screen we do not know: stop and say what was on it. */
     private const val STUCK_MS = 25_000L
     private const val LOGIN_WAIT_MS = 15_000L
@@ -54,9 +54,10 @@ object AppReader {
     private const val NEWEST = "newest_at"
 
     @Volatile private var running = false
-    fun active(): Boolean = running
+    /** True while the reader OR an app cash-in drives the bKash app: USSD runs and each other wait. */
+    fun active(): Boolean = running || AppCashIn.running
 
-    private val LOGIN = setOf("লগ ইন", "log in", "login")
+    internal val LOGIN = setOf("লগ ইন", "log in", "login")
     private val INBOX = setOf("ইনবক্স", "inbox")
     private val TAB = setOf("লেনদেনসমূহ", "transactions")
     private val TIME = Regex("^\\s*(\\d{1,2}):(\\d{2})\\s*([ap]m)\\s+(\\d{2})/(\\d{2})/(\\d{2,4})\\s*$", RegexOption.IGNORE_CASE)
@@ -134,7 +135,7 @@ object AppReader {
         fun fail(e: String, trace: String = "") = done(UssdOutcome(false, null, e, trace = trace))
         if (!AppSettings(app).ussdAllowed) return fail("not_allowed")
         val svc = UssdSession.launchContext() as? AccessibilityService ?: return fail("accessibility_not_running")
-        if (running || UssdSession.active() || UssdApi.active()) return fail("busy")
+        if (running || AppCashIn.running || UssdSession.active() || UssdApi.active()) return fail("busy")
         val keys = pinKeys(UssdSetup.pinStore(app, UssdProviders.BKASH).get()) ?: return fail("no_pin")
         val pkg = AppRecorder.findApp(app) ?: return fail("no_bkash_app")
         when (ScreenWake.state(app)) {
@@ -301,14 +302,14 @@ object AppReader {
         main.postDelayed(tick, pace.settle())
     }
 
-    private fun bkashRoot(svc: AccessibilityService): AccessibilityNodeInfo? {
+    internal fun bkashRoot(svc: AccessibilityService): AccessibilityNodeInfo? {
         svc.rootInActiveWindow?.let { if (AppRecorder.isBkash(it.packageName?.toString())) return it }
         return try { svc.windows.mapNotNull { it.root }.firstOrNull { AppRecorder.isBkash(it.packageName?.toString()) } } catch (e: Exception) { null }
     }
 
     /** How many digits the PIN box shows: the password box (or the box whose hint says PIN), never the account box.
      *  Null when there is no such box to read. Never reads WHICH digits (a password box only gives dots). */
-    private fun pinShown(root: AccessibilityNodeInfo): Int? {
+    internal fun pinShown(root: AccessibilityNodeInfo): Int? {
         val boxes = ArrayList<AccessibilityNodeInfo>()
         fun walk(n: AccessibilityNodeInfo?, depth: Int) {
             if (n == null || depth > 40 || boxes.size > 20) return
@@ -323,7 +324,7 @@ object AppReader {
     }
 
     /** Every node, skipping boxes being typed into. */
-    private fun collect(n: AccessibilityNodeInfo?, out: MutableList<AccessibilityNodeInfo>, depth: Int) {
+    internal fun collect(n: AccessibilityNodeInfo?, out: MutableList<AccessibilityNodeInfo>, depth: Int) {
         if (n == null || depth > 40 || out.size > 1500) return
         if (n.isPassword || n.isEditable) return
         out.add(n)
@@ -345,16 +346,16 @@ object AppReader {
         return out
     }
 
-    private fun words(n: AccessibilityNodeInfo?, out: MutableList<String>, depth: Int) {
+    internal fun words(n: AccessibilityNodeInfo?, out: MutableList<String>, depth: Int) {
         if (n == null || depth > 8 || n.isPassword || n.isEditable) return
         n.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { out.add(it.replace('\n', ' ').replace(" | ", " / ")) }
         for (i in 0 until n.childCount) words(n.getChild(i), out, depth + 1)
     }
 
     /** Presses the node whose whole text is [label] (or the nearest tappable thing around it). */
-    private fun pressText(svc: AccessibilityService, label: String): Boolean = pressAny(svc, setOf(label))
+    internal fun pressText(svc: AccessibilityService, label: String): Boolean = pressAny(svc, setOf(label))
 
-    private fun pressAny(svc: AccessibilityService, labels: Set<String>, root0: AccessibilityNodeInfo? = null): Boolean {
+    internal fun pressAny(svc: AccessibilityService, labels: Set<String>, root0: AccessibilityNodeInfo? = null): Boolean {
         val root = root0 ?: bkashRoot(svc) ?: return false
         val nodes = ArrayList<AccessibilityNodeInfo>()
         collect(root, nodes, 0)
@@ -373,7 +374,7 @@ object AppReader {
         return target.isClickable && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
     }
 
-    private fun tap(svc: AccessibilityService, node: AccessibilityNodeInfo): Boolean {
+    internal fun tap(svc: AccessibilityService, node: AccessibilityNodeInfo): Boolean {
         val r = Rect()
         node.getBoundsInScreen(r)
         if (r.isEmpty) return false
@@ -430,6 +431,10 @@ class HumanPace(private val rnd: java.util.Random = java.util.Random()) {
     fun tapMs(): Long = between(55L, 120L)
     /** A slow drag (the first Vivo read, build 173, used 0.4-0.7 s swipes: the list flung past 3 of 78 rows). */
     fun swipeMs(): Long = between(600L, 1_000L)
+    /** One character of a number or amount typed into a box (app cash-in). */
+    fun charGap(): Long = between(140L, 320L)
+    /** The bKash app's "tap and hold" to send: held a little longer than the app needs, never a quick tap. */
+    fun holdPressMs(): Long = between(3_000L, 4_000L)
     /** The finger stays still this long before lifting, so the list stops where the finger stopped (no fling). */
     fun holdMs(): Long = between(220L, 380L)
     /** A point in the middle part of a box (30% to 70% across and down), never its edge. */

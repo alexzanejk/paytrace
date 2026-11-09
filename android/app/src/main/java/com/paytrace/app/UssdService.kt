@@ -46,6 +46,10 @@ object UssdText {
         "no_personal" -> "The personal account is not set up on this phone (number and SIM), or the wallet opened the agent menu instead, so nothing was sent."
         "no_pin" -> "No Nagad PIN is saved on this phone."
         "busy" -> "Another check is still running."
+        "no_answer_after_hold" -> "The bKash app was told to send (tap and hold) but no result screen came. Check the bKash app or its statement before trying again."
+        "app_stopped_before_send" -> "The bKash app Cash In stopped before the tap and hold, so nothing was sent."
+        "insufficient_balance" -> "The bKash wallet has less than the amount, so nothing was sent."
+        "pin_refused" -> "The bKash app did not accept the PIN. It was not typed again and nothing was sent. Check the saved bKash PIN."
         "network_refused" -> "The provider answered that the service is not available right now. Try again a little later."
         "too_soon" -> "A check just finished. Wait about a minute and try again."
         "ussd_failed" -> "The wallet answered, but Android does not pass that kind of answer on to an app. PayTrace has moved this phone to the Dialer way, which reads the phone's own menu. Try the check again."
@@ -924,10 +928,12 @@ object UssdCommands {
             }
             "cashin" -> {
                 val order = CashInOrder(provider, cmd.optString("to_number"), cmd.optDouble("amount", -1.0))
-                UssdRunner.runCashIn(ctx, order) { outcome ->
+                val finish: (UssdOutcome) -> Unit = { outcome ->
                     remember(ctx, provider, outcome)
                     report(ctx, id, outcome, "cashin")
                 }
+                // migration 082: the dashboard chose the bKash app for this one instead of USSD.
+                if (cmd.optString("via") == "app") AppCashIn.start(ctx, order, finish) else UssdRunner.runCashIn(ctx, order, finish)
             }
             "sendmoney" -> {
                 val order = CashInOrder(provider, cmd.optString("to_number"), cmd.optDouble("amount", -1.0))

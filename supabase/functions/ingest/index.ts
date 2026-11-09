@@ -459,7 +459,7 @@ async function handle(req: Request): Promise<Response> {
     const { data: cmdData, error: cmdError } = await db.rpc("device_next_command", { p_device: device.id });
     const cmd = cmdError
       ? null
-      : (cmdData as { id?: string; kind?: string; provider?: string; amount?: number | string | null; to_number?: string | null; item?: number | null } | null);
+      : (cmdData as { id?: string; kind?: string; provider?: string; amount?: number | string | null; to_number?: string | null; item?: number | null; via?: string | null } | null);
     const command = cmd && cmd.id
       ? {
         id: cmd.id,
@@ -468,6 +468,9 @@ async function handle(req: Request): Promise<Response> {
         ...(cmd.amount == null ? {} : { amount: Number(cmd.amount) }),
         ...(cmd.to_number == null ? {} : { to_number: cmd.to_number }),
         ...(cmd.item == null ? {} : { item: Number(cmd.item) }),
+        // migration 082: a bKash Cash In may be told to go through the bKash app instead of USSD (old builds ignore it, and the
+        // database only lets a phone that reported app_cashin be given one).
+        ...(cmd.via === "app" ? { via: "app" } : {}),
       }
       : null;
     return json({
