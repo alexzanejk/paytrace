@@ -5,6 +5,7 @@ import { when } from "@/lib/format";
 import { actionLine, isLive, PHONE_ACTIONS, PHONE_ACTION_KINDS, POLL_MS, type PhoneActionKind, type PhoneCommand } from "@/lib/phoneCommands";
 import { nudgePhone } from "@/lib/wake";
 import { Button } from "@/components/ui/button";
+import { PhoneTrace } from "@/components/PhoneTrace";
 
 const ICON: Record<PhoneActionKind, typeof RotateCw> = { restart: RotateCw, inbox: Inbox, resend: Send, screen: Sun, ring: Bell, apprecord: ListChecks, appread: ReceiptText };
 
@@ -23,7 +24,7 @@ export function PhoneActions({ deviceId }: { deviceId: string }) {
   const load = useCallback(async () => {
     const { data } = await sb
       .from("phone_commands")
-      .select("id,kind,provider,status,balance,error,created_at,finished_at")
+      .select("id,kind,provider,status,balance,error,created_at,finished_at,screens")
       .eq("device_id", deviceId)
       .in("kind", PHONE_ACTION_KINDS)
       .order("created_at", { ascending: false })
@@ -72,6 +73,9 @@ export function PhoneActions({ deviceId }: { deviceId: string }) {
         })}
       </div>
       {line ? <p role="status" className="text-sm text-muted-foreground">{line}</p> : null}
+      {last && (last.kind === "appread" || last.kind === "apprecord") && !live ? (
+        <PhoneTrace screens={last.screens} label={last.status === "done" ? "How the phone did it (login and scrolling)" : undefined} />
+      ) : null}
       {problem ? <p className="text-xs text-destructive">{problem}</p> : null}
     </div>
   );

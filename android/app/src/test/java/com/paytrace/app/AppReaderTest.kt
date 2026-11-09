@@ -119,4 +119,17 @@ class AppReaderTest {
         assertEquals(3, PinTyping.shownCount("•••", "এজেন্ট পিন নাম্বার দিন"))
         assertEquals(5, PinTyping.shownCount("• • • • •", null))
     }
+
+    @Test fun aSuccessfulReadKeepsItsLogLast() {
+        val rows = List(300) { i -> "ক্যাশ আউট | 0131XXXX331 | 09:54pm 08/11/26 | + ৳${1000 + i}" }
+        val out = AppReader.pack("bKash app transactions", rows, "  5.6s login screen: typing the saved PIN slowly\n 19.0s the box shows all 5 digits")
+        assertTrue(out.size <= 12)
+        assertTrue(out.sumOf { it.length } <= AppReader.TOTAL_CHARS)
+        assertTrue(out.last().startsWith(AppReader.TRACE_MARK))
+        // The log is never read as a row: no " | " in it.
+        assertFalse(out.last().contains(" | "))
+        assertTrue(out.dropLast(1).drop(1).all { it.contains(" | ") })
+        // Without a log nothing changes.
+        assertFalse(AppReader.pack("h", rows).last().startsWith(AppReader.TRACE_MARK))
+    }
 }
