@@ -59,7 +59,8 @@ class AppReaderTest {
     @Test fun pacedLikeAPerson() {
         val p = HumanPace(java.util.Random(7))
         repeat(200) {
-            assertTrue(p.keyGap() in 280L..650L)
+            assertTrue(p.keyGap() in 800L..1_400L)
+            assertTrue(p.afterKeys() in 1_000L..1_600L)
             assertTrue(p.settle() in 1_800L..3_200L)
             assertTrue(p.readPause() in 1_300L..2_600L)
             assertTrue(p.swipeMs() in 600L..1_000L)
@@ -87,5 +88,35 @@ class AppReaderTest {
         // Read in this order: a jump to 10:00, then back to the missed 11:00.
         val rows = linkedMapOf("12:00" to 1_200L, "10:00" to 1_000L, "11:00" to 1_100L, "10:00 again" to 1_000L)
         assertEquals(listOf("12:00", "11:00", "10:00", "10:00 again"), AppReader.ordered(rows))
+    }
+
+    @Test fun aPinDigitIsCheckedBeforeTheNext() {
+        val S = PinTyping.Step.values().associateBy { it.name }
+        // Nothing pressed yet: press the first digit.
+        assertEquals(S["PRESS"], PinTyping.next(0, 5, 0, pressed = false, waitedMs = 0, retries = 0))
+        // Pressed, the box does not show it yet: wait, then press it again, then stop.
+        assertEquals(S["WAIT"], PinTyping.next(0, 5, 0, pressed = true, waitedMs = 700, retries = 0))
+        assertEquals(S["RETRY"], PinTyping.next(0, 5, 0, pressed = true, waitedMs = 1_900, retries = 0))
+        assertEquals(S["STOP"], PinTyping.next(0, 5, 0, pressed = true, waitedMs = 1_900, retries = PinTyping.RETRIES))
+        // The box shows it: confirmed, then the next digit.
+        assertEquals(S["CONFIRMED"], PinTyping.next(2, 5, 3, pressed = true, waitedMs = 400, retries = 0))
+        assertEquals(S["PRESS"], PinTyping.next(3, 5, 3, pressed = false, waitedMs = 0, retries = 0))
+        // A lagging key that landed twice, or a box that lost digits: stop, never log in.
+        assertEquals(S["STOP"], PinTyping.next(2, 5, 4, pressed = true, waitedMs = 400, retries = 0))
+        assertEquals(S["STOP"], PinTyping.next(3, 5, 2, pressed = false, waitedMs = 0, retries = 0))
+        // Log in only when the box shows exactly the whole PIN (owner 2026-11-10: a short PIN was sent).
+        assertEquals(S["LOGIN"], PinTyping.next(5, 5, 5, pressed = false, waitedMs = 0, retries = 0))
+        assertEquals(S["STOP"], PinTyping.next(5, 5, 4, pressed = false, waitedMs = 0, retries = 0))
+        // A box that cannot be read: slow timing alone.
+        assertEquals(S["WAIT"], PinTyping.next(1, 5, null, pressed = true, waitedMs = 900, retries = 0))
+        assertEquals(S["CONFIRMED"], PinTyping.next(1, 5, null, pressed = true, waitedMs = 1_700, retries = 0))
+        assertEquals(S["LOGIN"], PinTyping.next(5, 5, null, pressed = false, waitedMs = 0, retries = 0))
+    }
+
+    @Test fun theBoxIsCountedNotRead() {
+        assertEquals(0, PinTyping.shownCount(null, "এজেন্ট পিন নাম্বার দিন"))
+        assertEquals(0, PinTyping.shownCount("এজেন্ট পিন নাম্বার দিন", "এজেন্ট পিন নাম্বার দিন"))
+        assertEquals(3, PinTyping.shownCount("•••", "এজেন্ট পিন নাম্বার দিন"))
+        assertEquals(5, PinTyping.shownCount("• • • • •", null))
     }
 }
