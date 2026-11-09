@@ -5,7 +5,7 @@ import { tk, when } from "@/lib/format";
 import { PROVIDERS, PROVIDER_LABEL, type Payment } from "@/lib/types";
 import { rangeBounds, rangeLabel, periodRange } from "@/lib/period";
 import {
-  PAYOUT_WORDS, UNSURE_HELP, checkNumbers, groupDigits, liveItemsByPayment, parsePct, payoutLine, payoutRefusal, recentNumbers,
+  PAYOUT_WORDS, UNSURE_HELP, checkNumbers, groupDigits, liveItemsByPayment, parsePct, parseSendAmount, keepPctFor, payoutLine, payoutRefusal, recentNumbers,
   parseFee, sendMethod, sendProblem, senderOptions, splitPayout, ROCKET_NOTE, METHOD_WORDS, type PayoutItemRow, type PayoutRow,
 } from "@/lib/payouts";
 import { nudgePhone } from "@/lib/wake";
@@ -281,9 +281,11 @@ function PayoutPanel({
   const [problem, setProblem] = useState("");
   const [saveDefault, setSaveDefault] = useState(false);
   const [feeText, setFeeText] = useState(String(defaultFee));
+  // Either box can be typed in (owner 2026-11-09): the one typed last decides, the other follows.
+  const [driver, setDriver] = useState<"pct" | "send">("pct");
+  const [sendText, setSendText] = useState("");
 
   const total = chosen.reduce((s, r) => s + Number(r.amount), 0);
-  const pct = parsePct(pctText);
   const options = useMemo(() => senderOptions(devices.map((d) => ({ id: d.id, name: nameOf(d.id), status: d.status, allow_cashin: d.allow_cashin, allow_personal: d.allow_personal, info: d.info }))), [devices, nameOf]);
   // The wallet that received the money sends it on, when it can.
   const first0 = chosen[0];
@@ -294,21 +296,29 @@ function PayoutPanel({
   // A personal Send Money costs the sender a bKash fee; it comes off what is sent, never off your share (owner 2026-11-08).
   const personal = !byHand && sender?.account === "personal";
   const fee = personal ? parseFee(feeText) : 0;
+  const typedSend = driver === "send" ? parseSendAmount(sendText) : null;
+  const pct = driver === "pct" ? parsePct(pctText) : typedSend == null || fee == null ? null : keepPctFor(total, typedSend, fee);
   const split = pct == null || fee == null ? null : splitPayout(total, pct, fee);
+  const most = fee == null ? 0 : Math.max(0, Math.floor(total - fee));
+  const shownPct = driver === "pct" ? pctText : pct == null ? "" : String(Math.round(pct * 100) / 100);
+  const shownSend = driver === "send" ? sendText : split ? String(split.send) : "";
 
   const nums = checkNumbers(first, second);
   const sizeProblem = split ? sendProblem(split.send, byHand ? "manual" : "cash_in") : "";
   const mixed = new Set(chosen.map((r) => `${r.device_id}:${r.provider}`)).size > 1;
 
   const ready = !!split && !sizeProblem && (byHand ? (first.trim() ? !!nums.number : true) : !!nums.number && !!sender && !sender.why);
-  const blockedBy = pct == null ? "Type the share you keep (0 to 100)." : fee == null ? "Type the bKash fee to set aside (0 to 500 taka)." : !split ? "" : sizeProblem
+  const blockedBy = fee == null ? "Type the bKash fee to set aside (0 to 500 taka)."
+    : driver === "send" && typedSend == null ? "Type the amount to send in whole taka."
+    : driver === "send" && pct == null ? `You can send at most ${tk(most)} from these transactions${fee ? " after the fee" : ""}.`
+    : pct == null ? "Type the share you keep (0 to 100)." : fee == null ? "Type the bKash fee to set aside (0 to 500 taka)." : !split ? "" : sizeProblem
     || (byHand ? (first.trim() && !nums.number ? nums.problem : "") : !sender ? "Choose the wallet that sends it." : sender.why || nums.problem);
 
   async function go() {
     if (!split || pct == null) return;
     setBusy(true); setProblem("");
     try {
-      if (saveDefault && pct !== defaultPct) {
+      if (saveDefault && driver === "pct" && pct !== defaultPct) {
         const r = await sb.rpc("set_payout_settings", { p_keep_pct: pct });
         if (r.error) throw r.error;
       }
@@ -350,19 +360,30 @@ function PayoutPanel({
       <div className="grid gap-4 md:grid-cols-3">
         <label className="space-y-1 text-sm">
           <span className="text-muted-foreground">You keep (%)</span>
-          <Input inputMode="decimal" value={pctText} onChange={(e) => { setPctText(e.target.value); setConfirming(false); }} aria-label="Share you keep, percent" />
-          <span className="flex items-center gap-2 text-xs text-muted-foreground">
-            <input type="checkbox" checked={saveDefault} onChange={(e) => setSaveDefault(e.target.checked)} /> make this the default
-          </span>
+          <Input
+            inputMode="decimal" value={shownPct} aria-label="Share you keep, percent"
+            onChange={(e) => { setDriver("pct"); setPctText(e.target.value); setConfirming(false); }}
+          />
+          {driver === "pct" ? (
+            <span className="flex items-center gap-2 text-xs text-muted-foreground">
+              <input type="checkbox" checked={saveDefault} onChange={(e) => setSaveDefault(e.target.checked)} /> make this the default
+            </span>
+          ) : (
+            <span className="block text-xs text-muted-foreground">Worked out from the amount you typed.</span>
+          )}
         </label>
         <div className="space-y-1 text-sm">
           <span className="text-muted-foreground">Kept</span>
           <p className="text-lg font-semibold tabular">{split ? tk(split.keep) : "–"}</p>
         </div>
-        <div className="space-y-1 text-sm">
+        <label className="space-y-1 text-sm">
           <span className="text-muted-foreground">Sent (whole taka)</span>
-          <p className="text-2xl font-bold tabular text-primary">{split ? tk(split.send) : "–"}</p>
-        </div>
+          <Input
+            className="text-lg font-bold tabular text-primary" inputMode="numeric" value={shownSend} aria-label="Amount to send, taka"
+            onChange={(e) => { setDriver("send"); setSendText(e.target.value); setConfirming(false); }}
+          />
+          <span className="block text-xs text-muted-foreground">Type an amount and the share you keep follows. At most {tk(most)}.</span>
+        </label>
       </div>
       {personal ? (
         <label className="block space-y-1 text-sm">

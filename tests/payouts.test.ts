@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import {
-  checkNumbers, feeLine, groupDigits, parseFee, liveItemsByPayment, parsePct, payoutLine, payoutRefusal, recentNumbers, sendMethod, sendProblem, senderOptions, splitPayout,
+  checkNumbers, feeLine, keepPctFor, parseSendAmount, groupDigits, parseFee, liveItemsByPayment, parsePct, payoutLine, payoutRefusal, recentNumbers, sendMethod, sendProblem, senderOptions, splitPayout,
   type PayoutRow,
 } from "../dashboard/src/lib/payouts.ts";
 import { accountTitle, checkLine, figures, sourceLine, type DayMoneyRow } from "../dashboard/src/lib/dayMoney.ts";
@@ -104,6 +104,24 @@ check("an open gap says how much came in unexplained", checkLine(day({ gap_open_
 check("before the check existed it says so", checkLine(day({ checked: false })).tone === "idle");
 check("messages without a SIM on a two-account phone are flagged", checkLine(day({ account: "unknown", unknown_sim_n: 4 })).text.startsWith("4 messages did not say which SIM"));
 check("sources and holds are spelled out", sourceLine(day({ from_statement: 1, from_paytrace: 2 })) === "5 from SMS · 1 from the wallet's statement · 2 sent by PayTrace · 1 held for review (Tk 700) not counted");
+
+// ---- typing the amount to send (owner 2026-11-09) ----
+check("send amount: commas and Bangla digits", parseSendAmount("12,300") === 12300 && parseSendAmount("১২৩০০") === 12300 && parseSendAmount("Tk 500") === 500);
+check("send amount: whole taka only", parseSendAmount("12.5") === null && parseSendAmount("") === null && parseSendAmount("-5") === null);
+{
+  let bad = 0;
+  for (const total of [497, 1000, 26202, 1620, 3333.33, 49999.99, 128.75]) {
+    for (const fee of [0, 10]) {
+      for (let send = 100; send <= Math.floor(total - fee); send += 37) {
+        const pct = keepPctFor(total, send, fee);
+        if (pct == null || splitPayout(total, pct, fee).send !== send) bad++;
+      }
+    }
+  }
+  check("every whole-taka amount up to the total gives a share that sends exactly that amount", bad === 0, bad);
+}
+check("more than the total (less the fee) is refused", keepPctFor(1000, 1001) === null && keepPctFor(1000, 995, 10) === null && keepPctFor(1000, 990, 10) === 0);
+check("sending everything keeps 0%", keepPctFor(1500, 1500) === 0);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

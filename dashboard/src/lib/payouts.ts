@@ -54,6 +54,25 @@ export function splitPayout(total: number, keepPct: number, fee = 0): { keep: nu
   return { keep: round2(total - send - fee), send, fee };
 }
 
+/** A typed amount to send: whole taka, commas and Bangla digits allowed ("১২,৩০০" = 12300); null when it is not one. */
+export function parseSendAmount(text: string): number | null {
+  const t = text.replace(/[০-৯]/g, (d) => String(d.charCodeAt(0) - 0x09e6)).replace(/[\s,]/g, "").replace(/^tk/i, "");
+  if (!/^\d{1,6}$/.test(t)) return null;
+  return Number(t);
+}
+
+/** The keep share that makes the database send exactly `send` taka (owner 2026-11-09: "adjust the payout amount and the
+ *  percentage adjusts by itself"). It is passed to create_payout unrounded, so the database's own split lands on the same
+ *  whole taka; splitPayout is run on it to prove that before anything is sent. Null when `send` is more than the total
+ *  less the fee, or below zero. */
+export function keepPctFor(total: number, send: number, fee = 0): number | null {
+  if (!(total > 0) || send < 0) return null;
+  const keep = round2(total - send - fee);
+  if (keep < 0) return null;
+  const pct = (keep / total) * 100;
+  return splitPayout(total, pct, fee).send === send ? pct : null;
+}
+
 /** A typed fee to set aside: 0 to 500 taka, up to two decimals; null when it is not one. */
 export function parseFee(text: string): number | null {
   const t = text.replace(/[\s,]/g, "").replace(/^tk/i, "");
