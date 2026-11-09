@@ -7,8 +7,8 @@ import org.junit.Test
 /** The dashboard and the phone have to agree on the names of the phone controls, and a wallet command must never be
  *  mistaken for one: a control runs without a wallet, a balance check must not. */
 class PhoneActionsTest {
-    @Test fun theSixControlsAndOnlyThose() {
-        assertEquals(setOf("restart", "inbox", "resend", "screen", "ring", "apprecord"), PhoneActions.KINDS)
+    @Test fun theSevenControlsAndOnlyThose() {
+        assertEquals(setOf("restart", "inbox", "resend", "screen", "ring", "apprecord", "appread"), PhoneActions.KINDS)
         PhoneActions.KINDS.forEach { assertTrue(it, PhoneActions.isAction(it)) }
     }
 

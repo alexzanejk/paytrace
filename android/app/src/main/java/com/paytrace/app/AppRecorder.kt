@@ -107,7 +107,7 @@ object AppRecorder {
         val app = ctx.applicationContext
         val svc = UssdSession.launchContext() as? AccessibilityService
             ?: return done(UssdOutcome(false, null, "accessibility_not_running"))
-        if (running || UssdSession.active() || UssdApi.active()) return done(UssdOutcome(false, null, "busy"))
+        if (running || AppReader.active() || UssdSession.active() || UssdApi.active()) return done(UssdOutcome(false, null, "busy"))
         val pkg = findApp(app) ?: return done(UssdOutcome(false, null, "no_bkash_app"))
         running = true
         notifyPerson(app)

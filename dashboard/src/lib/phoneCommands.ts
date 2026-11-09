@@ -134,7 +134,7 @@ export function commandLine(c: PhoneCommand | null, money: (n: number) => string
 
 // ---- Phone controls (owner request 2026-11-02): commands that need no wallet ----
 
-export type PhoneActionKind = "restart" | "inbox" | "resend" | "screen" | "ring" | "apprecord";
+export type PhoneActionKind = "restart" | "inbox" | "resend" | "screen" | "ring" | "apprecord" | "appread";
 
 export interface PhoneAction {
   kind: PhoneActionKind;
@@ -164,6 +164,9 @@ export const PHONE_ACTIONS: PhoneAction[] = [
   { kind: "apprecord", label: "Read bKash app (test)", busy: "Reading the bKash app for 2½ minutes: log in on the phone and scroll its transaction list…",
     done: "The bKash app was read; what the phone could see is saved for checking",
     help: "Test (Vivo first): opens the bKash app on the phone and, for 2½ minutes, writes down what PayTrace can read on its screens while you log in and scroll the transaction list by hand. It never taps or types, and never reads the PIN." },
+  { kind: "appread", label: "Read bKash app now", busy: "Reading the bKash app's transaction list on the phone (about a minute)…",
+    done: "The bKash app's transactions were read",
+    help: "Opens the bKash Agent app on the phone, logs in with the bKash PIN saved in PayTrace, and reads the transaction list back to the last read. The server also does this every 30 minutes. It never taps a transaction or sends money." },
 ];
 
 export const PHONE_ACTION_KINDS: PhoneActionKind[] = PHONE_ACTIONS.map((a) => a.kind);
@@ -186,6 +189,9 @@ export function actionLine(c: PhoneCommand | null, when: (t: string) => string):
 }
 
 // The one failure a phone control can report on its own; the rest come from the shared list above.
+ERROR_TEXT.login_failed = "The bKash app was still asking for the PIN after PayTrace typed it once. PayTrace never types it twice (bKash locks after wrong tries), and stops reading the app on this phone until you press \"Read bKash app now\" again. Check the bKash PIN saved in the phone app.";
+ERROR_TEXT.app_not_opened = "The bKash app did not open on the phone.";
+ERROR_TEXT.app_closed = "The bKash app left the screen while it was being read.";
 ERROR_TEXT.no_bkash_app = "No bKash app is installed on that phone.";
 ERROR_TEXT.app_not_readable = "The bKash app was opened, but PayTrace could not read any of its screens: the app may hide itself from accessibility services, or it was never brought to the front.";
 ERROR_TEXT.inbox_unreadable = "The phone could not read its SMS inbox: PayTrace has no SMS permission there, or forwarding is paused.";

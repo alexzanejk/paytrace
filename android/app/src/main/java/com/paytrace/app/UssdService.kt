@@ -687,7 +687,7 @@ object UssdRunner {
         if (!UssdSetup.callPermission(app)) return fail("no_call_permission")
         val pin = UssdSetup.pinStore(app, order.provider).get()
         if (pin.isEmpty()) return fail("no_pin")
-        if (UssdSession.active() || UssdApi.active()) return fail("busy")
+        if (UssdSession.active() || UssdApi.active() || AppReader.active()) return fail("busy")
         AccessibilityHeal.prepare(app) { note ->
             if (!UssdSetup.accessibilityOn(app)) return@prepare fail("no_accessibility")
             viaDialer(app, order.provider, 1, note, onFinish, s, pin, { UssdProviders.cashIn(order) { pin } }, retryable = false)
@@ -713,7 +713,7 @@ object UssdRunner {
         if (!UssdSetup.callPermission(app)) return fail("no_call_permission")
         val pin = PersonalAccounts.pinStore(app, order.provider).get()
         if (pin.isEmpty()) return fail("no_pin")
-        if (UssdSession.active() || UssdApi.active()) return fail("busy")
+        if (UssdSession.active() || UssdApi.active() || AppReader.active()) return fail("busy")
         AccessibilityHeal.prepare(app) { note ->
             if (!UssdSetup.accessibilityOn(app)) return@prepare fail("no_accessibility")
             viaDialer(app, order.provider, 1, note, onFinish, s, pin, { SendMoneyFlow(order) { pin } }, retryable = false, slotOverride = slot)
@@ -734,7 +734,7 @@ object UssdRunner {
         if (!UssdSetup.callPermission(app)) return fail("no_call_permission")
         val pin = UssdSetup.pinStore(app, provider).get()
         if (pin.isEmpty()) return fail("no_pin")
-        if (UssdSession.active() || UssdApi.active()) return fail("busy")
+        if (UssdSession.active() || UssdApi.active() || AppReader.active()) return fail("busy")
         AccessibilityHeal.prepare(app) { note ->
             if (!UssdSetup.accessibilityOn(app)) return@prepare fail("no_accessibility")
             viaDialer(app, provider, 1, note, onFinish, s, pin, { StatementFlow(provider, item) { pin } }, runMs = STATEMENT_RUN_MS)
@@ -764,7 +764,7 @@ object UssdRunner {
         if (!UssdSetup.callPermission(app)) return fail("no_call_permission")
         val pin = UssdSetup.pinStore(app, provider).get()
         if (pin.isEmpty()) return fail("no_pin")
-        if (UssdSession.active() || UssdApi.active()) return fail("busy")
+        if (UssdSession.active() || UssdApi.active() || AppReader.active()) return fail("busy")
         val slot = s.ussdSlotOf(provider)
         if (n == 1) {
             if (UssdApi.tooSoon()) return fail("too_soon")
