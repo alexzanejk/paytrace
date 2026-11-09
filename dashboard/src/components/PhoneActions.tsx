@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bell, Inbox, ListChecks, RotateCw, Send, Sun } from "lucide-react";
+import { Bell, Inbox, ListChecks, ReceiptText, RotateCw, Send, Sun } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import { when } from "@/lib/format";
 import { actionLine, isLive, PHONE_ACTIONS, PHONE_ACTION_KINDS, POLL_MS, type PhoneActionKind, type PhoneCommand } from "@/lib/phoneCommands";
 import { nudgePhone } from "@/lib/wake";
 import { Button } from "@/components/ui/button";
 
-const ICON: Record<PhoneActionKind, typeof RotateCw> = { restart: RotateCw, inbox: Inbox, resend: Send, screen: Sun, ring: Bell, apprecord: ListChecks };
+const ICON: Record<PhoneActionKind, typeof RotateCw> = { restart: RotateCw, inbox: Inbox, resend: Send, screen: Sun, ring: Bell, apprecord: ListChecks, appread: ReceiptText };
 
 /** Phone controls (owner request 2026-11-02): restart PayTrace, read the inbox now, send what is waiting, wake the
  *  screen, ring. None touches a wallet. They queue like a balance check and the phone takes them on its next beat,
