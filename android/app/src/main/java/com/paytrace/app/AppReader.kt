@@ -147,7 +147,12 @@ object AppReader {
         var lastAct = 0L
         var nextActAt = 0L
         var progressAt = SystemClock.elapsedRealtime()
-        var pinTypedAt = 0L
+        var pinTypedAt = 0L      // when Log in was pressed
+        var pinTyped = 0         // digits the PIN box has confirmed
+        var keyPressed = false   // a digit was pressed and the box has not shown it yet
+        var keyPressedAt = 0L
+        var keyRetries = 0
+        var pinBlind = false     // the box could not be read: typed by slow timing alone
         var scrolls = 0
         var idleScrolls = 0
         var prevFound: Set<String> = emptySet()
@@ -204,15 +209,40 @@ object AppReader {
                             loginKey != null && digits -> {
                                 if (pinTypedAt > 0) {
                                     if (now - pinTypedAt > LOGIN_WAIT_MS) return finish(false, "login_failed", "still on the login screen after the PIN")
-                                } else if (canAct) {
-                                    note("login screen: typing the saved PIN on the app's keypad")
-                                    pinTypedAt = now
-                                    progressAt = now
-                                    var at = 0L
-                                    for (k in keys) { at += pace.keyGap(); main.postDelayed({ pressText(svc, k) }, at) }
-                                    at += pace.afterKeys()
-                                    main.postDelayed({ if (!pressAny(svc, LOGIN)) note("login button not found") }, at)
-                                    nextActAt = now + at + pace.settle()
+                                } else {
+                                    // One digit at a time, slowly: press it, wait until the PIN box shows one more digit,
+                                    // and only then the next. Log in only when the box shows exactly the whole PIN
+                                    // (owner 2026-11-10: the app lagged, taps were lost and a short PIN was sent).
+                                    val shown = pinShown(root)
+                                    if (shown == null) pinBlind = true
+                                    if (pinTyped == 0 && !keyPressed && shown != null && shown > 0)
+                                        return finish(false, "pin_not_entered", "the PIN box already had ${shown} digit(s) in it; nothing typed, Log in NOT pressed")
+                                    when (PinTyping.next(pinTyped, keys.size, shown, keyPressed, now - keyPressedAt, keyRetries)) {
+                                        PinTyping.Step.PRESS -> if (canAct) {
+                                            if (pinTyped == 0) note("login screen: typing the saved PIN slowly, one digit at a time")
+                                            progressAt = now
+                                            if (pressText(svc, keys[pinTyped])) { keyPressed = true; keyPressedAt = now; keyRetries = 0 }
+                                            else return finish(false, "pin_not_entered", "a key of the app's keypad could not be pressed; Log in NOT pressed")
+                                        }
+                                        PinTyping.Step.WAIT -> {}
+                                        PinTyping.Step.CONFIRMED -> {
+                                            pinTyped++; keyPressed = false; progressAt = now
+                                            nextActAt = now + if (pinTyped == keys.size) pace.afterKeys() else pace.keyGap()
+                                        }
+                                        PinTyping.Step.RETRY -> {
+                                            keyRetries++; keyPressedAt = now; progressAt = now
+                                            note("digit ${pinTyped + 1} did not show in the box, pressing it again")
+                                            pressText(svc, keys[pinTyped])
+                                        }
+                                        PinTyping.Step.LOGIN -> if (canAct) {
+                                            note(if (pinBlind) "PIN typed slowly (the box could not be read), pressing Log in" else "the box shows all ${keys.size} digits, pressing Log in")
+                                            pinTypedAt = now; progressAt = now
+                                            if (!pressAny(svc, LOGIN)) note("login button not found")
+                                            nextActAt = now + pace.settle()
+                                        }
+                                        PinTyping.Step.STOP -> return finish(false, "pin_not_entered",
+                                            "the PIN box showed ${shown} digit(s) after digit ${pinTyped + (if (keyPressed) 1 else 0)} of ${keys.size}; Log in NOT pressed")
+                                    }
                                 }
                             }
                             found.isNotEmpty() -> {
@@ -267,6 +297,22 @@ object AppReader {
     private fun bkashRoot(svc: AccessibilityService): AccessibilityNodeInfo? {
         svc.rootInActiveWindow?.let { if (AppRecorder.isBkash(it.packageName?.toString())) return it }
         return try { svc.windows.mapNotNull { it.root }.firstOrNull { AppRecorder.isBkash(it.packageName?.toString()) } } catch (e: Exception) { null }
+    }
+
+    /** How many digits the PIN box shows: the password box (or the box whose hint says PIN), never the account box.
+     *  Null when there is no such box to read. Never reads WHICH digits (a password box only gives dots). */
+    private fun pinShown(root: AccessibilityNodeInfo): Int? {
+        val boxes = ArrayList<AccessibilityNodeInfo>()
+        fun walk(n: AccessibilityNodeInfo?, depth: Int) {
+            if (n == null || depth > 40 || boxes.size > 20) return
+            if (n.isPassword || n.isEditable) boxes.add(n)
+            for (i in 0 until n.childCount) walk(n.getChild(i), depth + 1)
+        }
+        walk(root, 0)
+        val box = boxes.firstOrNull { it.isPassword }
+            ?: boxes.firstOrNull { b -> (b.hintText?.toString() ?: "").lowercase(Locale.ROOT).let { "পিন" in it || "pin" in it } }
+            ?: return null
+        return PinTyping.shownCount(box.text?.toString(), box.hintText?.toString())
     }
 
     /** Every node, skipping boxes being typed into. */
@@ -369,8 +415,9 @@ object AppReader {
 class HumanPace(private val rnd: java.util.Random = java.util.Random()) {
     private fun between(a: Long, b: Long): Long = a + (rnd.nextDouble() * (b - a)).toLong()
     private fun between(a: Double, b: Double): Double = a + rnd.nextDouble() * (b - a)
-    fun keyGap(): Long = between(280L, 650L)
-    fun afterKeys(): Long = between(500L, 950L)
+    /** Between PIN digits, after the box has shown the last one (owner 2026-11-10: the app lagged at 0.3-0.65 s). */
+    fun keyGap(): Long = between(800L, 1_400L)
+    fun afterKeys(): Long = between(1_000L, 1_600L)
     fun settle(): Long = between(1_800L, 3_200L)
     fun readPause(): Long = between(1_300L, 2_600L)
     fun tapMs(): Long = between(55L, 120L)
@@ -384,4 +431,39 @@ class HumanPace(private val rnd: java.util.Random = java.util.Random()) {
     /** A swipe up the screen as fractions of its size: x, start y, end y (about a third of the screen, so every row is
      *  seen whole at least once). */
     fun swipe(): DoubleArray = doubleArrayOf(between(0.42, 0.58), between(0.70, 0.78), between(0.36, 0.44))
+}
+
+/** Typing a PIN on an app's own keypad one checked digit at a time. Pure, unit tested. */
+object PinTyping {
+    enum class Step { PRESS, WAIT, CONFIRMED, RETRY, LOGIN, STOP }
+
+    /** A digit not shown after this long is pressed again (at most [RETRIES] times); with no box to read, a digit
+     *  counts as typed after [BLIND_MS]. */
+    const val SHOW_MS = 1_800L
+    const val BLIND_MS = 1_600L
+    const val RETRIES = 2
+
+    /** Digits in the box: 0 when empty or showing its hint, else its length without spaces. */
+    fun shownCount(text: String?, hint: String?): Int {
+        val t = text ?: return 0
+        if (t.isBlank() || t == hint) return 0
+        return t.count { !it.isWhitespace() }
+    }
+
+    /** [typed] digits are confirmed; [pressed] = the next one was pressed [waitedMs] ago and [retries] times pressed again;
+     *  [shown] = what the box shows (null = cannot be read). Log in only when the box shows exactly [total] digits. */
+    fun next(typed: Int, total: Int, shown: Int?, pressed: Boolean, waitedMs: Long, retries: Int): Step {
+        if (shown != null) {
+            val most = typed + if (pressed) 1 else 0
+            if (shown > most || shown < typed) return Step.STOP
+        }
+        if (pressed) {
+            if (shown == null) return if (waitedMs >= BLIND_MS) Step.CONFIRMED else Step.WAIT
+            if (shown == typed + 1) return Step.CONFIRMED
+            if (waitedMs < SHOW_MS) return Step.WAIT
+            return if (retries < RETRIES) Step.RETRY else Step.STOP
+        }
+        if (typed < total) return Step.PRESS
+        return if (shown == null || shown == total) Step.LOGIN else Step.STOP
+    }
 }
