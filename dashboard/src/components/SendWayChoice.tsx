@@ -13,18 +13,23 @@ export function SendWayChoice({ deviceId, provider, account, method, value, onCh
   onChange: (w: SendWay) => void;
 }) {
   const [appCashin, setAppCashin] = useState<unknown>(undefined);
+  const app = appWayFor({ provider: provider ?? "", account, method, appCashin });
+  // Read whether the phone's app can do it; while it cannot yet, read again every 15 s, so a phone updated while this page
+  // is open turns the choice on by itself (owner 2026-11-10: "bkash app not selectable" right after updating the Vivo).
+  const waiting = provider === "bkash" && account !== "personal" && method !== "send_money" && appCashin !== true;
 
   useEffect(() => {
     let live = true;
-    setAppCashin(undefined);
-    if (!deviceId) return;
-    void sb.from("devices").select("info").eq("id", deviceId).maybeSingle().then(({ data }) => {
-      if (live) setAppCashin((data?.info as { app_cashin?: unknown } | null)?.app_cashin);
-    });
-    return () => { live = false; };
-  }, [deviceId]);
+    if (!deviceId) { setAppCashin(undefined); return; }
+    const read = () =>
+      void sb.from("devices").select("info").eq("id", deviceId).maybeSingle().then(({ data }) => {
+        if (live) setAppCashin((data?.info as { app_cashin?: unknown } | null)?.app_cashin);
+      });
+    read();
+    const t = waiting ? window.setInterval(read, 15_000) : undefined;
+    return () => { live = false; if (t) window.clearInterval(t); };
+  }, [deviceId, waiting]);
 
-  const app = appWayFor({ provider: provider ?? "", account, method, appCashin });
   useEffect(() => {
     if (!app.ok && value === "app") onChange("ussd");
   }, [app.ok, value, onChange]);
