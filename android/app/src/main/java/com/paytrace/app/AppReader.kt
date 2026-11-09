@@ -98,9 +98,16 @@ object AppReader {
      *  same minute keep the order they were read in. */
     fun ordered(rows: Map<String, Long>): List<String> = rows.entries.sortedByDescending { it.value }.map { it.key }
 
-    /** Header plus the rows (newest first), at most [TOTAL_CHARS] in all, in chunks of [CHUNK_CHARS]. The newest rows win. */
-    fun pack(header: String, rows: List<String>): List<String> {
-        val room = TOTAL_CHARS - header.length - 60
+    /** The step log a successful read sends after its rows (owner 2026-11-10: "make it save the log"), so the dashboard
+     *  shows how the login went. It never holds the PIN, and it has no " | ", so the server never reads it as a row. */
+    const val TRACE_CHARS = 1_500
+    const val TRACE_MARK = "What the phone saw:"
+
+    /** Header plus the rows (newest first), at most [TOTAL_CHARS] in all, in chunks of [CHUNK_CHARS]. The newest rows win.
+     *  A [trace], when given, goes last as its own screen beginning with [TRACE_MARK]. */
+    fun pack(header: String, rows: List<String>, trace: String = ""): List<String> {
+        val log = if (trace.isBlank()) null else "$TRACE_MARK\n${trace.replace(" | ", " / ")}".take(TRACE_CHARS)
+        val room = TOTAL_CHARS - header.length - 60 - (log?.length ?: 0)
         val body = StringBuilder()
         var sent = 0
         for (r in rows) {
@@ -119,7 +126,7 @@ object AppReader {
             chunk.append(line.take(CHUNK_CHARS))
         }
         if (chunk.isNotEmpty()) out.add(chunk.toString())
-        return out.take(12)
+        return if (log == null) out.take(12) else out.take(11) + log
     }
 
     fun start(ctx: Context, done: (UssdOutcome) -> Unit) {
@@ -180,7 +187,7 @@ object AppReader {
             val oldest = rows.values.minOrNull()
             val version = try { app.packageManager.getPackageInfo(pkg, 0).versionName ?: "?" } catch (e: Exception) { "?" }
             val header = "bKash app transactions\npackage: $pkg\nversion: $version\nstopped: $why\noldest: ${oldest ?: 0}\ncutoff: $cut"
-            done(UssdOutcome(true, null, null, screens = pack(header, ordered(rows))))
+            done(UssdOutcome(true, null, null, screens = pack(header, ordered(rows), (trace + "end screen: $lastScreen").joinToString("\n"))))
         }
 
         val tick = object : Runnable {
