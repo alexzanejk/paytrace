@@ -165,7 +165,7 @@ export function b2bMessage(p: {
   const lines = [head];
   if (p.direction === "out") lines.push("That is money sent to the distributor. If you did not ask for it, check this wallet now.");
   else lines.push("The B2B float of this wallet went up by that amount; jobs start from the balance minus the float.");
-  if (p.how === "sms") lines.push(`From the SMS${p.trxId ? ` \u00b7 TrxID ${clean(p.trxId, 30)}` : ""}${p.balance != null ? ` \u00b7 balance now ${taka(p.balance)}` : ""}.`);
+  if (p.how === "sms") lines.push(`From the SMS${p.trxId ? ` · TrxID ${clean(p.trxId, 30)}` : ""}${p.balance != null ? ` · balance now ${taka(p.balance)}` : ""}.`);
   else lines.push(`Seen in the wallet's own statement${p.day ? ` (entry dated ${clean(p.day, 12)})` : ""}; no SMS came for it.`);
   lines.push(`${p.dashboardUrl}/#/ledger`);
   return lines.join("\n");
