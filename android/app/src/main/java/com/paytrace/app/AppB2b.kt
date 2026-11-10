@@ -12,11 +12,14 @@ import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
 import java.util.Locale
 
-/** A B2B transfer the dashboard told this phone to make: [amount] taka from the bKash agent wallet to its DSO [number]. */
-data class B2bOrder(val number: String, val amount: Double) {
-    /** The phone's own lock, beside the database's: a full 01 number and 100 to 250,000 taka, at most 2 decimals. */
+/** A B2B transfer the dashboard told this phone to make: [amount] taka from the bKash agent wallet to its DSO. The bKash
+ *  app fills in the DSO by itself, so the dashboard sends no number (owner 2026-11-10: "we don't need to save the DSO number,
+ *  it comes from the bKash app"); [number] is only checked when one is given. */
+data class B2bOrder(val number: String?, val amount: Double) {
+    /** The phone's own lock, beside the database's: 100 to 250,000 taka, at most 2 decimals (and a full 01 number if one is given). */
     fun sane(): Boolean =
-        Regex("^01[0-9]{9}$").matches(number) && amount >= LEAST && amount <= MOST && amount == Math.round(amount * 100.0) / 100.0
+        (number.isNullOrBlank() || Regex("^01[0-9]{9}$").matches(number)) &&
+            amount >= LEAST && amount <= MOST && amount == Math.round(amount * 100.0) / 100.0
 
     companion object {
         const val LEAST = 100.0
@@ -37,8 +40,8 @@ data class B2bOrder(val number: String, val amount: Double) {
  *  is answered) > sometimes a rating sheet ("মতামত দিন").
  *
  *  THE RULE, same as the app Cash In: money moves only on the tap-and-hold, and the phone holds only on the sheet that shows
- *  BOTH the saved DSO number and this amount, exactly. The number is checked on the amount screen, the amount on the PIN
- *  screen, both again on the sheet; any mismatch closes the sheet and nothing is sent. The cash question is answered "হ্যাঁ"
+ *  this amount and the same DSO number the amount screen showed (bKash fills it in; one number only, never a choice). The
+ *  amount is checked on the PIN screen and again on the sheet; any mismatch closes the sheet and nothing is sent. The cash question is answered "হ্যাঁ"
  *  only for this very amount, because the owner ticks "the DSO pays the cash" on the dashboard for every B2B. */
 object AppB2bRead {
     enum class Screen { LOGIN, HOME, AMOUNT, PIN, CONFIRM, RESULT, CASH_QUESTION, RATING, UNKNOWN }
@@ -71,27 +74,32 @@ object AppB2bRead {
         }
     }
 
-    /** The amount screen names this DSO, and no other number. */
-    fun amountScreenOk(texts: List<String>, order: B2bOrder, own: String?): Boolean =
-        AppCashInRead.numberOk(texts, order.number, own)
+    /** The DSO the amount screen shows: exactly one number (but the agent's own), and the order's number if it names one.
+     *  Null when there is none, more than one, or a different one: then nothing is typed. */
+    fun dsoOn(texts: List<String>, order: B2bOrder, own: String?): String? {
+        val n = AppCashInRead.numbersIn(texts, own).distinct()
+        if (n.size != 1) return null
+        return n[0].takeIf { order.number.isNullOrBlank() || it == order.number }
+    }
 
     private fun same(a: Double?, b: Double) = a != null && Math.abs(a - b) < 0.005
 
-    /** The PIN screen: its first plain taka value is the amount, and no number other than the DSO's shows. */
-    fun pinScreenOk(texts: List<String>, order: B2bOrder, own: String?): Boolean =
-        same(AppCashInRead.takaValues(texts).firstOrNull(), order.amount) &&
-            AppCashInRead.numbersIn(texts, own).all { it == order.number }
+    /** The PIN screen: its first plain taka value is the amount, and no number other than the DSO's ([dso], read on the
+     *  amount screen) shows. */
+    fun pinScreenOk(texts: List<String>, amount: Double, dso: String, own: String?): Boolean =
+        same(AppCashInRead.takaValues(texts).firstOrNull(), amount) &&
+            AppCashInRead.numbersIn(texts, own).all { it == dso }
 
-    /** The sheet before the tap-and-hold: this DSO and, first, this amount. Only then may the phone hold. */
-    fun mayHold(texts: List<String>, order: B2bOrder, own: String?): Boolean =
-        AppCashInRead.numberOk(texts, order.number, own) && same(AppCashInRead.takaValues(texts).firstOrNull(), order.amount)
+    /** The sheet before the tap-and-hold: the same DSO the amount screen showed and, first, this amount. Only then may the phone hold. */
+    fun mayHold(texts: List<String>, amount: Double, dso: String, own: String?): Boolean =
+        AppCashInRead.numberOk(texts, dso, own) && same(AppCashInRead.takaValues(texts).firstOrNull(), amount)
 
     data class Done(val trx: String?, val newBalance: Double?, val numberOk: Boolean, val amountOk: Boolean)
 
-    fun result(texts: List<String>, order: B2bOrder, own: String?): Done {
+    fun result(texts: List<String>, amount: Double, dso: String, own: String?): Done {
         val trx = texts.map { it.trim() }.firstOrNull { Regex("^[A-Z0-9]{8,12}$").matches(it) && it.any(Char::isDigit) && it.any(Char::isLetter) }
-        return Done(trx, AppCashInRead.valueAfter(texts, "নতুন ব্যালেন্স"), AppCashInRead.numberOk(texts, order.number, own),
-            AppCashInRead.takaValues(texts).any { same(it, order.amount) })
+        return Done(trx, AppCashInRead.valueAfter(texts, "নতুন ব্যালেন্স"), AppCashInRead.numberOk(texts, dso, own),
+            AppCashInRead.takaValues(texts).any { same(it, amount) })
     }
 
     /** The amount the cash question names ("ক্যাশ 5000.0 টাকা"), or null. Bangla digits are read too. */
@@ -101,7 +109,7 @@ object AppB2bRead {
     }
 
     /** "হ্যাঁ" may be pressed only when the question names exactly this amount. */
-    fun mayAnswerYes(texts: List<String>, order: B2bOrder): Boolean = same(questionAmount(texts), order.amount)
+    fun mayAnswerYes(texts: List<String>, amount: Double): Boolean = same(questionAmount(texts), amount)
 }
 
 /** A B2B transfer through the bKash APP (owner 2026-11-10: "now we will build full b2b perform on app"). Told by the dashboard
@@ -168,6 +176,7 @@ object AppB2b {
         var answered = false
         var answerNote = ""
         var ratingCloses = 0
+        var dso: String? = null
 
         fun finish(o: UssdOutcome, why: String) {
             if (finished) return
@@ -181,7 +190,7 @@ object AppB2b {
             finish(UssdOutcome(false, null, if (held) "no_answer_after_hold" else error), why)
         fun succeed(why: String) {
             val r = result ?: return stop("no_answer_after_hold", "no result")
-            val summary = "bKash app B2B\nto DSO: ${order.number}\namount: ${order.amount}\nTrxID: ${r.trx ?: "?"}\nnew balance: ${r.newBalance ?: "?"}" +
+            val summary = "bKash app B2B\nto DSO: ${dso ?: "?"}\namount: ${order.amount}\nTrxID: ${r.trx ?: "?"}\nnew balance: ${r.newBalance ?: "?"}" +
                 (if (r.numberOk && r.amountOk) "" else "\nNOTE: the result screen did not show exactly this number and amount") +
                 (if (answerNote.isBlank()) "" else "\n$answerNote")
             // The step log rides as its own screen (it starts with the mark the dashboard looks for), also on success.
@@ -332,7 +341,7 @@ object AppB2b {
                             when (screen) {
                                 AppB2bRead.Screen.CASH_QUESTION -> if (canAct && !answered) {
                                     answered = true
-                                    if (AppB2bRead.mayAnswerYes(texts, order)) {
+                                    if (AppB2bRead.mayAnswerYes(texts, order.amount)) {
                                         note("bKash asks whether the DSO paid the cash for this amount: answering হ্যাঁ (the owner confirmed it on the dashboard)")
                                         if (!AppReader.pressAny(svc, setOf(AppB2bRead.YES), root)) {
                                             note("the হ্যাঁ button was not found")
@@ -388,7 +397,11 @@ object AppB2b {
                                 nextActAt = now + pace.settle()
                             }
                             AppB2bRead.Screen.AMOUNT -> {
-                                if (!AppB2bRead.amountScreenOk(texts, order, own)) return stop("dso_does_not_match", "the B2B screen names a different DSO number")
+                                val shown = AppB2bRead.dsoOn(texts, order, own)
+                                    ?: return stop("dso_does_not_match", "the B2B screen does not show exactly one DSO number")
+                                if (dso != null && dso != shown) return stop("dso_does_not_match", "the DSO number changed on the B2B screen")
+                                if (dso == null) note("DSO filled in by bKash: $shown")
+                                dso = shown
                                 val usable = AppCashInRead.usableBalance(texts)
                                 if (usable != null && usable + 0.005 < order.amount) return stop("insufficient_balance", "the wallet has less than the amount")
                                 if (canAct) {
@@ -408,7 +421,8 @@ object AppB2b {
                                 }
                             }
                             AppB2bRead.Screen.PIN -> {
-                                if (!AppB2bRead.pinScreenOk(texts, order, own)) return stop("confirm_does_not_match", "the PIN screen shows a different amount or number")
+                                val d = dso ?: return stop("app_stopped_before_send", "the PIN screen came before PayTrace saw the DSO number")
+                                if (!AppB2bRead.pinScreenOk(texts, order.amount, d, own)) return stop("confirm_does_not_match", "the PIN screen shows a different amount or number")
                                 if (b2bPin.submittedAt > 0) {
                                     if (now - b2bPin.submittedAt > PIN_WAIT_MS) return stop("pin_refused", "still on the PIN screen after the PIN; never typed again")
                                 } else if (!keypad) {
@@ -421,7 +435,8 @@ object AppB2b {
                                 } else if (!typePin(b2bPin, root, now, canAct, { AppReader.pressAny(svc, setOf(AppB2bRead.CONFIRM_PIN), root) }, "B2B")) return
                             }
                             AppB2bRead.Screen.CONFIRM -> {
-                                if (!AppB2bRead.mayHold(texts, order, own)) {
+                                val d = dso
+                                if (d == null || !AppB2bRead.mayHold(texts, order.amount, d, own)) {
                                     note("the sheet does not show exactly this DSO and amount: closing it, nothing sent")
                                     closeSheet(nodes)
                                     if (!held) return stop("confirm_does_not_match", "the final sheet did not match")
@@ -437,7 +452,7 @@ object AppB2b {
                                 }
                             }
                             AppB2bRead.Screen.RESULT -> {
-                                val r = AppB2bRead.result(texts, order, own)
+                                val r = AppB2bRead.result(texts, order.amount, dso ?: "", own)
                                 result = r
                                 resultAt = now
                                 note("result: TrxID ${r.trx ?: "?"}, DSO ${if (r.numberOk) "matches" else "DIFFERS"}, amount ${if (r.amountOk) "matches" else "DIFFERS"}")
@@ -461,7 +476,7 @@ object AppB2b {
                 main.postDelayed(this, TICK_MS)
             }
         }
-        note("opening $pkg: B2B Tk ${order.amount} to DSO ${order.number}")
+        note("opening $pkg: B2B Tk ${order.amount} to the DSO bKash fills in")
         AppReader.openBkash(svc, app, pkg, woke) { note(it) }
         main.postDelayed(tick, pace.settle())
     }

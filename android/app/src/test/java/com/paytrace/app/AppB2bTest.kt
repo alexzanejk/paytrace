@@ -10,7 +10,9 @@ import org.junit.Test
 /** Built from the owner's real recording of a B2B in the bKash Agent app (2026-11-10, Tk 5,000 to the DSO 01324245010, TrxID DKA1AWJZ9L). */
 class AppB2bTest {
     private val digits = (0..9).map { it.toString() }
-    private val order = B2bOrder("01324245010", 5000.0)
+    /** The dashboard sends no DSO number: bKash fills it in. */
+    private val order = B2bOrder(null, 5000.0)
+    private val dso = "01324245010"
     private val own = "01706630756"
 
     private val home = listOf("ক্যাশ ইন", "বিটুবি ট্রান্সফার", "লোন", "পে বিল", "বিটুবি রিসিভ (ব্যাংক)", "বিটুবি সেন্ড (ব্যাংক)",
@@ -47,32 +49,37 @@ class AppB2bTest {
         assertEquals(Screen.UNKNOWN, AppB2bRead.screenOf(listOf("[লোডিং বার্ড]"), false))
     }
 
-    @Test fun theDsoMustBeExactlyTheSavedOne() {
-        assertTrue(AppB2bRead.amountScreenOk(amountScreen, order, own))
-        assertFalse(AppB2bRead.amountScreenOk(amountScreen.map { it.replace("01324245010", "01324245011") }, order, own))
-        // Two DSOs on one screen: not ours to choose.
-        assertFalse(AppB2bRead.amountScreenOk(amountScreen + "01999999999", order, own))
-        assertFalse(AppB2bRead.amountScreenOk(listOf("ডিএসও", "পরিমাণ"), order, own))
+    @Test fun theDsoIsTheOneNumberBkashFillsIn() {
+        assertEquals(dso, AppB2bRead.dsoOn(amountScreen, order, own))
+        // Two DSOs on one screen: not ours to choose. None at all: nothing to check against.
+        assertNull(AppB2bRead.dsoOn(amountScreen + "01999999999", order, own))
+        assertNull(AppB2bRead.dsoOn(listOf("ডিএসও", "পরিমাণ"), order, own))
+        // The agent's own number beside its name is never taken for the DSO.
+        assertEquals(dso, AppB2bRead.dsoOn(amountScreen + "SONAR BANGLA TRADERS_01706630756", order, own))
+        // If an order ever names a number, a different one stops it.
+        assertEquals(dso, AppB2bRead.dsoOn(amountScreen, B2bOrder(dso, 5000.0), own))
+        assertNull(AppB2bRead.dsoOn(amountScreen, B2bOrder("01324245011", 5000.0), own))
         assertEquals(9441.03, AppCashInRead.usableBalance(amountScreen)!!, 0.001)
     }
 
     @Test fun thePinScreenMustShowExactlyThisAmount() {
-        assertTrue(AppB2bRead.pinScreenOk(pinScreen, order, own))
-        assertFalse(AppB2bRead.pinScreenOk(pinScreen.map { if (it == "৳5000.00") "৳50000.00" else it }, order, own))
-        assertFalse(AppB2bRead.pinScreenOk(pinScreen + "01999999999", order, own))
+        assertTrue(AppB2bRead.pinScreenOk(pinScreen, 5000.0, dso, own))
+        assertFalse(AppB2bRead.pinScreenOk(pinScreen.map { if (it == "৳5000.00") "৳50000.00" else it }, 5000.0, dso, own))
+        assertFalse(AppB2bRead.pinScreenOk(pinScreen + "01999999999", 5000.0, dso, own))
     }
 
-    @Test fun theHoldNeedsThisDsoAndThisAmount() {
-        assertTrue(AppB2bRead.mayHold(sheet, order, own))
-        assertFalse(AppB2bRead.mayHold(sheet.map { if (it == "৳5000.00") "৳500.00" else it }, order, own))
-        assertFalse(AppB2bRead.mayHold(sheet.map { it.replace("01324245010", "01324245019") }, order, own))
-        assertFalse(AppB2bRead.mayHold(sheet.filter { it != "01324245010" }, order, own))
+    @Test fun theHoldNeedsTheSameDsoAndThisAmount() {
+        assertTrue(AppB2bRead.mayHold(sheet, 5000.0, dso, own))
+        assertFalse(AppB2bRead.mayHold(sheet.map { if (it == "৳5000.00") "৳500.00" else it }, 5000.0, dso, own))
+        // A different number on the sheet than the amount screen showed: no hold.
+        assertFalse(AppB2bRead.mayHold(sheet.map { it.replace("01324245010", "01324245019") }, 5000.0, dso, own))
+        assertFalse(AppB2bRead.mayHold(sheet.filter { it != "01324245010" }, 5000.0, dso, own))
         // The new balance printed after the amount is never taken for it.
-        assertFalse(AppB2bRead.mayHold(sheet, B2bOrder("01324245010", 4441.03), own))
+        assertFalse(AppB2bRead.mayHold(sheet, 4441.03, dso, own))
     }
 
     @Test fun theResultGivesTrxIdAndNewBalance() {
-        val r = AppB2bRead.result(result, order, own)
+        val r = AppB2bRead.result(result, 5000.0, dso, own)
         assertEquals("DKA1AWJZ9L", r.trx)
         assertEquals(4441.03, r.newBalance!!, 0.001)
         assertTrue(r.numberOk)
@@ -81,19 +88,20 @@ class AppB2bTest {
 
     @Test fun theCashQuestionIsAnsweredOnlyForThisAmount() {
         assertEquals(5000.0, AppB2bRead.questionAmount(question)!!, 0.001)
-        assertTrue(AppB2bRead.mayAnswerYes(question, order))
-        assertFalse(AppB2bRead.mayAnswerYes(question, B2bOrder("01324245010", 6000.0)))
-        assertFalse(AppB2bRead.mayAnswerYes(question.map { it.replace("5000.0", "50000.0") }, order))
+        assertTrue(AppB2bRead.mayAnswerYes(question, 5000.0))
+        assertFalse(AppB2bRead.mayAnswerYes(question, 6000.0))
+        assertFalse(AppB2bRead.mayAnswerYes(question.map { it.replace("5000.0", "50000.0") }, 5000.0))
         assertEquals(5000.0, AppB2bRead.questionAmount(listOf("ক্যাশ ৫০০০ টাকা বুঝে পেয়েছেন?"))!!, 0.001)
         assertNull(AppB2bRead.questionAmount(rating))
     }
 
     @Test fun ordersOutsideTheLimitsAreRefusedOnThePhone() {
         assertTrue(order.sane())
-        assertTrue(B2bOrder("01324245010", 250_000.0).sane())
-        assertFalse(B2bOrder("01324245010", 250_000.01).sane())
-        assertFalse(B2bOrder("01324245010", 99.0).sane())
+        assertTrue(B2bOrder(null, 250_000.0).sane())
+        assertFalse(B2bOrder(null, 250_000.01).sane())
+        assertFalse(B2bOrder(null, 99.0).sane())
+        assertFalse(B2bOrder(null, 5000.001).sane())
+        assertTrue(B2bOrder(dso, 5000.0).sane())
         assertFalse(B2bOrder("0132424501", 5000.0).sane())
-        assertFalse(B2bOrder("01324245010", 5000.001).sane())
     }
 }

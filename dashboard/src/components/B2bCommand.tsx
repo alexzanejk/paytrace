@@ -3,7 +3,7 @@ import { ArrowRightLeft, Send, TriangleAlert } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { errorText, isLive, POLL_MS, type PhoneCommand } from "@/lib/phoneCommands";
-import { B2B_AMOUNTS, B2B_KIND, b2bLine, b2bNotes, b2bSummary, cashTick, LEAST_B2B, MOST_B2B, normalizeDso, parseB2bAmount } from "@/lib/b2b";
+import { B2B_AMOUNTS, B2B_KIND, b2bLine, b2bNotes, b2bSummary, cashTick, LEAST_B2B, MOST_B2B, parseB2bAmount } from "@/lib/b2b";
 import { nudgePhone } from "@/lib/wake";
 import { Button } from "@/components/ui/button";
 import { Disclosure } from "@/components/Disclosure";
@@ -11,16 +11,14 @@ import { PhoneTrace } from "@/components/PhoneTrace";
 
 /** A B2B from this phone's bKash agent wallet to its DSO, done by the phone in the bKash app (owner 2026-11-10, migration 083).
  *
- *  The bKash app fills in the DSO by itself; the DSO number saved here is what the phone checks the app's screens against,
- *  so a B2B can only go to that number. Nothing happens on one tap: the amount is typed, the owner ticks that the DSO pays
- *  the cash (bKash asks the phone that right after every B2B, and the phone answers yes on this tick), and then confirms
- *  a sentence. The phone holds the send button only on the sheet that shows this DSO number and this amount. */
+ *  The bKash app fills in this agent's own DSO by itself, so nothing about the DSO is typed here (owner 2026-11-10: "we don't
+ *  need to save the DSO number, it comes from the bKash app"). Nothing happens on one tap: the amount is typed, the owner ticks
+ *  that the DSO pays the cash (bKash asks the phone that right after every B2B, and the phone answers yes on this tick), and
+ *  then confirms a sentence. The phone holds the send button only on the sheet that shows this amount and the same DSO
+ *  number the B2B screen showed. */
 export function B2bCommand({ deviceId }: { deviceId: string }) {
   const [last, setLast] = useState<PhoneCommand | null>(null);
-  const [dso, setDso] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
-  const [n1, setN1] = useState("");
-  const [n2, setN2] = useState("");
+  const [lastDso, setLastDso] = useState<string | null>(null);
   const [typed, setTyped] = useState("");
   const [cashOk, setCashOk] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -29,15 +27,14 @@ export function B2bCommand({ deviceId }: { deviceId: string }) {
   const timer = useRef<number | null>(null);
 
   const load = useCallback(async () => {
-    const [{ data }, { data: num }] = await Promise.all([
-      sb.from("phone_commands")
-        .select("id,kind,provider,status,balance,error,created_at,finished_at,amount,to_number,trx_id,screens")
-        .eq("device_id", deviceId).eq("kind", B2B_KIND)
-        .order("created_at", { ascending: false }).limit(1),
-      sb.from("b2b_numbers").select("number").eq("device_id", deviceId).eq("provider", "bkash").maybeSingle(),
-    ]);
-    setLast(((data ?? [])[0] as PhoneCommand | undefined) ?? null);
-    setDso((num as { number?: string } | null)?.number ?? null);
+    const { data } = await sb.from("phone_commands")
+      .select("id,kind,provider,status,balance,error,created_at,finished_at,amount,to_number,trx_id,screens")
+      .eq("device_id", deviceId).eq("kind", B2B_KIND)
+      .order("created_at", { ascending: false }).limit(5);
+    const rows = (data ?? []) as PhoneCommand[];
+    setLast(rows[0] ?? null);
+    // The DSO number the phone saw in the bKash app on a finished B2B, only to show it.
+    setLastDso(rows.find((r) => r.to_number)?.to_number ?? null);
   }, [deviceId]);
 
   useEffect(() => { void load(); }, [load]);
@@ -48,26 +45,11 @@ export function B2bCommand({ deviceId }: { deviceId: string }) {
     return () => { if (timer.current) window.clearTimeout(timer.current); };
   }, [last, load]);
 
-  const first = normalizeDso(n1);
-  const sameTwice = first != null && first === normalizeDso(n2);
-
-  async function saveDso() {
-    if (!sameTwice) return;
-    setProblem("");
-    setBusy(true);
-    const { error } = await sb.rpc("set_b2b_number", { p_device: deviceId, p_provider: "bkash", p_number: first });
-    setBusy(false);
-    if (error) return setProblem(error.message);
-    setEditing(false);
-    setN1(""); setN2("");
-    await load();
-  }
-
   const amount = parseB2bAmount(typed);
-  const ready = dso != null && amount != null && cashOk && !busy && !isLive(last);
+  const ready = amount != null && cashOk && !busy && !isLive(last);
 
   async function send() {
-    if (amount == null || !dso) return;
+    if (amount == null) return;
     setProblem("");
     setBusy(true);
     const { error } = await sb.rpc("queue_b2b", { p_device: deviceId, p_provider: "bkash", p_amount: amount, p_cash_ok: cashOk });
@@ -75,7 +57,6 @@ export function B2bCommand({ deviceId }: { deviceId: string }) {
     setConfirming(false);
     if (error) {
       const words: Record<string, string> = {
-        no_dso_number: "Save the DSO number first.",
         sending_money_off: "Sending money is switched off for this phone (\"What the dashboard may do\" above).",
         b2b_already_waiting: "A B2B is already waiting or running on this phone.",
         b2b_cash_not_confirmed: "Tick that the DSO pays the cash first.",
@@ -94,36 +75,15 @@ export function B2bCommand({ deviceId }: { deviceId: string }) {
   const input = "h-9 rounded-md border border-input bg-background px-3 text-sm";
 
   return (
-    <Disclosure icon={ArrowRightLeft} title="B2B to the DSO (bKash app)" summary={dso ? `DSO ${dso}` : "DSO number not saved"}>
+    <Disclosure icon={ArrowRightLeft} title="B2B to the DSO (bKash app)" summary={lastDso ? `DSO ${lastDso}` : "bKash app"}>
       <div className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          The phone opens the bKash app, types the amount and the PIN slowly, and holds the send button only when the app shows
-          exactly the DSO number saved here and this amount. bKash sends no SMS for a B2B; the phone reads the app&apos;s
+          The phone opens the bKash app, goes to B2B Transfer (bKash fills in this agent&apos;s own DSO), types the amount and the
+          PIN slowly, and holds the send button only when the app shows this amount and the same DSO number all the way through. bKash sends no SMS for a B2B; the phone reads the app&apos;s
           transaction list right after, so the ledger and the B2B float see it within a minute or two.
         </p>
 
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="text-muted-foreground">DSO number</span>
-          <span className="font-medium tabular">{dso ?? "not saved"}</span>
-          {!editing ? (
-            <Button size="sm" variant="outline" onClick={() => { setEditing(true); setProblem(""); }}>{dso ? "Change" : "Save the DSO number"}</Button>
-          ) : null}
-        </div>
-        {editing ? (
-          <div className="space-y-2 rounded-md border p-3">
-            <p className="text-xs text-muted-foreground">
-              The number the bKash app shows under &quot;ডিএসও&quot; on its B2B screen. Type it twice.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <input value={n1} onChange={(e) => setN1(e.target.value)} placeholder="01XXXXXXXXX" inputMode="tel" className={`${input} w-40 tabular`} aria-label="DSO number" />
-              <input value={n2} onChange={(e) => setN2(e.target.value)} onPaste={(e) => e.preventDefault()} placeholder="Type it again" inputMode="tel" className={`${input} w-40 tabular`} aria-label="DSO number again" />
-              <Button size="sm" onClick={() => void saveDso()} disabled={!sameTwice || busy}>Save</Button>
-              <Button size="sm" variant="outline" onClick={() => { setEditing(false); setN1(""); setN2(""); }}>Cancel</Button>
-            </div>
-            {n1 && !first ? <p className="text-xs text-rose-600">An 11-digit number starting 01.</p> : null}
-            {first && n2 && !sameTwice ? <p className="text-xs text-rose-600">The two numbers differ.</p> : null}
-          </div>
-        ) : null}
+        {lastDso ? <p className="text-sm text-muted-foreground">DSO on the last B2B: <span className="font-medium tabular">{lastDso}</span></p> : null}
 
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-sm text-muted-foreground" htmlFor={`b2b-amount-${deviceId}`}>Amount (Tk)</label>
@@ -163,11 +123,11 @@ export function B2bCommand({ deviceId }: { deviceId: string }) {
           <Send className="mr-1.5 size-4" /> B2B{amount != null ? ` ${tk(amount)}` : ""}
         </Button>
 
-        {confirming && amount != null && dso ? (
+        {confirming && amount != null ? (
           <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">
             <p className="flex items-start gap-2 font-medium">
               <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-              <span>{b2bSummary(amount, dso, tk as (n: number) => string)}</span>
+              <span>{b2bSummary(amount, tk as (n: number) => string, lastDso)}</span>
             </p>
             <p className="mt-1 text-muted-foreground">This really moves the money. It cannot be taken back.</p>
             <div className="mt-2 flex gap-2">

@@ -1,4 +1,4 @@
-import { b2bLine, b2bNotes, b2bSummary, cashTick, normalizeDso, parseB2bAmount, B2B_KIND, MOST_B2B } from "../dashboard/src/lib/b2b.ts";
+import { b2bLine, b2bNotes, b2bSummary, cashTick, parseB2bAmount, B2B_KIND, MOST_B2B } from "../dashboard/src/lib/b2b.ts";
 
 let failed = 0;
 const check = (name: string, ok: boolean, got?: unknown) => {
@@ -8,14 +8,14 @@ const money = (n: number) => `Tk ${n.toLocaleString("en-US")}`;
 const when = (t: string) => t;
 const other = (code: string | null) => `other:${code}`;
 const base = { id: "c", kind: B2B_KIND, provider: "bkash", balance: null, error: null, created_at: "t0", finished_at: "t1", amount: 5000, to_number: "01324245010" };
+check("a waiting B2B has no number yet and still reads", b2bLine({ ...base, to_number: null, status: "failed", error: "busy" }, money, when, other).includes("Tk 5,000"));
 
 check("kind is letters only (the server's rule)", /^[a-z_]+$/.test(B2B_KIND));
 check("amounts: commas, Bangla digits, paisa", parseB2bAmount("25,000") === 25000 && parseB2bAmount("২৫০০০") === 25000 && parseB2bAmount("5000.50") === 5000.5);
 check("amounts: limits", parseB2bAmount("99") === null && parseB2bAmount("250000") === MOST_B2B && parseB2bAmount("250000.01") === null);
 check("amounts: junk", parseB2bAmount("5,000.123") === null && parseB2bAmount("abc") === null && parseB2bAmount("") === null);
-check("DSO numbers fold +880", normalizeDso("+880 1324-245010") === "01324245010" && normalizeDso("01324245010") === "01324245010");
-check("DSO numbers must be whole", normalizeDso("0132424501") === null && normalizeDso("0232424501x") === null);
-check("summary names amount and DSO", b2bSummary(5000, "01324245010", money).includes("Tk 5,000") && b2bSummary(5000, "01324245010", money).includes("01324245010"));
+check("summary names the amount", b2bSummary(5000, money).includes("Tk 5,000") && b2bSummary(5000, money).includes("its DSO"));
+check("summary names the last DSO when known", b2bSummary(5000, money, "01324245010").includes("01324245010"));
 check("the cash tick names the amount", cashTick(5000, money).includes("Tk 5,000") && cashTick(5000, money).includes("yes"));
 check("done line has receipt and balance",
   b2bLine({ ...base, status: "done", trx_id: "DKA1AWJZ9L", balance: 4441.03 }, money, when, other).includes("DKA1AWJZ9L"));

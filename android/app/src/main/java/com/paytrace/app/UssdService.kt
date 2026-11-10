@@ -945,7 +945,7 @@ object UssdCommands {
                 // migration 083: a B2B transfer to the wallet's DSO, only ever through the bKash app ("btob": the server's
                 // command names are letters only).
                 if (provider != UssdProviders.BKASH) report(ctx, id, UssdOutcome(false, null, "unsupported"), "btob")
-                else AppB2b.start(ctx, B2bOrder(cmd.optString("to_number"), cmd.optDouble("amount", -1.0))) { outcome ->
+                else AppB2b.start(ctx, B2bOrder(cmd.optString("to_number").takeIf { it.isNotBlank() && it != "null" }, cmd.optDouble("amount", -1.0))) { outcome ->
                     remember(ctx, provider, outcome)
                     report(ctx, id, outcome, "btob")
                 }

@@ -17,16 +17,10 @@ export function parseB2bAmount(raw: string): number | null {
   return Number.isFinite(n) && n >= LEAST_B2B && n <= MOST_B2B ? n : null;
 }
 
-/** "01324245010", "+880 1324-245010", "8801324245010" all read as 01324245010; anything else is null. */
-export function normalizeDso(raw: string): string | null {
-  let d = raw.replace(/[^0-9]/g, "");
-  if (/^8801[0-9]{9}$/.test(d)) d = d.slice(2);
-  return /^01[0-9]{9}$/.test(d) ? d : null;
-}
-
-/** The sentence the owner confirms. */
-export const b2bSummary = (amount: number, dso: string, money: (n: number) => string): string =>
-  `B2B ${money(amount)} from this phone's bKash wallet to the DSO ${dso}, through the bKash app.`;
+/** The sentence the owner confirms. The DSO is not named: the bKash app fills in this agent's own DSO by itself
+ *  (owner 2026-11-10: "we don't need to save the DSO number, it comes from the bKash app"). */
+export const b2bSummary = (amount: number, money: (n: number) => string, lastDso?: string | null): string =>
+  `B2B ${money(amount)} from this phone's bKash wallet to its DSO${lastDso ? ` (last time: ${lastDso})` : ""}, through the bKash app.`;
 
 /** The cash question bKash asks after every B2B; the phone answers it "yes" only because the owner ticks this. */
 export const cashTick = (amount: number, money: (n: number) => string): string =>
@@ -36,7 +30,7 @@ export const cashTick = (amount: number, money: (n: number) => string): string =
 
 const B2B_ERRORS: Record<string, string> = {
   unsupported: "That phone's PayTrace app is too old for a B2B. Update the app on the phone and try again.",
-  dso_does_not_match: "The bKash app showed a different DSO number from the one saved here, so the phone stopped before typing anything. NOTHING was sent. Check the DSO number saved on this card.",
+  dso_does_not_match: "The bKash app's B2B screen did not show exactly one DSO number (or it changed on the way), so the phone stopped before typing anything. NOTHING was sent.",
   b2b_question_open: "The bKash app is still asking about the cash of an earlier B2B (\"did you receive the cash from the DSO?\"). Answer it on the phone, then try again. Nothing was sent.",
   bad_b2b: "The phone refused the amount or the number as not sane. Nothing was sent.",
   confirm_does_not_match: "The bKash app's own screen did not show this DSO number and this amount, so the phone stopped before the tap and hold. NOTHING was sent.",
