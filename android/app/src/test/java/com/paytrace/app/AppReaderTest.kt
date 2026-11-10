@@ -132,4 +132,40 @@ class AppReaderTest {
         // Without a log nothing changes.
         assertFalse(AppReader.pack("h", rows).last().startsWith(AppReader.TRACE_MARK))
     }
+
+    // The owner's recording of 2026-11-10 (run a1460479, bKash Business 3.10.2).
+    @Test fun knowsBkashsOwnMessages() {
+        assertTrue(AppBanners.wrongPin(listOf("পিন নাম্বারটি সঠিক নয়")))
+        // The same words with য় stored as one letter.
+        assertTrue(AppBanners.wrongPin(listOf("পিন নাম্বারটি সঠিক ন\u09DF")))
+        assertFalse(AppBanners.wrongPin(listOf("বিকাশ পিন নাম্বার", "পিন ভুলে গিয়েছেন?", "লগ ইন")))
+        assertTrue(AppBanners.network(listOf("অনুগ্রহ করে আপনার নেটওয়ার্ক চেক করুন")))
+        assertFalse(AppBanners.network(listOf("লেনদেনসমূহ", "নোটিফিকেশন")))
+        assertTrue(AppBanners.pinHint(listOf("বিকাশ পিন নাম্বার", "এজেন্ট পিন নাম্বার দিন")))
+        assertFalse(AppBanners.pinHint(listOf("বিকাশ পিন নাম্বার", "পিন ভুলে গিয়েছেন?")))
+        assertTrue(AppBanners.emptyList(listOf("আপনি সম্প্রতি কোনো লেনদেন সম্পন্ন করেন নি")))
+        assertFalse(AppBanners.emptyList(listOf("কোন লেনদেন পাওয়া যায়নি")))
+        // The Statement search's own "nothing found" (it says কোন, not কোনো).
+        assertTrue(AppLook.nothingFound(listOf("কোন লেনদেন পাওয়া যায়নি", "অনুসন্ধান বাতিল করুন")))
+        assertFalse(AppLook.nothingFound(listOf("আপনি সম্প্রতি কোনো লেনদেন সম্পন্ন করেন নি")))
+    }
+
+    @Test fun logInIsPressedOnlyWhenBkashHasLitIt() {
+        assertEquals(LoginGate.Step.PRESS, LoginGate.decide(true, 0))
+        // An app that does not say: as before.
+        assertEquals(LoginGate.Step.PRESS, LoginGate.decide(null, 0))
+        // Grey: wait a little, then stop without pressing (a digit was lost).
+        assertEquals(LoginGate.Step.WAIT, LoginGate.decide(false, 1_000))
+        assertEquals(LoginGate.Step.STOP, LoginGate.decide(false, LoginGate.GREY_MS))
+    }
+
+    @Test fun theHintMeansAnEmptyBox() {
+        // First digit pressed, hint still showing (box empty): wait, then press again; never counted as typed.
+        assertEquals(PinTyping.Step.WAIT, PinTyping.next(0, 5, 0, true, 500, 0))
+        assertEquals(PinTyping.Step.RETRY, PinTyping.next(0, 5, 0, true, PinTyping.SHOW_MS, 0))
+        // Hint gone (cannot count any more): typed by slow timing.
+        assertEquals(PinTyping.Step.CONFIRMED, PinTyping.next(0, 5, null, true, PinTyping.BLIND_MS, 0))
+        // The hint came back after digits were in: the box was cleared, stop.
+        assertEquals(PinTyping.Step.STOP, PinTyping.next(3, 5, 0, false, 0, 0))
+    }
 }
