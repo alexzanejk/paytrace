@@ -914,7 +914,7 @@ object UssdCommands {
         val kind = cmd.optString("kind")
         if (PhoneActions.isAction(kind)) {
             // An app read may carry what the server wants found (AppLook: how far back, which rows to open).
-            PhoneActions.run(ctx, kind, AppLook.parse(cmd.optJSONObject("look"))) { outcome -> report(ctx, id, outcome, kind) }
+            PhoneActions.run(ctx, kind, AppLook.parse(cmd.optJSONObject("look")), id) { outcome -> report(ctx, id, outcome, kind) }
             return
         }
         val provider = cmd.optString("provider")

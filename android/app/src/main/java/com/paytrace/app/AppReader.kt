@@ -65,7 +65,7 @@ object AppReader {
 
     @Volatile private var running = false
     /** True while the reader OR an app cash-in drives the bKash app: USSD runs and each other wait. */
-    fun active(): Boolean = running || AppCashIn.running || AppB2b.running
+    fun active(): Boolean = running || AppCashIn.running || AppB2b.running || AppRecorder.recording()
 
     internal val LOGIN = setOf("লগ ইন", "log in", "login")
     private val INBOX = setOf("ইনবক্স", "inbox")
@@ -154,7 +154,7 @@ object AppReader {
         fun fail(e: String, trace: String = "") = done(UssdOutcome(false, null, e, trace = trace))
         if (!AppSettings(app).ussdAllowed) return fail("not_allowed")
         val svc = UssdSession.launchContext() as? AccessibilityService ?: return fail("accessibility_not_running")
-        if (running || AppCashIn.running || UssdSession.active() || UssdApi.active()) return fail("busy")
+        if (active() || UssdSession.active() || UssdApi.active()) return fail("busy")
         val keys = pinKeys(UssdSetup.pinStore(app, UssdProviders.BKASH).get()) ?: return fail("no_pin")
         val pkg = AppRecorder.findApp(app) ?: return fail("no_bkash_app")
         // Asleep (or behind a swipe lock): the app is opened BY the wake window further down, exactly like the USSD runs

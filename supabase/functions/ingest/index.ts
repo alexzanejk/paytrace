@@ -617,6 +617,25 @@ async function handle(req: Request): Promise<Response> {
     }
     return json({ success: true, done: data === true });
   }
+  // One screen of the bKash app recorder (migration 087): stored for mapping the app, never acted on.
+  if (body.action === "app_screen") {
+    if (!device) return json({ success: false, message: "not paired" }, 403);
+    const cmd = String(body.command_id ?? "");
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cmd)) return json({ success: false, message: "bad command" }, 400);
+    const { data, error } = await db.rpc("app_screen_add", {
+      p_device: device.id,
+      p_command: cmd,
+      p_seq: Math.trunc(Number(body.seq)),
+      p_pkg: String(body.pkg ?? "").slice(0, 120),
+      p_screen: String(body.screen ?? "").slice(0, 9000),
+    });
+    if (error) {
+      console.error("app_screen_add failed", error.code);
+      return json({ success: false, message: "could not save" }, 500);
+    }
+    return json({ success: true, ...((data ?? { ok: false }) as Record<string, unknown>) });
+  }
+
   // "We just did a B2B" from the phone's Home button (migration 070): this wallet's statement is read now, so the entry is
   // saved before it can scroll off the wallet's list. Nothing is counted from the tap itself.
   if (body.action === "b2b_done") {
