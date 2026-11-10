@@ -1,1 +1,1 @@
-B2B to your DSO from the dashboard: the phone does it in the bKash app, typing the PIN slowly and holding the send button only when the app shows the saved DSO number and the exact amount.
+B2B to your DSO from the dashboard: the phone does it in the bKash app with the DSO bKash fills in, typing the PIN slowly and holding the send button only when the app shows that DSO and the exact amount.
