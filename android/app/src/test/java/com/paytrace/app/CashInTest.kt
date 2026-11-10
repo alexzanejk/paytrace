@@ -128,6 +128,8 @@ class CashInTest {
         assertEquals(UssdAction.Fail("wallet_refused"), f.onScreen("Amount too low to transact."))
         assertTrue(UssdAsk.refused("Amount too low to transact."))
         assertTrue(UssdAsk.refused("Insufficient balance"))
+        // Real bKash answer (Vivo, 2026-11-10) to a second Tk 400 to the same number within minutes.
+        assertTrue(UssdAsk.refused("Possible duplicate request, call 16247 for details."))
         assertTrue(!UssdAsk.refused("Cash In Tk 5000.00 to 01846632612 is successful. TrxID: AB12CD34"))
         // A refusal cannot be mistaken for the confirmation, so it can never lead to the PIN.
         val g = CashInFlow(bkash, pin)

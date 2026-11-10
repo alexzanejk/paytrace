@@ -37,6 +37,9 @@ object UssdAsk {
         "too low", "too high", "not available", "insufficient", "wrong pin", "incorrect pin", "invalid pin",
         "invalid amount", "invalid account", "invalid number", "limit exceed", "not allowed", "unsuccessful",
         "cannot be processed", "try again later", "no longer available",
+        // bKash, 2026-11-10 on the Vivo: the same amount to the same number again within minutes is refused with
+        // "Possible duplicate request, call 16247 for details." after the PIN; nothing is sent (the balance proves it).
+        "duplicate request",
     )
 
     fun refused(text: String): Boolean {
