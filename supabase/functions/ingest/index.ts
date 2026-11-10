@@ -13,7 +13,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import { parseSms, senderMatchesProvider, type Provider } from "./parser.ts";
 import { cleanInfo, healthProblem, type DeviceInfo } from "./health.ts";
-import { b2bMessage, confirmedMessage, gapMessage, makeNotifier, notConfirmedMessage, problemMessage, recoveredMessage, reviewMessage, testMessage, unreadMessage } from "./notify.ts";
+import { b2bMessage, confirmedMessage, gapMessage, makeNotifier, notConfirmedMessage, notInAppMessage, problemMessage, recoveredMessage, reviewMessage, testMessage, unreadMessage } from "./notify.ts";
 import { readStatementLines } from "./statement.ts";
 import { runWatchdog } from "./watchdog.ts";
 import { runWake } from "./wake.ts";
@@ -222,6 +222,32 @@ async function judgeWalletCheck(commandId: string, ok: boolean, balance: number 
     }
   } catch (e) {
     console.error("wallet check judge failed", e instanceof Error ? e.name : "error");
+  }
+}
+
+/** After a bKash app read: each held payment the app listed was released, each one two reads did not list is a likely
+ *  fake (migration 085, `app_read_recorded` event). Only messages; nothing here touches a payment. */
+async function tellAppVerdicts(commandId: string, deviceName: string): Promise<void> {
+  try {
+    const { data } = await db.from("events").select("detail").eq("kind", "app_read_recorded").eq("detail->>command", commandId)
+      .order("at", { ascending: false }).limit(1).maybeSingle();
+    const d = (data?.detail ?? null) as {
+      app_confirmed?: { provider?: string; amount?: number | string; trx_id?: string; detail?: string; result?: string }[];
+      app_fake?: { amount?: number | string; trx_id?: string; detail?: string }[];
+    } | null;
+    let matched = false;
+    for (const c of d?.app_confirmed ?? []) {
+      await notify.send(confirmedMessage({ provider: c.provider ?? "bkash", amount: Number(c.amount) || 0, trxId: String(c.trx_id ?? ""), how: "bKash app", detail: String(c.detail ?? ""), result: String(c.result ?? "") }));
+      if (c.result === "matched") matched = true;
+    }
+    for (const f of d?.app_fake ?? []) {
+      await notify.send(notInAppMessage({ amount: Number(f.amount) || 0, trxId: String(f.trx_id ?? ""), phone: deviceName, detail: String(f.detail ?? ""), dashboardUrl: DASHBOARD_URL }));
+    }
+    if (matched) {
+      await fetch(`${SUPABASE_URL}/functions/v1/gateway/deliver`, { method: "POST", headers: DELIVER_AUTH, body: "{}" }).then((x) => x.body?.cancel()).catch(() => {});
+    }
+  } catch (e) {
+    console.error("app verdicts failed", e instanceof Error ? e.name : "error");
   }
 }
 
@@ -516,6 +542,8 @@ async function handle(req: Request): Promise<Response> {
     defer(judgeWalletCheck(id, ok, balance, screens, error));
     // A statement list feeds the wallet ledger (migration 059).
     if (ok && kind === "statement" && screens && screens.length > 0) defer(recordStatement(id, screens, device.name));
+    // A bKash app read judged the wallet's held payments in the database (migration 085): tell the owner what it found.
+    if (ok && kind === "appread") defer(tellAppVerdicts(id, device.name));
     return json({ success: true });
   }
 

@@ -20,6 +20,7 @@ const PLAIN: [string, string][] = [
   ["unverified_format", "Message format not confirmed yet, held to be safe"],
   ["not_ours", "Not one of this phone's wallets: no wallet of this kind (or in this SIM) is set up in the PayTrace app on the phone. Kept for the record only; not counted anywhere"],
   ["balance_chain_mismatch", "Account balance does not follow the previous message — possibly a fake SMS"],
+  ["not_in_bkash_app", "NOT in the bKash app: two reads of the phone's bKash app around that minute did not list it — likely a fake SMS. Not credited"],
 ];
 
 export function reviewReasonText(reason: string | null): string | null {

@@ -116,6 +116,17 @@ export function notConfirmedMessage(p: { provider: string; amount: number; trxId
   ].join("\n");
 }
 
+/** Two bKash app reads covering the SMS's minute did not list it (migration 085): likely a fake SMS. Never credited. */
+export function notInAppMessage(p: { amount: number; trxId: string; phone: string; detail: string; dashboardUrl: string }): string {
+  return [
+    "🚫 Likely a FAKE SMS: not in the bKash app",
+    `bKash ${taka(p.amount)}  ·  TrxID ${clean(p.trxId, 30)}  ·  ${clean(p.phone, 40)}`,
+    clean(p.detail, 240),
+    "It stays held and is not credited. Check it before doing anything with that order.",
+    `${p.dashboardUrl}/#/review`,
+  ].join("\n");
+}
+
 export function silentMessage(p: { name: string; code: string; minutes: number; dashboardUrl: string }): string {
   return [
     "📵 A phone is offline",
