@@ -1,6 +1,8 @@
-import { useState, type ReactNode } from "react";
-import { Check, Copy } from "lucide-react";
+import { useContext, useRef, useState, type ReactNode } from "react";
+import { Check, Copy, Download, Link } from "lucide-react";
 import { LoaderPicker } from "./LoaderPicker";
+import { FullCopy } from "./fullCopy";
+import { GUIDE_LINK, guideText } from "@/lib/guideLink";
 import { CREATE, CREATE_RESPONSE, EMBED, FULLSCREEN, GATEWAY, PROGRESS, LANG_LABEL, STATUS, VERIFY, WEBHOOK_BODY, type Lang } from "./samples";
 
 /** Public integration guide for partner websites that add deposits. No login; it contains no secrets. */
@@ -21,6 +23,7 @@ const SECTIONS = [
 ] as const;
 
 function Code({ text }: { text: string }) {
+  const full = useContext(FullCopy);
   const [done, setDone] = useState(false);
   async function copy() {
     try {
@@ -31,6 +34,7 @@ function Code({ text }: { text: string }) {
       /* the text is selectable; copying is a convenience */
     }
   }
+  if (full) return <pre className="whitespace-pre-wrap">{text}</pre>;
   return (
     <div className="relative">
       <button type="button" onClick={() => void copy()} className="absolute right-2 top-2 flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-xs text-white hover:bg-white/20" aria-label="Copy code">
@@ -44,7 +48,21 @@ function Code({ text }: { text: string }) {
 }
 
 function Tabs({ samples, langs }: { samples: Partial<Record<Lang, string>>; langs: Lang[] }) {
+  const full = useContext(FullCopy);
   const [lang, setLang] = useState<Lang>(langs[0]);
+  // Copied as text: every language, one after the other.
+  if (full) {
+    return (
+      <div>
+        {langs.map((l) => (
+          <div key={l}>
+            <p>{`--- ${LANG_LABEL[l]} ---`}</p>
+            <pre className="whitespace-pre-wrap">{samples[l] ?? ""}</pre>
+          </div>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-1" role="tablist" aria-label="Language">
@@ -126,13 +144,68 @@ function Flow() {
   );
 }
 
-export function DocsPage() {
+const TITLE = "Deposit Gateway: Integration Guide";
+const nextFrame = () => new Promise<void>((r) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => r())));
+
+/** Share the guide without the link (owner 2026-11-10: "make an option so we copy the docs and share instead of the link"):
+ *  the whole page as plain text, to the clipboard or as a file. The link itself is always GUIDE_LINK. */
+function ShareBar({ take }: { take: () => Promise<string> }) {
+  const [said, setSaid] = useState("");
+  const btn = "flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm font-medium hover:bg-neutral-50";
+  function tell(t: string) {
+    setSaid(t);
+    window.setTimeout(() => setSaid(""), 2200);
+  }
+  async function copy(text: string, what: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      tell(`${what} copied`);
+    } catch {
+      tell("Copying is blocked here: use Download");
+    }
+  }
+  async function download() {
+    const text = await take();
+    const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "deposit-gateway-integration-guide.txt";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    tell("Downloaded");
+  }
   return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button type="button" className={btn} onClick={() => void copy(GUIDE_LINK, "Link")}><Link className="size-4" aria-hidden /> Copy link</button>
+      <button type="button" className={btn} onClick={() => void take().then((t) => copy(t, "Whole guide"))}><Copy className="size-4" aria-hidden /> Copy the whole guide</button>
+      <button type="button" className={btn} onClick={() => void download()}><Download className="size-4" aria-hidden /> Download</button>
+      <span role="status" className="text-sm text-[#1f6f50]">{said}</span>
+    </div>
+  );
+}
+
+export function DocsPage() {
+  const [full, setFull] = useState(false);
+  const main = useRef<HTMLElement>(null);
+  async function take(): Promise<string> {
+    setFull(true);
+    await nextFrame();
+    const body = main.current?.innerText ?? "";
+    setFull(false);
+    return guideText(TITLE, body);
+  }
+  return (
+    <FullCopy.Provider value={full}>
     <div className="min-h-screen bg-white text-[#1b1f23]" style={{ fontFamily: 'system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif' }}>
-      <header className="sticky top-0 z-20 border-b border-neutral-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
+      <header className="z-20 border-b border-neutral-200 bg-white/95 backdrop-blur lg:sticky lg:top-0">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <p className="font-bold">Deposit Gateway <span className="font-normal text-neutral-500">Integration Guide</span></p>
-          <a href="#create" className="rounded-md bg-[#1f6f50] px-3 py-1.5 text-sm font-semibold text-white">Quick start</a>
+          <div className="flex flex-wrap items-center gap-2">
+            <ShareBar take={take} />
+            <a href="#create" className="rounded-md bg-[#1f6f50] px-3 py-1.5 text-sm font-semibold text-white">Quick start</a>
+          </div>
         </div>
       </header>
 
@@ -145,7 +218,7 @@ export function DocsPage() {
           </ul>
         </nav>
 
-        <main className="min-w-0 space-y-10">
+        <main ref={main} className="min-w-0 space-y-10">
           <div className="space-y-3">
             <h1 className="text-3xl font-extrabold tracking-tight">Accept deposits</h1>
             <p className="max-w-2xl text-lg text-neutral-600">
@@ -358,5 +431,6 @@ export function DocsPage() {
         </main>
       </div>
     </div>
+    </FullCopy.Provider>
   );
 }
