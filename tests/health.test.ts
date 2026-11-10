@@ -61,6 +61,7 @@ i = cleanInfo({ ussd_allowed: true, cashin_allowed: "false", admin_code_set: "tr
 check("guarded switches are kept, also as text", i.ussd_allowed === true && i.cashin_allowed === false && i.admin_code_set === true, i);
 // migration 082: a build that can do a bKash Cash In through the app says so; junk is dropped (the database refuses the app way then).
 check("app_cashin is kept as on/off", cleanInfo({ app_cashin: true }, at).app_cashin === true && cleanInfo({ app_cashin: "nope" }, at).app_cashin === undefined);
+check("app_trx is kept as on/off", cleanInfo({ app_trx: true }, at).app_trx === true && cleanInfo({ app_trx: 1 }, at).app_trx === undefined);
 i = cleanInfo({ wallets: [
   { provider: "bkash", number: "01712345678", slot: 1, found: true },
   { provider: "nagad", number: "+8801812345678", slot: 0, found: false },

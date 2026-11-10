@@ -1,5 +1,5 @@
 import {
-  testMessage, clean, duration, makeNotifier, problemMessage, reasonText, recoveredMessage, reviewMessage, silentMessage, taka, unreadMessage,
+  testMessage, clean, duration, makeNotifier, notInAppMessage, problemMessage, reasonText, recoveredMessage, reviewMessage, silentMessage, taka, unreadMessage,
 } from "../supabase/functions/ingest/notify.ts";
 import { answerText as gwAnswerText, webhookFailingMessage } from "../supabase/functions/gateway/notify.ts";
 
@@ -86,6 +86,13 @@ const hook = webhookFailingMessage({ site: "777bajii", event: "deposit.expired",
 check("webhook alert, still trying", hook.includes("777bajii") && hook.includes("\"expired\" message for order SHOP-1 failed 3 times") && hook.includes("HTTP 400") && hook.includes("keeps trying"));
 check("webhook alert, given up", webhookFailingMessage({ site: "s", event: "deposit.paid", orderRef: "o", attempts: 8, status: "405", gaveUp: true, dashboardUrl: "https://d" }).includes("stopped trying"));
 check("gateway answer words", gwAnswerText("timeout").includes("8 seconds") && gwAnswerText("502").includes("site's own error"));
+
+// ---- migration 085: a held bKash SMS the bKash app does not list ----
+{
+  const m = notInAppMessage({ amount: 777, trxId: "FAKE085A1", phone: "Vivo V2120", detail: "Not in the bKash app: 2 app reads ...", dashboardUrl: "https://d" });
+  check("not-in-app alert says likely fake", m.includes("FAKE") && m.includes("not in the bKash app"));
+  check("not-in-app alert says not credited", m.includes("not credited") && m.includes("777") && m.includes("https://d/#/review"));
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

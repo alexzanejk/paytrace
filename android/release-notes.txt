@@ -1,1 +1,1 @@
-B2B to your DSO from the dashboard: the phone does it in the bKash app with the DSO bKash fills in, typing the PIN slowly and holding the send button only when the app shows that DSO and the exact amount.
+Held bKash payments: the bKash app read now opens the matching transaction to read its TrxID, and reads back as far as the held payment (up to a week). Only the exact TrxID releases a held payment.

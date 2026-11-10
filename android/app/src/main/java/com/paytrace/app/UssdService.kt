@@ -913,7 +913,8 @@ object UssdCommands {
         // check below, which would otherwise answer "unsupported" to every one of them.
         val kind = cmd.optString("kind")
         if (PhoneActions.isAction(kind)) {
-            PhoneActions.run(ctx, kind) { outcome -> report(ctx, id, outcome, kind) }
+            // An app read may carry what the server wants found (AppLook: how far back, which rows to open).
+            PhoneActions.run(ctx, kind, AppLook.parse(cmd.optJSONObject("look"))) { outcome -> report(ctx, id, outcome, kind) }
             return
         }
         val provider = cmd.optString("provider")

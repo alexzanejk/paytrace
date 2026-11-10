@@ -107,9 +107,11 @@ object AppReader {
 
     /** Header plus the rows (newest first), at most [TOTAL_CHARS] in all, in chunks of [CHUNK_CHARS]. The newest rows win.
      *  A [trace], when given, goes last as its own screen beginning with [TRACE_MARK]. */
-    fun pack(header: String, rows: List<String>, trace: String = ""): List<String> {
+    fun pack(header: String, rows: List<String>, trace: String = "", opened: List<String> = emptyList()): List<String> {
         val log = if (trace.isBlank()) null else "$TRACE_MARK\n${trace.replace(" | ", " / ")}".take(TRACE_CHARS)
-        val room = TOTAL_CHARS - header.length - 60 - (log?.length ?: 0)
+        // The rows the server asked to open, with the TrxID each showed (AppLook). Never contains " | ".
+        val open = if (opened.isEmpty()) null else (AppLook.OPENED_MARK + "\n" + opened.joinToString("\n")).take(600)
+        val room = TOTAL_CHARS - header.length - 60 - (log?.length ?: 0) - (open?.length ?: 0)
         val body = StringBuilder()
         var sent = 0
         for (r in rows) {
@@ -128,10 +130,11 @@ object AppReader {
             chunk.append(line.take(CHUNK_CHARS))
         }
         if (chunk.isNotEmpty()) out.add(chunk.toString())
-        return if (log == null) out.take(12) else out.take(11) + log
+        val tail = listOfNotNull(open, log)
+        return out.take(12 - tail.size) + tail
     }
 
-    fun start(ctx: Context, done: (UssdOutcome) -> Unit) {
+    fun start(ctx: Context, look: AppLook? = null, done: (UssdOutcome) -> Unit) {
         val app = ctx.applicationContext
         fun fail(e: String, trace: String = "") = done(UssdOutcome(false, null, e, trace = trace))
         if (!AppSettings(app).ussdAllowed) return fail("not_allowed")
@@ -150,7 +153,17 @@ object AppReader {
         running = true
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val started = SystemClock.elapsedRealtime()
-        val cut = cutoff(prefs.getLong(NEWEST, 0L).takeIf { it > 0 }, System.currentTimeMillis())
+        val nowWall = System.currentTimeMillis()
+        val cut = AppLook.cutoff(cutoff(prefs.getLong(NEWEST, 0L).takeIf { it > 0 }, nowWall), look, nowWall)
+        // Rows the server asked to open for their TrxID (AppLook): each opened at most twice, then reported.
+        val pending = ArrayList(look?.finds ?: emptyList())
+        val tries = HashMap<String, Int>()
+        val opened = ArrayList<String>()
+        var opening: AppLook.Target? = null
+        var openingAt = 0L
+        var openingRowAt = 0L
+        var openingAmount = 0.0
+        var openingParty: String? = null
         val trace = ArrayList<String>()
         fun note(s: String) { if (trace.size < 40) trace.add(String.format(Locale.US, "%5.1fs %s", (SystemClock.elapsedRealtime() - started) / 1000.0, s)) }
         val main = Handler(Looper.getMainLooper())
@@ -191,7 +204,7 @@ object AppReader {
             val oldest = rows.values.minOrNull()
             val version = try { app.packageManager.getPackageInfo(pkg, 0).versionName ?: "?" } catch (e: Exception) { "?" }
             val header = "bKash app transactions\npackage: $pkg\nversion: $version\nstopped: $why\noldest: ${oldest ?: 0}\ncutoff: $cut"
-            done(UssdOutcome(true, null, null, screens = pack(header, ordered(rows), (trace + "end screen: $lastScreen").joinToString("\n"))))
+            done(UssdOutcome(true, null, null, screens = pack(header, ordered(rows), (trace + "end screen: $lastScreen").joinToString("\n"), opened)))
         }
 
         val tick = object : Runnable {
@@ -213,6 +226,24 @@ object AppReader {
                         val texts = nodes.mapNotNull { n -> n.text?.toString()?.trim()?.takeIf { it.isNotEmpty() } }
                         lastScreen = AppRecorder.safeLines(texts).joinToString(" / ").take(600)
                         val canAct = now >= nextActAt
+                        // A row we opened for its TrxID: read the sheet, then close it and go on with the list.
+                        val o = opening
+                        if (o != null) {
+                            if (canAct) {
+                                val read = if (AppLook.sheetIs(texts, o)) AppLook.trxOn(texts) else null
+                                if (read != null || now - openingAt > 8_000) {
+                                    opened.add(AppLook.line(openingRowAt, openingAmount, openingParty, read))
+                                    if (read != null) { pending.remove(o); note("row ${o.trx.take(2)}… opened: TrxID ${if (read == o.trx) "matches" else "is a different one"}") }
+                                    else note("an opened row showed no TrxID")
+                                    opening = null
+                                    progressAt = now
+                                    // Back only when a sheet is really showing: on the plain list it would leave the transactions screen.
+                                    if (!closeSheet(svc, nodes) && (read != null || AppLook.sheetIs(texts, o))) svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                                    nextActAt = now + pace.settle()
+                                }
+                            }
+                            main.postDelayed(this, TICK_MS); return
+                        }
                         val found = rowsOn(nodes)
                         val loginKey = nodes.firstOrNull { n -> n.text?.toString()?.trim()?.lowercase(Locale.ROOT) in LOGIN }
                         val digits = (0..9).all { d -> nodes.any { it.text?.toString()?.trim() == d.toString() } }
@@ -279,6 +310,24 @@ object AppReader {
                                 val oldest = rows.values.minOrNull() ?: Long.MAX_VALUE
                                 if (oldest < cut) return finish(true, null, "reached the cut-off")
                                 if (rows.size >= MAX_ROWS) return finish(true, null, "row limit")
+                                if (canAct && pending.isNotEmpty()) {
+                                    val hit = rowNodesOn(nodes).firstNotNullOfOrNull { (parts, at, node) ->
+                                        pending.firstOrNull { t -> (tries[t.trx] ?: 0) < 2 && AppLook.matches(parts, t) }?.let { t -> Triple(t, at to parts, node) }
+                                    }
+                                    if (hit != null) {
+                                        val (t, info, node) = hit
+                                        tries[t.trx] = (tries[t.trx] ?: 0) + 1
+                                        if ((tries[t.trx] ?: 0) >= 2) pending.remove(t)
+                                        opening = t; openingAt = now; openingRowAt = info.first
+                                        openingAmount = AppLook.amountOf(info.second) ?: t.amount
+                                        openingParty = AppLook.partyOf(info.second)
+                                        note("opening a row to read its TrxID")
+                                        if (!tap(svc, node)) node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                                        progressAt = now
+                                        nextActAt = now + pace.settle()
+                                        main.postDelayed(this, TICK_MS); return
+                                    }
+                                }
                                 if (canAct) {
                                     if (added == 0) { if (graceScrolls > 0) graceScrolls-- else idleScrolls++ }
                                     if (idleScrolls >= 4) return finish(true, null, "end of the list")
@@ -300,7 +349,7 @@ object AppReader {
                 main.postDelayed(this, TICK_MS)
             }
         }
-        note("opening $pkg, reading back to ${cut}")
+        note("opening $pkg, reading back to ${cut}" + if (pending.isEmpty()) "" else ", ${pending.size} row(s) to open for their TrxID")
         launch()
         main.postDelayed(tick, pace.settle())
     }
@@ -369,6 +418,33 @@ object AppReader {
             out.add(parts.joinToString(" | ") to at)
         }
         return out
+    }
+
+    /** Like [rowsOn], with each row's words and its node (to open it). */
+    private fun rowNodesOn(nodes: List<AccessibilityNodeInfo>): List<Triple<List<String>, Long, AccessibilityNodeInfo>> {
+        val out = ArrayList<Triple<List<String>, Long, AccessibilityNodeInfo>>()
+        for (n in nodes) {
+            if (!n.isClickable || n.childCount == 0) continue
+            val parts = ArrayList<String>()
+            words(n, parts, 0)
+            if (parts.size > 12 || !complete(parts)) continue
+            val at = rowTime(parts) ?: continue
+            out.add(Triple(parts, at, n))
+        }
+        return out
+    }
+
+    /** Closes a detail sheet by its close button ("শিট বন্ধ করুন" icon or the "বন্ধ করুন" text). */
+    private fun closeSheet(svc: AccessibilityService, nodes: List<AccessibilityNodeInfo>): Boolean {
+        val c = nodes.firstOrNull { n ->
+            val d = (n.contentDescription?.toString() ?: "").lowercase(Locale.ROOT)
+            "শিট বন্ধ" in d || d == "close"
+        } ?: nodes.firstOrNull { (it.text?.toString() ?: "").trim() == "বন্ধ করুন" } ?: return false
+        var target: AccessibilityNodeInfo = c
+        var p: AccessibilityNodeInfo? = c
+        var hops = 0
+        while (p != null && hops < 4) { if (p.isClickable) { target = p; break }; p = p.parent; hops++ }
+        return tap(svc, target) || target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
     }
 
     internal fun words(n: AccessibilityNodeInfo?, out: MutableList<String>, depth: Int) {

@@ -121,6 +121,8 @@ object Sender {
         o.put("admin_code_set", AdminLock.isSet(ctx))
         // This build can do a bKash Cash In through the bKash app (migration 082); the server gives the app way only to such phones.
         o.put("app_cashin", true)
+        // This build opens bKash app rows to read their TrxID (AppLook), so the server may hold out for an exact TrxID.
+        o.put("app_trx", true)
         // The accessibility service, as it really is: Android's switch can read ON while the service is dead (the phone killed
         // the app). The dashboard shows it, and how often this phone has mended it by itself (AccessibilityRepair).
         o.put("accessibility_on", UssdSetup.accessibilityOn(ctx))
