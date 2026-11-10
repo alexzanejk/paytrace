@@ -21,6 +21,7 @@ import { WALLETS } from "@/lib/phoneCommands";
 import { StatementSection } from "@/components/StatementSection";
 import { PhoneActions } from "@/components/PhoneActions";
 import { CashInSection } from "@/components/CashInSection";
+import { B2bCommand } from "@/components/B2bCommand";
 import { PhonePermissions } from "@/components/PhonePermissions";
 import { AppVersionCard, OutdatedCard, VersionChip } from "@/components/AppVersionCard";
 import { latestReleaseBuild } from "@/lib/latestRelease";
@@ -476,6 +477,7 @@ function DeviceCard({
           <PhonePermissions device={d} onChanged={onChanged} />
           {d.allow_balance !== false ? WALLETS.map((w) => <BalanceCheck key={w} deviceId={d.id} provider={w} />) : null}
           {d.allow_cashin === true ? <CashInSection deviceId={d.id} /> : null}
+          {d.allow_cashin === true ? <B2bCommand deviceId={d.id} /> : null}
           {d.allow_balance !== false ? <StatementSection deviceId={d.id} wallets={d.info?.wallets} /> : null}
         </div>
       ) : null}

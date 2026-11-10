@@ -85,7 +85,7 @@ const ERROR_TEXT: Record<string, string> = {
   no_personal: "The personal account is not set up in that phone's app (number and SIM), or the wallet opened the agent menu instead. Nothing was sent.",
   bad_cash_in: "The phone refused the amount or the number. Nothing was sent.",
   confirm_does_not_match: "The wallet's own screen did not show this number and this amount, so the phone stopped before the PIN. NOTHING was sent.",
-  wallet_refused: "The wallet itself said no (for example the amount is under its minimum, or the PIN was wrong). Nothing was sent.",
+  wallet_refused: "The wallet itself said no (for example the amount is under its minimum, the PIN was wrong, or bKash saw the same amount to the same number again within a few minutes: \"Possible duplicate request\"). Nothing was sent.",
   phone_locked: "That phone has a screen lock (PIN, pattern or fingerprint). Android does not let any app open a locked phone, so the wallet's menu cannot be reached. Take the screen lock off that phone, or unlock it by hand and try again.",
   bad_entry: "That is not a statement entry the phone can ask for.",
   entry_not_found: "The wallet's statement does not go back far enough to show that entry.",

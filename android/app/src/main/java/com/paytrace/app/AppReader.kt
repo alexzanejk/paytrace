@@ -56,7 +56,7 @@ object AppReader {
 
     @Volatile private var running = false
     /** True while the reader OR an app cash-in drives the bKash app: USSD runs and each other wait. */
-    fun active(): Boolean = running || AppCashIn.running
+    fun active(): Boolean = running || AppCashIn.running || AppB2b.running
 
     internal val LOGIN = setOf("লগ ইন", "log in", "login")
     private val INBOX = setOf("ইনবক্স", "inbox")

@@ -1,1 +1,1 @@
-Jobs: when you submit "I did it" / "I sent it" you can now type any other cost (a fund-transfer fee, a charge) and write what it was for. A job you were shown no longer disappears when you move the money out first.
+B2B to your DSO from the dashboard: the phone does it in the bKash app, typing the PIN slowly and holding the send button only when the app shows the saved DSO number and the exact amount.
