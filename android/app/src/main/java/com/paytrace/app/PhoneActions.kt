@@ -38,7 +38,7 @@ object PhoneActions {
 
     /** Runs one control and reports through [done]. Called on the heartbeat thread, so the work may block; the
      *  report is handed over BEFORE anything that could stop this very thread (a restart does). */
-    fun run(ctx: Context, kind: String, look: AppLook? = null, done: (UssdOutcome) -> Unit) {
+    fun run(ctx: Context, kind: String, look: AppLook? = null, commandId: String? = null, done: (UssdOutcome) -> Unit) {
         val app = ctx.applicationContext
         when (kind) {
             RESTART -> {
@@ -66,7 +66,7 @@ object PhoneActions {
             APP_RECORD -> {
                 // Reading a wallet's screens is a balance-check kind of thing: it follows the same dashboard switch.
                 if (!AppSettings(app).ussdAllowed) return done(UssdOutcome(false, null, "not_allowed"))
-                Handler(Looper.getMainLooper()).post { AppRecorder.start(app, done) }
+                Handler(Looper.getMainLooper()).post { AppRecorder.start(app, commandId, done) }
             }
             APP_READ -> Handler(Looper.getMainLooper()).post { AppReader.start(app, look, done) }
             else -> done(UssdOutcome(false, null, "unsupported"))

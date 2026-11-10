@@ -152,7 +152,7 @@ object JobsParser {
 }
 
 object JobsApi {
-    private fun post(s: AppSettings, json: String): String? {
+    internal fun post(s: AppSettings, json: String): String? {
         val url = s.serverUrl
         if (url.isBlank() || s.deviceStatus != "approved") return null
         var conn: HttpURLConnection? = null

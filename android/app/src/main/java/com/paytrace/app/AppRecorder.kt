@@ -7,10 +7,13 @@ import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import android.graphics.Rect
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.app.NotificationCompat
+import org.json.JSONObject
 import java.util.Locale
+import java.util.concurrent.Executors
 
 /** Test step 1 of reading the bKash Agent APP instead of the *247# statement (owner 2026-11-10: "on dial it only shows 6,
  *  we are missing so many transactions ... test on the Vivo first"). The app's own transaction list goes back days and
@@ -18,18 +21,16 @@ import java.util.Locale
  *
  *  Before PayTrace can drive that app by itself we must SEE what Android lets an accessibility service read from it
  *  (banking apps can hide their screens from such services). So this is a recorder, nothing more: the dashboard sends
- *  "apprecord", the phone opens the bKash app, and for [RUN_MS] PayTrace writes down the words on every screen of the
- *  bKash app while a person logs in and scrolls the transaction list by hand. The words go back as the command's screens.
+ *  "apprecord", the phone opens the bKash app, answers the command at once, and for up to [MAP_MS] sends every new screen
+ *  of the bKash app to the server (ingest "app_screen", table app_screens) while a person goes through the app by hand.
+ *  Each element keeps its hidden name (view id), kind, words, hint, flags and position (owner 2026-11-10: "you have
+ *  permission to see everything on the record ... we need to map it perfect"); a password box gives only its length.
  *
- *  It never types, taps or scrolls anything, it reads only windows of an app whose package name contains "bkash", it never
- *  reads a box being typed into (isEditable / isPassword), and on a PIN screen it drops anything that looks like a PIN. */
+ *  It never types, taps or scrolls anything and reads only windows of an app whose package name contains "bkash" (other
+ *  apps on screen are named, never read). */
 object AppRecorder {
     const val KIND = "apprecord"
 
-    /** The server fails a command that runs for 3 minutes, so the recording stops well before. */
-    const val RUN_MS = 150_000L
-    /** Once the bKash app has been seen, leaving it for this long ends the recording early. */
-    const val GONE_MS = 40_000L
     private const val TICK_MS = 700L
     private const val MAX_SCREENS = 80
     private const val MAX_NODES = 800
@@ -103,12 +104,56 @@ object AppRecorder {
         return all.firstOrNull { it.lowercase(Locale.ROOT).contains("agent") } ?: all.firstOrNull()
     }
 
-    fun start(ctx: Context, done: (UssdOutcome) -> Unit) {
+    /** How long one mapping session records (owner 2026-11-10: "we need to map it perfect"). The command is answered
+     *  at once and the screens go to the server one by one, so the server's 3-minute command limit does not apply. */
+    const val MAP_MS = 600_000L
+    /** Away from the bKash app this long (after it was seen) ends the session. */
+    const val AWAY_MS = 120_000L
+    const val MAX_SENT = 600
+    const val SCREEN_CHARS = 8_500
+    private const val NODE_TEXT = 300
+
+    /** One element as a line: indent by depth, its kind, hidden name (view id, the same in Bangla and English), words,
+     *  description, hint, flags (c tap, l long-press, e typing box, p PIN/password box, s scrolls, x disabled, k ticked,
+     *  v selected, f focused) and where it is on the screen. A password box gives only how many characters it holds. */
+    fun nodeLine(depth: Int, cls: String?, id: String?, text: String?, desc: String?, hint: String?, flags: String, bounds: String?): String {
+        fun clip(t: String?) = t?.replace('\n', ' ')?.trim()?.take(NODE_TEXT)?.takeIf { it.isNotEmpty() }
+        val sb = StringBuilder(" ".repeat(minOf(depth, 15)))
+        sb.append(cls?.substringAfterLast('.')?.ifBlank { null } ?: "?")
+        id?.substringAfter(":id/")?.takeIf { it.isNotBlank() }?.let { sb.append('#').append(it) }
+        clip(text)?.let { sb.append(" \"").append(it).append('"') }
+        clip(desc)?.takeIf { it != clip(text) }?.let { sb.append(" [").append(it).append(']') }
+        clip(hint)?.takeIf { it != clip(text) }?.let { sb.append(" {").append(it).append('}') }
+        if (flags.isNotEmpty()) sb.append(" <").append(flags).append('>')
+        bounds?.let { sb.append(" @").append(it) }
+        return sb.toString()
+    }
+
+    /** A screen without positions, to tell a new screen from the same one still moving (animations, a scroll settling). */
+    fun signature(lines: List<String>): String = lines.joinToString("\n") { it.substringBeforeLast(" @") }
+
+    /** The text sent for one screen: a header line, then the elements, cut to [SCREEN_CHARS] and said so. */
+    fun screenText(seq: Int, secs: Long, pkg: String, others: Collection<String>, lines: List<String>): String {
+        val head = "#$seq +${secs}s pkg=$pkg" + if (others.isEmpty()) "" else " also=" + others.joinToString(",")
+        val sb = StringBuilder(head)
+        var shown = 0
+        for (l in lines) {
+            if (sb.length + l.length + 1 > SCREEN_CHARS - 60) break
+            sb.append('\n').append(l); shown++
+        }
+        if (shown < lines.size) sb.append("\n(cut: ${lines.size - shown} more elements)")
+        return sb.toString()
+    }
+
+    fun recording(): Boolean = running
+
+    fun start(ctx: Context, commandId: String?, done: (UssdOutcome) -> Unit) {
         val app = ctx.applicationContext
         val svc = UssdSession.launchContext() as? AccessibilityService
             ?: return done(UssdOutcome(false, null, "accessibility_not_running"))
         if (running || AppReader.active() || UssdSession.active() || UssdApi.active()) return done(UssdOutcome(false, null, "busy"))
         val pkg = findApp(app) ?: return done(UssdOutcome(false, null, "no_bkash_app"))
+        val command = commandId?.takeIf { Regex("^[0-9a-fA-F-]{36}$").matches(it) } ?: return done(UssdOutcome(false, null, "bad_command"))
         running = true
         notifyPerson(app)
         try {
@@ -116,73 +161,105 @@ object AppRecorder {
         } catch (e: Exception) {
             // The person can open it by hand; the notice says so.
         }
+        val version = try { app.packageManager.getPackageInfo(pkg, 0).versionName ?: "?" } catch (e: Exception) { "?" }
+        // Answered at once: the screens follow one by one (app_screens on the server).
+        done(UssdOutcome(true, null, null, screens = listOf(
+            "bKash app recording started: up to ${MAP_MS / 60_000} minutes, every new screen is sent to the server as it appears\npackage: $pkg\nversion: $version")))
+
+        val settings = AppSettings(app)
+        val sender = Executors.newSingleThreadExecutor()
         val main = Handler(Looper.getMainLooper())
         val started = SystemClock.elapsedRealtime()
         var lastSeen = 0L
-        var prev: List<String> = emptyList()
-        val screens = ArrayList<String>()
-        val others = LinkedHashSet<String>()
-        var secured = false
+        var candidate = ""
+        var lastSent = ""
+        var seq = 0
+        var failed = 0
 
-        fun finish() {
-            running = false
-            val version = try { app.packageManager.getPackageInfo(pkg, 0).versionName ?: "?" } catch (e: Exception) { "?" }
-            val header = "bKash app read (test)\npackage: $pkg\nversion: $version\nother windows seen: " +
-                others.take(8).joinToString(", ") + (if (secured) "\nnote: some boxes were not read (typing / PIN)" else "")
-            if (screens.isEmpty()) {
-                done(UssdOutcome(false, null, "app_not_readable", trace = header, screens = listOf(header)))
-            } else {
-                done(UssdOutcome(true, null, null, screens = pack(header, screens)))
+        fun send(text: String) {
+            val n = ++seq
+            sender.execute {
+                val body = JSONObject().put("action", "app_screen").put("command_id", command).put("seq", n).put("pkg", pkg).put("screen", text).toString()
+                var ok = false
+                for (attempt in 1..3) {
+                    if (JobsApi.post(settings, body) != null) { ok = true; break }
+                    try { Thread.sleep(2_000L * attempt) } catch (e: InterruptedException) { break }
+                }
+                if (!ok) failed++
             }
+        }
+
+        fun finish(why: String) {
+            if (!running) return
+            running = false
+            val secs = (SystemClock.elapsedRealtime() - started) / 1000
+            if (seq < MAX_SENT) send("#end +${secs}s pkg=$pkg\nstopped: $why\nscreens sent: $seq, not delivered so far: $failed\nversion: $version")
+            sender.shutdown()
         }
 
         val tick = object : Runnable {
             override fun run() {
+                if (!running) return
                 val now = SystemClock.elapsedRealtime()
                 try {
                     val roots = ArrayList<AccessibilityNodeInfo>()
-                    svc.rootInActiveWindow?.let { roots.add(it) }
                     try { svc.windows?.forEach { w -> w.root?.let { roots.add(it) } } } catch (e: Exception) { }
-                    val root = roots.firstOrNull { isBkash(it.packageName?.toString()) }
-                    if (root == null) {
-                        roots.mapNotNull { it.packageName?.toString() }.filter { it != app.packageName }.forEach { if (others.size < 20) others.add(it) }
-                    } else {
+                    if (roots.isEmpty()) svc.rootInActiveWindow?.let { roots.add(it) }
+                    val mine = roots.filter { isBkash(it.packageName?.toString()) }
+                    val others = roots.mapNotNull { it.packageName?.toString() }.filter { !isBkash(it) && it != app.packageName }.distinct().take(5)
+                    if (mine.isNotEmpty()) {
                         lastSeen = now
                         val lines = ArrayList<String>()
                         val count = intArrayOf(0)
-                        if (read(root, lines, count, 0)) secured = true
-                        val safe = safeLines(lines)
-                        if (safe.isNotEmpty() && safe != prev && screens.size < MAX_SCREENS) {
-                            val part = newPart(prev, safe)
-                            if (part.isNotEmpty()) screens.add(part.joinToString("\n"))
-                            prev = safe
+                        mine.forEachIndexed { i, r -> if (mine.size > 1) lines.add("--- window ${i + 1} of ${mine.size}"); deep(r, lines, count, 0) }
+                        val sig = signature(lines)
+                        // Sent once the screen has held still for one tick, and only when it differs from the last one sent.
+                        if (sig == candidate && sig != lastSent && seq < MAX_SENT) {
+                            send(screenText(seq + 1, (now - started) / 1000, pkg, others, lines))
+                            lastSent = sig
                         }
+                        candidate = sig
                     }
                 } catch (e: Exception) {
                     // A window that closed while being read; the next tick reads again.
                 }
-                val over = now - started >= RUN_MS || (lastSeen > 0 && now - lastSeen >= GONE_MS)
-                if (over) finish() else main.postDelayed(this, TICK_MS)
+                when {
+                    now - started >= MAP_MS -> finish("10 minutes are up")
+                    lastSeen > 0 && now - lastSeen >= AWAY_MS -> finish("the bKash app was not on screen for 2 minutes")
+                    lastSeen == 0L && now - started >= AWAY_MS -> finish("the bKash app never came on screen")
+                    seq >= MAX_SENT -> finish("screen limit")
+                    else -> main.postDelayed(this, TICK_MS)
+                }
             }
         }
         main.postDelayed(tick, 1500)
     }
 
-    /** Every word on the screen in reading order; a "»" line marks the start of a tappable row, so rows can be told
-     *  apart later. Returns true when a typed-into box was skipped. */
-    private fun read(n: AccessibilityNodeInfo?, out: MutableList<String>, count: IntArray, depth: Int): Boolean {
-        if (n == null || depth > 40 || count[0] > MAX_NODES) return false
+    /** Every element of a window as [nodeLine]s, in screen order. Elements with nothing to say are left out, but their
+     *  children are still read. */
+    private fun deep(n: AccessibilityNodeInfo?, out: MutableList<String>, count: IntArray, depth: Int) {
+        if (n == null || depth > 40 || count[0] > MAX_NODES) return
         count[0]++
-        if (n.isPassword || n.isEditable) return true
-        var skipped = false
-        if (n.isClickable && n.childCount > 0) out.add("»")
-        n.text?.toString()?.let { out.add(it) }
-        val d = n.contentDescription?.toString()
-        if (!d.isNullOrBlank() && d != n.text?.toString()) out.add("[$d]")
-        for (i in 0 until n.childCount) {
-            if (read(n.getChild(i), out, count, depth + 1)) skipped = true
+        val flags = StringBuilder()
+        if (n.isClickable) flags.append('c')
+        if (n.isLongClickable) flags.append('l')
+        if (n.isEditable) flags.append('e')
+        if (n.isPassword) flags.append('p')
+        if (n.isScrollable) flags.append('s')
+        if (!n.isEnabled) flags.append('x')
+        if (n.isChecked) flags.append('k')
+        if (n.isSelected) flags.append('v')
+        if (n.isFocused) flags.append('f')
+        val text = if (n.isPassword) n.text?.let { "•×${it.length}" } else n.text?.toString()
+        val hint = if (android.os.Build.VERSION.SDK_INT >= 26) n.hintText?.toString() else null
+        val id = n.viewIdResourceName
+        val desc = n.contentDescription?.toString()
+        if (!text.isNullOrBlank() || !desc.isNullOrBlank() || !hint.isNullOrBlank() || !id.isNullOrBlank() || flags.isNotEmpty()) {
+            val r = Rect()
+            n.getBoundsInScreen(r)
+            out.add(nodeLine(depth, n.className?.toString(), id, text, desc, hint, flags.toString(), "${r.left},${r.top},${r.right},${r.bottom}"))
         }
-        return skipped
+        for (i in 0 until n.childCount) deep(n.getChild(i), out, count, depth + 1)
     }
 
     private fun notifyPerson(app: Context) {
@@ -193,14 +270,15 @@ object AppRecorder {
                 NOTIF_ID,
                 NotificationCompat.Builder(app, CHANNEL)
                     .setSmallIcon(android.R.drawable.ic_dialog_info)
-                    .setContentTitle("PayTrace is reading the bKash app (2½ minutes)")
-                    .setContentText("Log in, open the transaction list and scroll slowly. Open one transaction.")
+                    .setContentTitle("PayTrace is recording the bKash app (10 minutes)")
+                    .setContentText("Go through the screens slowly. Wait a second on each one.")
                     .setStyle(NotificationCompat.BigTextStyle().bigText(
-                        "Test for the owner: log in to the bKash app, open the transaction list, scroll down slowly to the oldest " +
-                            "entries, and open one transaction. PayTrace only reads the screen; it never taps or types anything.",
+                        "Mapping the bKash app for the owner: go through the screens slowly and wait a second on each one, so it " +
+                            "is saved. PayTrace only reads the screen; it never taps or types anything. It stops after 10 minutes " +
+                            "or 2 minutes after you leave the bKash app.",
                     ))
                     .setAutoCancel(true)
-                    .setTimeoutAfter(RUN_MS)
+                    .setTimeoutAfter(MAP_MS)
                     .setPriority(NotificationCompat.PRIORITY_HIGH)
                     .build(),
             )

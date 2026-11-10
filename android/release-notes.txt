@@ -1,1 +1,1 @@
-Held bKash payments: the bKash app read now opens the matching transaction to read its TrxID, and reads back as far as the held payment (up to a week). Only the exact TrxID releases a held payment.
+Held bKash payments: when the Inbox can't show a held payment's TrxID, the phone also searches it on the bKash app's Statement page; only an exact TrxID releases a payment. The bKash app recorder now records up to 10 minutes and sends every screen to the server, for mapping the app.
