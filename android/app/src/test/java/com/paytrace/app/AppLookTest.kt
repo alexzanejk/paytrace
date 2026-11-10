@@ -61,6 +61,27 @@ class AppLookTest {
         assertFalse(AppLook.sheetIs(sheet.map { it.replace("2,592", "2,000") }, target))
     }
 
+    @Test fun aStatementSearchResultIsReadLikeAnInboxRow() {
+        // The owner's search on the Vivo (2026-11-10): the result row shows the full number, the Inbox the hidden one.
+        val result = listOf("ক্যাশ আউট", "01322784471", "09:17pm 10/11/26", "+ ৳500", "কমিশন: + ৳2")
+        val t = AppLook.Target("DKA5BKXU6Z", AppReader.timeOf("09:17pm 10/11/26")!!, 500.0, "0132XXXX471")
+        assertEquals("0132XXXX471", AppLook.partyOf(result))
+        assertTrue(AppLook.matches(result, t))
+        assertFalse(AppLook.matches(result.map { it.replace("01322784471", "01322784472") }, t))
+        // Sent to the server exactly like the Inbox row of the same transaction.
+        assertEquals("ক্যাশ আউট | 0132XXXX471 | 09:17pm 10/11/26 | + ৳500 | কমিশন: + ৳2", AppLook.maskedRow(result))
+        assertEquals("0162XXXX056", AppLook.mask("0162XXXX056"))
+    }
+
+    @Test fun knowsTheNothingFoundPage() {
+        assertTrue(AppLook.nothingFound(listOf("কোনো লেনদেন পাওয়া যায়নি")))
+        // The same words with য় stored as one letter, and as য + dot.
+        assertTrue(AppLook.nothingFound(listOf("কোনো লেনদেন পাও\u09DFা যা\u09DFনি")))
+        assertTrue(AppLook.nothingFound(listOf("কোনো লেনদেন পাও\u09AF\u09BCা যা\u09AF\u09BCনি")))
+        assertTrue(AppLook.nothingFound(listOf("No transaction found")))
+        assertFalse(AppLook.nothingFound(listOf("লেনদেনের বিবরণী", "সার্চ করুন", "ক্যাশ আউট")))
+    }
+
     @Test fun reportsInTheRowsOwnTerms() {
         assertEquals("opened $at 2592.00 0162XXXX056 DK969QZD7G", AppLook.line(at, 2592.0, "0162XXXX056", "DK969QZD7G"))
         assertEquals("opened $at 2592.00 - -", AppLook.line(at, 2592.0, null, null))

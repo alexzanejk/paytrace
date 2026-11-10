@@ -55,7 +55,24 @@ data class AppLook(val backTo: Long?, val finds: List<Target>) {
             else TAKA.find(p)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
         }
 
-        fun partyOf(parts: List<String>): String? = parts.map { it.trim().uppercase(Locale.ROOT) }.firstOrNull { MASKED.matches(it) }
+        /** The row's number in the app's hidden form (0132XXXX471). A Statement search shows the full number
+         *  (01322784471); it is hidden the same way so it compares with the SMS and with Inbox rows. */
+        fun partyOf(parts: List<String>): String? = parts.map { it.trim().uppercase(Locale.ROOT) }.firstOrNull { MASKED.matches(it) }?.let(::mask)
+
+        /** 01322784471 -> 0132XXXX471; a number already hidden stays as it is. */
+        fun mask(n: String): String = if (Regex("^01[0-9]{9}$").matches(n)) n.take(4) + "XXXX" + n.takeLast(3) else n
+
+        /** A row as the server keeps it ("word | word | ..."), with a full number hidden like the Inbox shows it. */
+        fun maskedRow(parts: List<String>): String = parts.joinToString(" | ") { p -> mask(p.trim()).takeIf { MASKED.matches(it) } ?: p }
+
+        /** The Statement search found nothing: "কোনো লেনদেন পাওয়া যায়নি" (owner 2026-11-10). Bangla letters can be stored
+         *  two ways (য় as one letter or as য + dot), so both sides are put in one form before comparing. */
+        fun nothingFound(texts: List<String>): Boolean = texts.any { t ->
+            val s = norm(t).lowercase(Locale.ROOT)
+            (norm("লেনদেন") in s && (norm("পাওয়া যায়নি") in s || norm("পাওয়া যায় নি") in s)) || "no transaction" in s
+        }
+
+        private fun norm(s: String): String = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
 
         /** True when a list row is this target: the same minute (+/- 1), the same amount, the same masked number (when both
          *  have one). Only such a row is ever opened. */

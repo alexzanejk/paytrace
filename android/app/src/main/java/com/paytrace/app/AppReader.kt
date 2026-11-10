@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Path
 import android.graphics.Rect
+import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
@@ -29,8 +31,15 @@ import java.util.TimeZone
  *  (a second login screen = wrong PIN or a changed app: stop at once as login_failed, never type again; the server then
  *  stops queuing until the owner presses the button); open ইনবক্স > লেনদেনসমূহ; collect every complete row; scroll
  *  down until a row older than the cut-off, the end of the list, or the time limit; go Home; send the rows word for word.
- *  The SERVER reads the rows (like SMS), so a wording change needs no app update. It never taps a row and never sends
- *  money. The PIN is never written to the trace. */
+ *  The SERVER reads the rows (like SMS), so a wording change needs no app update. It never sends money. The PIN is never
+ *  written to the trace.
+ *
+ *  For a held payment the server sends `look` (AppLook): the reader opens only that payment's own row to read its TrxID,
+ *  and any TrxID still unread when the Inbox part is done is searched on the স্টেটমেন্ট page (owner 2026-11-10): tap
+ *  "সার্চ করুন", type the TrxID slowly, check the box shows exactly it, press the keyboard's Search key, open the row that
+ *  comes up only if it has that payment's minute, amount and number, and read the TrxID on its sheet. "কোনো লেনদেন
+ *  পাওয়া যায়নি" decides nothing (the page sometimes shows nothing for a real payment). Search rows are sent with the
+ *  others but never move "oldest", which the server's "not in the app" rule depends on. */
 object AppReader {
     const val KIND = "appread"
     /** The server fails a command running for 3 minutes. */
@@ -61,6 +70,12 @@ object AppReader {
     internal val LOGIN = setOf("লগ ইন", "log in", "login")
     private val INBOX = setOf("ইনবক্স", "inbox")
     private val TAB = setOf("লেনদেনসমূহ", "transactions")
+    private val STATEMENT = setOf("স্টেটমেন্ট", "statement")
+    private val SEARCH = setOf("সার্চ করুন", "search")
+    /** Start the Statement search by this point of a run if TrxIDs are still unread, so it gets its share of the time. */
+    private const val SEARCH_AT_MS = 95_000L
+    /** One search: no result and no "nothing found" after this long = give up on that TrxID for this run. */
+    private const val SEARCH_WAIT_MS = 12_000L
     private val TIME = Regex("^\\s*(\\d{1,2}):(\\d{2})\\s*([ap]m)\\s+(\\d{2})/(\\d{2})/(\\d{2,4})\\s*$", RegexOption.IGNORE_CASE)
     private val AMOUNT = Regex("^\\s*[+-]\\s*৳\\s*[\\d,]+(\\.\\d+)?\\s*$")
 
@@ -164,6 +179,19 @@ object AppReader {
         var openingRowAt = 0L
         var openingAmount = 0.0
         var openingParty: String? = null
+        // TrxIDs the Inbox already showed on their own row; the rest are searched for on the Statement page.
+        val confirmed = HashSet<String>()
+        // Statement search (owner 2026-11-10: "on statement you can search by transaction id"). A found row is opened and its
+        // TrxID read like an Inbox row; "nothing found" decides NOTHING (the page sometimes shows nothing for a real one).
+        var searching = false
+        var searchWhy = ""
+        val searchQueue = ArrayList<AppLook.Target>()
+        var sTarget: AppLook.Target? = null
+        var sStartedAt = 0L
+        var sTypedAt = 0L       // when typing will be done
+        var sSubmittedAt = 0L
+        var sOpened = false
+        val searchedRows = LinkedHashSet<String>()
         val trace = ArrayList<String>()
         fun note(s: String) { if (trace.size < 40) trace.add(String.format(Locale.US, "%5.1fs %s", (SystemClock.elapsedRealtime() - started) / 1000.0, s)) }
         val main = Handler(Looper.getMainLooper())
@@ -204,7 +232,20 @@ object AppReader {
             val oldest = rows.values.minOrNull()
             val version = try { app.packageManager.getPackageInfo(pkg, 0).versionName ?: "?" } catch (e: Exception) { "?" }
             val header = "bKash app transactions\npackage: $pkg\nversion: $version\nstopped: $why\noldest: ${oldest ?: 0}\ncutoff: $cut"
-            done(UssdOutcome(true, null, null, screens = pack(header, ordered(rows), (trace + "end screen: $lastScreen").joinToString("\n"), opened)))
+            // Rows found by the Statement search go out with the rest, but never count towards "oldest": the Inbox did
+            // not read back that far, and the server's "not in the app" rule depends on how far the Inbox read.
+            val out = ordered(rows) + searchedRows.filter { it !in rows }
+            done(UssdOutcome(true, null, null, screens = pack(header, out, (trace + "end screen: $lastScreen").joinToString("\n"), opened)))
+        }
+
+        // The Inbox part is over: search the Statement for the TrxIDs still unread, if there is time; else finish.
+        fun wrapUp(why: String) {
+            if (searching) return
+            val left = look?.finds.orEmpty().filter { it.trx !in confirmed }
+            if (left.isEmpty() || SystemClock.elapsedRealtime() - started > RUN_MS - 25_000) return finish(true, null, why)
+            searching = true; searchWhy = why
+            searchQueue.clear(); searchQueue.addAll(left)
+            note("$why; searching the Statement for ${left.size} TrxID(s)")
         }
 
         val tick = object : Runnable {
@@ -235,11 +276,61 @@ object AppReader {
                                     opened.add(AppLook.line(openingRowAt, openingAmount, openingParty, read))
                                     if (read != null) { pending.remove(o); note("row ${o.trx.take(2)}… opened: TrxID ${if (read == o.trx) "matches" else "is a different one"}") }
                                     else note("an opened row showed no TrxID")
+                                    if (read == o.trx) confirmed.add(o.trx)
+                                    if (searching) sTarget = null
                                     opening = null
                                     progressAt = now
                                     // Back only when a sheet is really showing: on the plain list it would leave the transactions screen.
                                     if (!closeSheet(svc, nodes) && (read != null || AppLook.sheetIs(texts, o))) svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
                                     nextActAt = now + pace.settle()
+                                }
+                            }
+                            main.postDelayed(this, TICK_MS); return
+                        }
+                        if (!searching && look != null && now - started > SEARCH_AT_MS && look.finds.any { it.trx !in confirmed }) wrapUp("time to search")
+                        if (searching) {
+                            if (!canAct) { main.postDelayed(this, TICK_MS); return }
+                            if (sTarget == null) {
+                                if (searchQueue.isEmpty()) return finish(true, null, "$searchWhy, Statement searched")
+                                if (now - started > RUN_MS - 15_000) return finish(true, null, "$searchWhy, no time left to search")
+                                sTarget = searchQueue.removeAt(0); sStartedAt = now; sTypedAt = 0L; sSubmittedAt = 0L; sOpened = false
+                            }
+                            val t = sTarget!!
+                            val label = "${t.trx.take(4)}…"
+                            // Its own row on screen (the search result, or the plain Statement list): open it and read its TrxID.
+                            val hit = if (sOpened) null else rowNodesOn(nodes).firstOrNull { (parts, _, _) -> AppLook.matches(parts, t) }
+                            if (hit != null) {
+                                val (parts, at, node) = hit
+                                searchedRows.add(AppLook.maskedRow(parts))
+                                sOpened = true
+                                opening = t; openingAt = now; openingRowAt = at
+                                openingAmount = AppLook.amountOf(parts) ?: t.amount
+                                openingParty = AppLook.partyOf(parts)
+                                note("Statement: $label found, opening it")
+                                if (!tap(svc, node)) node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                                progressAt = now; nextActAt = now + pace.settle()
+                            } else if (sSubmittedAt > 0 && AppLook.nothingFound(texts)) {
+                                note("Statement: $label no transaction found (decides nothing)"); sTarget = null; nextActAt = now + pace.readPause()
+                            } else if (sSubmittedAt > 0 && now - sSubmittedAt > SEARCH_WAIT_MS) {
+                                note("Statement: $label nothing came up"); sTarget = null
+                            } else if (sTypedAt > 0 && sSubmittedAt == 0L) {
+                                if (now >= sTypedAt) {
+                                    val box = searchBox(svc)
+                                    val shown = box?.text?.toString()?.trim()?.uppercase(Locale.ROOT)
+                                    if (shown != t.trx) { note("Statement: the search box does not show $label, skipping it"); sTarget = null }
+                                    else {
+                                        val how = submit(svc, box)
+                                        note("Statement: searching $label ($how)")
+                                        sSubmittedAt = now; progressAt = now; nextActAt = now + pace.settle()
+                                    }
+                                }
+                            } else if (sTypedAt == 0L) {
+                                val box = searchBox(svc)
+                                when {
+                                    box != null -> { sTypedAt = typeInto(svc, t.trx, now, main); progressAt = now }
+                                    pressAny(svc, SEARCH, root) -> { nextActAt = now + pace.settle(); progressAt = now }
+                                    pressAny(svc, STATEMENT, root) -> { nextActAt = now + pace.settle(); progressAt = now }
+                                    now - sStartedAt > SEARCH_WAIT_MS -> { note("Statement: the search box was not found"); return finish(true, null, "$searchWhy, Statement search not reached") }
                                 }
                             }
                             main.postDelayed(this, TICK_MS); return
@@ -308,8 +399,8 @@ object AppReader {
                                     main.postDelayed(this, TICK_MS); return
                                 }
                                 val oldest = rows.values.minOrNull() ?: Long.MAX_VALUE
-                                if (oldest < cut) return finish(true, null, "reached the cut-off")
-                                if (rows.size >= MAX_ROWS) return finish(true, null, "row limit")
+                                if (oldest < cut) { wrapUp("reached the cut-off"); main.postDelayed(this, TICK_MS); return }
+                                if (rows.size >= MAX_ROWS) { wrapUp("row limit"); main.postDelayed(this, TICK_MS); return }
                                 if (canAct && pending.isNotEmpty()) {
                                     val hit = rowNodesOn(nodes).firstNotNullOfOrNull { (parts, at, node) ->
                                         pending.firstOrNull { t -> (tries[t.trx] ?: 0) < 2 && AppLook.matches(parts, t) }?.let { t -> Triple(t, at to parts, node) }
@@ -330,8 +421,8 @@ object AppReader {
                                 }
                                 if (canAct) {
                                     if (added == 0) { if (graceScrolls > 0) graceScrolls-- else idleScrolls++ }
-                                    if (idleScrolls >= 4) return finish(true, null, "end of the list")
-                                    if (scrolls >= MAX_SCROLLS) return finish(true, null, "scroll limit")
+                                    if (idleScrolls >= 4) { wrapUp("end of the list"); main.postDelayed(this, TICK_MS); return }
+                                    if (scrolls >= MAX_SCROLLS) { wrapUp("scroll limit"); main.postDelayed(this, TICK_MS); return }
                                     scrolls++
                                     nextActAt = now + pace.readPause()
                                     // A finger swipe; the list's own scroll only when swipes have stopped bringing new rows.
@@ -395,6 +486,44 @@ object AppReader {
             ?: boxes.firstOrNull { b -> (b.hintText?.toString() ?: "").lowercase(Locale.ROOT).let { "পিন" in it || "pin" in it } }
             ?: return null
         return PinTyping.shownCount(box.text?.toString(), box.hintText?.toString())
+    }
+
+    /** The Statement page's search box: the box being typed into, never a password box. */
+    private fun searchBox(svc: AccessibilityService): AccessibilityNodeInfo? {
+        val root = bkashRoot(svc) ?: return null
+        var found: AccessibilityNodeInfo? = null
+        fun walk(n: AccessibilityNodeInfo?, depth: Int) {
+            if (n == null || depth > 40 || found != null) return
+            if (n.isEditable && !n.isPassword) { found = n; return }
+            for (i in 0 until n.childCount) walk(n.getChild(i), depth + 1)
+        }
+        walk(root, 0)
+        return found
+    }
+
+    /** Types [text] into the search box one character at a time, like fingers. Returns when it will be done. */
+    private fun typeInto(svc: AccessibilityService, text: String, now: Long, main: Handler): Long {
+        searchBox(svc)?.let { b -> try { b.performAction(AccessibilityNodeInfo.ACTION_FOCUS) } catch (e: Exception) { } }
+        var at = 0L
+        for (i in 1..text.length) {
+            at += pace.charGap()
+            val part = text.substring(0, i)
+            main.postDelayed({
+                searchBox(svc)?.let { b ->
+                    val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, part) }
+                    try { b.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args) } catch (e: Exception) { }
+                }
+            }, at)
+        }
+        return now + at + pace.afterKeys()
+    }
+
+    /** Starts the search the way the owner does, with the keyboard's Search key (Android 11+), else a search button. */
+    private fun submit(svc: AccessibilityService, box: AccessibilityNodeInfo?): String {
+        if (box != null && Build.VERSION.SDK_INT >= 30) {
+            try { if (box.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)) return "keyboard Search key" } catch (e: Exception) { }
+        }
+        return if (pressAny(svc, SEARCH)) "search button" else "no way to press Search found"
     }
 
     /** Every node, skipping boxes being typed into. */
