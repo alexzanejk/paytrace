@@ -28,6 +28,7 @@ export interface DeviceInfo {
   ussd_allowed?: boolean; // the phone's own switch: may the dashboard ask it for a balance, statement or other wallet menu read
   cashin_allowed?: boolean; // the phone's own switch: may the dashboard make it send money. Off unless the owner turned it on
   app_cashin?: boolean; // this app build can do a bKash Cash In through the bKash app (migration 082)
+  app_trx?: boolean; // this app build opens bKash app rows and reads their TrxID (migration 086)
   admin_code_set?: boolean; // an admin code protects those switches (the code itself is never sent)
   accessibility_on?: boolean; // PayTrace's balance-check service is switched on in the phone's Accessibility settings
   accessibility_running?: boolean; // ...and Android has really started it (a killed app leaves it on but dead: "malfunctioning")
@@ -88,6 +89,8 @@ export function cleanInfo(body: Record<string, unknown>, now: Date = new Date())
   if (cashinAllowed !== undefined) info.cashin_allowed = cashinAllowed;
   const appCashIn = asBool(body.app_cashin);
   if (appCashIn !== undefined) info.app_cashin = appCashIn;
+  const appTrx = asBool(body.app_trx);
+  if (appTrx !== undefined) info.app_trx = appTrx;
   const adminCodeSet = asBool(body.admin_code_set);
   if (adminCodeSet !== undefined) info.admin_code_set = adminCodeSet;
   const a11yOn = asBool(body.accessibility_on);

@@ -38,7 +38,7 @@ object PhoneActions {
 
     /** Runs one control and reports through [done]. Called on the heartbeat thread, so the work may block; the
      *  report is handed over BEFORE anything that could stop this very thread (a restart does). */
-    fun run(ctx: Context, kind: String, done: (UssdOutcome) -> Unit) {
+    fun run(ctx: Context, kind: String, look: AppLook? = null, done: (UssdOutcome) -> Unit) {
         val app = ctx.applicationContext
         when (kind) {
             RESTART -> {
@@ -68,7 +68,7 @@ object PhoneActions {
                 if (!AppSettings(app).ussdAllowed) return done(UssdOutcome(false, null, "not_allowed"))
                 Handler(Looper.getMainLooper()).post { AppRecorder.start(app, done) }
             }
-            APP_READ -> Handler(Looper.getMainLooper()).post { AppReader.start(app, done) }
+            APP_READ -> Handler(Looper.getMainLooper()).post { AppReader.start(app, look, done) }
             else -> done(UssdOutcome(false, null, "unsupported"))
         }
     }
