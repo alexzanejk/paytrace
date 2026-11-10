@@ -1,4 +1,5 @@
-import { createElement, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createElement, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { FullCopy } from "./fullCopy";
 import { LOADERS, loaderCode, type Loader } from "./loaders";
 
 // Live previews of the loading animations. They use the very same CSS and markup the developer copies: the only changes are that
@@ -57,17 +58,20 @@ function Preview({ loader }: { loader: Loader }) {
 
 /** Six loading animations to pick from: a live preview and the copy box for each. */
 export function LoaderPicker({ renderCode }: { renderCode: (text: string) => ReactNode }) {
+  const full = useContext(FullCopy);
   return (
     <div className="grid gap-5">
       {LOADERS.map((l) => (
         <div key={l.id} className="grid gap-3 rounded-xl border border-neutral-200 p-4 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
-          <div className="space-y-2">
-            <Preview loader={l} />
-          </div>
+          {full ? null : (
+            <div className="space-y-2">
+              <Preview loader={l} />
+            </div>
+          )}
           <div className="min-w-0 space-y-2">
             <h3 className="text-lg font-semibold">{l.name}</h3>
             <p className="text-sm text-neutral-600">{l.note}</p>
-            <details className="text-sm">
+            <details className="text-sm" open={full || undefined}>
               <summary className="cursor-pointer font-medium text-[#1f6f50]">Show the code to copy</summary>
               <div className="mt-2">{renderCode(loaderCode(l))}</div>
             </details>

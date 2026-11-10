@@ -17,6 +17,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { GUIDE_LINK } from "@/lib/guideLink";
 
 interface NewKey {
   id: string;
@@ -24,7 +25,8 @@ interface NewKey {
   key: string;
 }
 
-const DOCS_URL = `${window.location.origin}/docs/`;
+// Always the same address, whichever address the dashboard was opened on (owner 2026-11-10).
+const DOCS_URL = GUIDE_LINK;
 
 /** Websites that use PayTrace: add one, set where its results go, and send its developer the guide. */
 export function ApiAccess() {
@@ -193,10 +195,13 @@ export function ApiAccess() {
             <div className="flex flex-wrap items-center gap-2">
               <code className="min-w-0 flex-1 break-all rounded-lg border border-border bg-muted px-3 py-2 text-xs">{DOCS_URL}</code>
               <CopyButton text={DOCS_URL} label="Copy link" variant="default" />
-              <a href="/docs/" target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline", size: "sm" })}>
+              <a href={DOCS_URL} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline", size: "sm" })}>
                 <ExternalLink className="h-4 w-4" aria-hidden /> Open
               </a>
             </div>
+            <p className="text-xs text-muted-foreground">
+              To send the guide itself instead of the link, open it and press <strong>Copy the whole guide</strong> (paste it into a chat or email) or <strong>Download</strong> (a text file to send).
+            </p>
             <div className="flex flex-wrap items-center gap-2">
               <a href="/pay/?demo=1" target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline", size: "sm" })}>
                 Preview the customer pay page
