@@ -369,6 +369,11 @@ object AppB2b {
                             }
                             main.postDelayed(this, TICK_MS); return
                         }
+                        // bKash's own messages (recorder run a1460479). Before the hold nothing has been sent, so both stop safely.
+                        if (!held) {
+                            if (AppBanners.wrongPin(texts)) return stop(if (b2bPin.submittedAt > 0) "pin_refused" else "login_failed", "bKash says the PIN is not correct; never typed again")
+                            if (AppBanners.network(texts)) return stop("app_stopped_before_send", "bKash says: check your network (nothing was sent)")
+                        }
                         if (held && screen != AppB2bRead.Screen.RESULT && screen != AppB2bRead.Screen.CONFIRM) {
                             if (now - heldAt > RESULT_WAIT_MS) return stop("no_answer_after_hold", "no result after the hold")
                             main.postDelayed(this, TICK_MS); return
@@ -378,7 +383,17 @@ object AppB2b {
                                 if (b2bPin.submittedAt > 0) return stop("app_stopped_before_send", "the app asked to log in again after the B2B PIN")
                                 if (loginPin.submittedAt > 0) {
                                     if (now - loginPin.submittedAt > LOGIN_WAIT_MS) return stop("login_failed", "still on the login screen after the PIN")
-                                } else if (!typePin(loginPin, root, now, canAct, { AppReader.pressAny(svc, AppReader.LOGIN) }, "login")) return
+                                } else {
+                                    // bKash keeps Log in grey until the whole PIN is in: grey after the last digit = a digit was lost.
+                                    if (loginPin.typed == keys.size && !loginPin.pressed) {
+                                        when (LoginGate.decide(AppReader.buttonEnabled(nodes, AppReader.LOGIN), now - loginPin.pressedAt - PinTyping.BLIND_MS)) {
+                                            LoginGate.Step.WAIT -> { main.postDelayed(this, TICK_MS); return }
+                                            LoginGate.Step.STOP -> return stop("pin_not_entered", "the Log in button stayed grey after the PIN (a digit was lost); Log in NOT pressed")
+                                            LoginGate.Step.PRESS -> {}
+                                        }
+                                    }
+                                    if (!typePin(loginPin, root, now, canAct, { AppReader.pressAny(svc, AppReader.LOGIN) }, "login")) return
+                                }
                             }
                             AppB2bRead.Screen.CASH_QUESTION ->
                                 // Left over from an earlier B2B nobody answered: the app takes nothing until it is, and it is not ours.

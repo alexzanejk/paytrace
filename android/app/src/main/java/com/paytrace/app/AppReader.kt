@@ -206,6 +206,11 @@ object AppReader {
         var keyPressedAt = 0L
         var keyRetries = 0
         var pinBlind = false     // the box could not be read: typed by slow timing alone
+        var allTypedAt = 0L      // when the last digit was counted as typed
+        var retyping = false     // the app left the screen while the PIN was being typed and was opened again
+        var relaunches = 0
+        var netHits = 0
+        var backs = 0
         var scrolls = 0
         var idleScrolls = 0
         var prevFound: Set<String> = emptySet()
@@ -258,6 +263,13 @@ object AppReader {
                     if (root == null) {
                         if (seenApp == 0L && now - started > 6_000 && lastAct == 0L) { lastAct = now; note("opening the app again"); launch() }
                         if (seenApp == 0L && now - started > 20_000) return finish(false, "app_not_opened", "the app did not open")
+                        if (seenApp > 0 && now - seenApp > 6_000 && relaunches < 1) {
+                            relaunches++
+                            val front = try { svc.rootInActiveWindow?.packageName?.toString() } catch (e: Exception) { null }
+                            note("the bKash app left the screen (in front: ${front ?: "nothing readable"}); opening it again")
+                            if (pinTypedAt == 0L && (pinTyped > 0 || keyPressed)) { retyping = true; pinTyped = 0; keyPressed = false; keyRetries = 0 }
+                            launch(); seenApp = now
+                        }
                         if (seenApp > 0 && now - seenApp > 20_000) return finish(rows.isNotEmpty(), "app_closed", "the app left the screen")
                     } else {
                         if (seenApp == 0L) nextActAt = now + pace.settle()
@@ -267,6 +279,19 @@ object AppReader {
                         val texts = nodes.mapNotNull { n -> n.text?.toString()?.trim()?.takeIf { it.isNotEmpty() } }
                         lastScreen = AppRecorder.safeLines(texts).joinToString(" / ").take(600)
                         val canAct = now >= nextActAt
+                        // bKash's own messages over the app (recorder run a1460479): a wrong PIN is final, never typed again;
+                        // "check your network" is closed and waited out, three times at most.
+                        if (AppBanners.wrongPin(texts)) return finish(false, "login_failed", "bKash says the PIN is not correct")
+                        if (AppBanners.network(texts)) {
+                            if (canAct) {
+                                netHits++
+                                note("bKash says: check your network ($netHits)")
+                                if (netHits >= 3) return finish(rows.isNotEmpty(), "no_network", "the bKash app has no network")
+                                closeBanner(svc, nodes)
+                                progressAt = now; nextActAt = now + pace.settle() + 4_000
+                            }
+                            main.postDelayed(this, TICK_MS); return
+                        }
                         // A row we opened for its TrxID: read the sheet, then close it and go on with the list.
                         val o = opening
                         if (o != null) {
@@ -312,14 +337,14 @@ object AppReader {
                             } else if (sSubmittedAt > 0 && AppLook.nothingFound(texts)) {
                                 note("Statement: $label no transaction found (decides nothing)"); sTarget = null; nextActAt = now + pace.readPause()
                             } else if (sSubmittedAt > 0 && now - sSubmittedAt > SEARCH_WAIT_MS) {
-                                note("Statement: $label nothing came up"); sTarget = null
+                                note("Statement: $label " + if (AppBanners.emptyList(texts)) "the list came up empty (bKash did not load it; decides nothing)" else "nothing came up"); sTarget = null
                             } else if (sTypedAt > 0 && sSubmittedAt == 0L) {
                                 if (now >= sTypedAt) {
                                     val box = searchBox(svc)
                                     val shown = box?.text?.toString()?.trim()?.uppercase(Locale.ROOT)
                                     if (shown != t.trx) { note("Statement: the search box does not show $label, skipping it"); sTarget = null }
                                     else {
-                                        val how = submit(svc, box)
+                                        val how = submit(svc, box, nodes)
                                         note("Statement: searching $label ($how)")
                                         sSubmittedAt = now; progressAt = now; nextActAt = now + pace.settle()
                                     }
@@ -346,12 +371,17 @@ object AppReader {
                                     // One digit at a time, slowly: press it, wait until the PIN box shows one more digit,
                                     // and only then the next. Log in only when the box shows exactly the whole PIN
                                     // (owner 2026-11-10: the app lagged, taps were lost and a short PIN was sent).
-                                    val shown = pinShown(root)
+                                    // The box shows its hint only while it is empty (the box itself cannot be read).
+                                    val hint = AppBanners.pinHint(texts)
+                                    val shown = pinShown(root) ?: if (hint) 0 else null
                                     if (shown == null) pinBlind = true
                                     if (pinTyped == 0 && !keyPressed && shown != null && shown > 0)
                                         return finish(false, "pin_not_entered", "the PIN box already had ${shown} digit(s) in it; nothing typed, Log in NOT pressed")
                                     when (PinTyping.next(pinTyped, keys.size, shown, keyPressed, now - keyPressedAt, keyRetries)) {
                                         PinTyping.Step.PRESS -> if (canAct) {
+                                            // Never type on top of digits already in the box: the hint must be showing.
+                                            if (pinTyped == 0 && !hint && (retyping || texts.any { it == "লগ ইন" }))
+                                                return finish(false, "pin_not_entered", "the PIN box was not empty (its hint is not showing); nothing typed, Log in NOT pressed")
                                             if (pinTyped == 0) note("login screen: typing the saved PIN slowly, one digit at a time")
                                             progressAt = now
                                             if (pressText(svc, keys[pinTyped])) { keyPressed = true; keyPressedAt = now; keyRetries = 0 }
@@ -360,6 +390,7 @@ object AppReader {
                                         PinTyping.Step.WAIT -> {}
                                         PinTyping.Step.CONFIRMED -> {
                                             pinTyped++; keyPressed = false; progressAt = now
+                                            if (pinTyped == keys.size) allTypedAt = now
                                             nextActAt = now + if (pinTyped == keys.size) pace.afterKeys() else pace.keyGap()
                                         }
                                         PinTyping.Step.RETRY -> {
@@ -368,10 +399,18 @@ object AppReader {
                                             pressText(svc, keys[pinTyped])
                                         }
                                         PinTyping.Step.LOGIN -> if (canAct) {
-                                            note(if (pinBlind) "PIN typed slowly (the box could not be read), pressing Log in" else "the box shows all ${keys.size} digits, pressing Log in")
-                                            pinTypedAt = now; progressAt = now
-                                            if (!pressAny(svc, LOGIN)) note("login button not found")
-                                            nextActAt = now + pace.settle()
+                                            // bKash keeps Log in grey until the whole PIN is in: grey here means a digit was lost.
+                                            when (LoginGate.decide(buttonEnabled(nodes, LOGIN), now - allTypedAt)) {
+                                                LoginGate.Step.WAIT -> {}
+                                                LoginGate.Step.STOP -> return finish(false, "pin_not_entered",
+                                                    "the Log in button stayed grey after ${keys.size} digits (one was lost); Log in NOT pressed")
+                                                LoginGate.Step.PRESS -> {
+                                                    note(if (pinBlind) "PIN typed slowly, the Log in button is lit, pressing it" else "the box shows all ${keys.size} digits, pressing Log in")
+                                                    pinTypedAt = now; progressAt = now
+                                                    if (!pressAny(svc, LOGIN)) note("login button not found")
+                                                    nextActAt = now + pace.settle()
+                                                }
+                                            }
                                         }
                                         PinTyping.Step.STOP -> return finish(false, "pin_not_entered",
                                             "the PIN box showed ${shown} digit(s) after digit ${pinTyped + (if (keyPressed) 1 else 0)} of ${keys.size}; Log in NOT pressed")
@@ -431,7 +470,16 @@ object AppReader {
                             }
                             canAct && pressAny(svc, TAB, root) -> { nextActAt = now + pace.settle(); note("opened the transactions tab") }
                             canAct && pressAny(svc, INBOX, root) -> { nextActAt = now + pace.settle(); note("opened the inbox") }
-                            else -> if (now - progressAt > STUCK_MS) return finish(rows.isNotEmpty(), "unexpected_screen", "a screen PayTrace does not know")
+                            else -> {
+                                // Something left open over the app (a sheet, a sub-page, an offer): Back closes it and never
+                                // confirms anything. Never on a screen with no words (the logo, the loading bird).
+                                if (canAct && texts.isNotEmpty() && backs < 2 && now - progressAt > 8_000 + backs * 6_000L) {
+                                    backs++
+                                    note("a screen PayTrace does not know (${lastScreen.take(70)}): pressing Back")
+                                    svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                                    nextActAt = now + pace.settle()
+                                } else if (now - progressAt > STUCK_MS) return finish(rows.isNotEmpty(), "unexpected_screen", "a screen PayTrace does not know")
+                            }
                         }
                     }
                 } catch (e: Exception) {
@@ -519,11 +567,29 @@ object AppReader {
     }
 
     /** Starts the search the way the owner does, with the keyboard's Search key (Android 11+), else a search button. */
-    private fun submit(svc: AccessibilityService, box: AccessibilityNodeInfo?): String {
+    private fun submit(svc: AccessibilityService, box: AccessibilityNodeInfo?, nodes: List<AccessibilityNodeInfo>): String {
+        // The page's own "সার্চ করুন" button (tag_search_button): grey until something is typed, then it starts the search.
+        if (buttonEnabled(nodes, SEARCH) == true && pressAny(svc, SEARCH)) return "search button"
         if (box != null && Build.VERSION.SDK_INT >= 30) {
             try { if (box.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)) return "keyboard Search key" } catch (e: Exception) { }
         }
-        return if (pressAny(svc, SEARCH)) "search button" else "no way to press Search found"
+        return if (pressAny(svc, SEARCH)) "search button (it looked grey)" else "no way to press Search found"
+    }
+
+    /** Whether the app has lit the button with these words (the tappable thing around them), or null when it is not on
+     *  screen. bKash keeps Log in and Search grey until their box is filled. */
+    internal fun buttonEnabled(nodes: List<AccessibilityNodeInfo>, labels: Set<String>): Boolean? {
+        val hit = nodes.firstOrNull { it.text?.toString()?.trim()?.lowercase(Locale.ROOT) in labels } ?: return null
+        var p: AccessibilityNodeInfo? = hit
+        var hops = 0
+        while (p != null && hops < 4) { if (p.isClickable) return p.isEnabled; p = p.parent; hops++ }
+        return null
+    }
+
+    /** Closes one of bKash's message strips by its own close button. */
+    internal fun closeBanner(svc: AccessibilityService, nodes: List<AccessibilityNodeInfo>): Boolean {
+        val c = nodes.firstOrNull { (it.contentDescription?.toString() ?: "").trim().equals("Close Button", ignoreCase = true) } ?: return false
+        return tap(svc, c) || c.performAction(AccessibilityNodeInfo.ACTION_CLICK)
     }
 
     /** Every node, skipping boxes being typed into. */
@@ -673,6 +739,35 @@ class HumanPace(private val rnd: java.util.Random = java.util.Random()) {
     /** A swipe up the screen as fractions of its size: x, start y, end y (about a third of the screen, so every row is
      *  seen whole at least once). */
     fun swipe(): DoubleArray = doubleArrayOf(between(0.42, 0.58), between(0.70, 0.78), between(0.36, 0.44))
+}
+
+/** bKash's own messages and states, as the owner's recording of 2026-11-10 showed them (run a1460479). Bangla letters can
+ *  be stored two ways, so both sides are compared in one form. Pure, unit tested. */
+object AppBanners {
+    private fun n(s: String): String = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD).lowercase(Locale.ROOT)
+    private fun has(texts: List<String>, vararg parts: String): Boolean = texts.any { t -> val s = n(t); parts.all { n(it) in s } }
+
+    /** "পিন নাম্বারটি সঠিক নয়": the PIN was refused. */
+    fun wrongPin(texts: List<String>): Boolean = has(texts, "পিন", "সঠিক নয়") || has(texts, "pin", "incorrect") || has(texts, "wrong pin")
+    /** "অনুগ্রহ করে আপনার নেটওয়ার্ক চেক করুন": the app could not reach bKash. */
+    fun network(texts: List<String>): Boolean = has(texts, "নেটওয়ার্ক চেক") || has(texts, "check", "network")
+    /** The login screen's PIN box shows "এজেন্ট পিন নাম্বার দিন" only while it is empty. */
+    fun pinHint(texts: List<String>): Boolean = has(texts, "পিন নাম্বার দিন")
+    /** A list that did not load says "আপনি সম্প্রতি কোনো লেনদেন সম্পন্ন করেন নি"; it says nothing about any payment. */
+    fun emptyList(texts: List<String>): Boolean = has(texts, "সম্প্রতি", "লেনদেন", "করেন নি")
+}
+
+/** Pressing Log in only when bKash has lit the button: it stays grey until the whole PIN is in, so a grey button after
+ *  the last digit means a digit was lost and nothing may be pressed. Pure, unit tested. */
+object LoginGate {
+    enum class Step { PRESS, WAIT, STOP }
+    const val GREY_MS = 4_000L
+    /** [enabled] = the button is lit (null = cannot tell: an older app, press as before); [waitedMs] since the last digit. */
+    fun decide(enabled: Boolean?, waitedMs: Long): Step = when {
+        enabled != false -> Step.PRESS
+        waitedMs < GREY_MS -> Step.WAIT
+        else -> Step.STOP
+    }
 }
 
 /** Typing a PIN on an app's own keypad one checked digit at a time. Pure, unit tested. */
