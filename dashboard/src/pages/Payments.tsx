@@ -6,6 +6,7 @@ import { PROVIDERS, PROVIDER_LABEL, TYPE_LABEL, type Payment } from "@/lib/types
 import { PAGE_INTRO, PAYMENT_STATUS, PAYMENT_TYPE, hubView } from "@/lib/words";
 import { openHelp } from "@/lib/nav";
 import { PageIntro } from "@/components/PageIntro";
+import { AppSearch } from "@/components/AppSearch";
 import { ArrowDownLeft, HelpCircle } from "lucide-react";
 import { rangeBounds, rangeLabel, periodRange, summarize, type DayTotal } from "@/lib/period";
 import { takePaymentsPreset } from "@/lib/filters";
@@ -132,6 +133,8 @@ export function Payments() {
       />
 
       <PageIntro id="payments" intro={PAGE_INTRO.payments} onHelp={openHelp} />
+
+      <AppSearch />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <PeriodPicker value={period} onChange={setPeriod} />

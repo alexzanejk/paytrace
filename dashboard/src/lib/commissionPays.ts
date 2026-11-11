@@ -123,14 +123,20 @@ export function sendOptions(
   phones: Array<{ id: string; name: string; status: string; allow_cashin?: boolean; allow_personal?: boolean; info: { wallets?: Array<{ provider: string; number: string; kind?: string }> } | null }>,
 ): SendOption[] {
   const out: SendOption[] = [];
+  // Cash In from any of our agent wallets (owner 2026-11-11: "we should be able to pay from our preferred one"): the
+  // partner's own phone first, then every other approved phone (migration 091).
   const partner = phones.find((p) => p.id === partnerId);
-  for (const w of partner?.info?.wallets ?? []) {
-    if (w.kind === "personal" || !SENDS.includes(w.provider)) continue;
-    out.push({
-      key: `cash_in:${partnerId}:${w.provider}`, method: "cash_in", fromDevice: partnerId, provider: w.provider,
-      label: `Cash In from ${partner!.name}'s own ${WALLET_NAME[w.provider] ?? w.provider} agent wallet (no charge)`,
-      why: partner!.status !== "approved" ? "That phone is not approved." : partner!.allow_cashin ? "" : "Sending money is switched off for that phone (Phones page).",
-    });
+  const others = phones.filter((p) => p.id !== partnerId && p.status === "approved");
+  for (const d of partner ? [partner, ...others] : others) {
+    const own = d.id === partnerId;
+    for (const w of d.info?.wallets ?? []) {
+      if (w.kind === "personal" || !SENDS.includes(w.provider)) continue;
+      out.push({
+        key: `cash_in:${d.id}:${w.provider}`, method: "cash_in", fromDevice: d.id, provider: w.provider,
+        label: `Cash In from ${d.name}'s ${own ? "own " : ""}${WALLET_NAME[w.provider] ?? w.provider} agent wallet (no charge)`,
+        why: d.status !== "approved" ? "That phone is not approved." : d.allow_cashin ? "" : "Sending money is switched off for that phone (Phones page).",
+      });
+    }
   }
   for (const d of phones) {
     if (d.status !== "approved") continue;

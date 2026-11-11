@@ -1,3 +1,4 @@
+import { AppSearch } from "@/components/AppSearch";
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, ChevronDown, ChevronRight, HandCoins, Search, TriangleAlert } from "lucide-react";
 import { must, sb } from "@/lib/supabase";
@@ -131,6 +132,8 @@ export function Payouts() {
         title="Payout"
         description={`Pay on received money: keep your share and send the rest. Showing ${rangeLabel(range)} (Bangladesh days).`}
       />
+
+      <AppSearch />
 
       {sending.length ? (
         <div className="mb-4 space-y-2">
