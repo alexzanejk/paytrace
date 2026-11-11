@@ -1,4 +1,4 @@
-import { appWayFor, wayToSend, wayWords, WAY_LABEL } from "../dashboard/src/lib/sendWay.ts";
+import { appBalanceFor, appWayFor, wayToSend, wayWords, WAY_LABEL } from "../dashboard/src/lib/sendWay.ts";
 
 let failed = 0;
 const check = (name: string, ok: boolean, got?: unknown) => {
@@ -12,6 +12,9 @@ check("a personal Send Money goes by USSD", !appWayFor({ ...ready, account: "per
 check("an old app build is told to update", appWayFor({ ...ready, appCashin: undefined }).why.includes("Update"));
 check("the app is sent only when allowed", wayToSend("app", ready) === "app" && wayToSend("app", { ...ready, appCashin: false }) === "ussd" && wayToSend("ussd", ready) === "ussd");
 check("words name the way", wayWords("app").includes("bKash app") && wayWords("ussd").includes("*247#") && WAY_LABEL.app === "bKash app");
+check("the balance can be read in the bKash app on a new build", appBalanceFor("bkash", true).ok);
+check("only bKash is read in its app", !appBalanceFor("nagad", true).ok && !appBalanceFor("rocket", true).ok);
+check("an old build cannot read the balance in the app", !appBalanceFor("bkash", undefined).ok && appBalanceFor("bkash", false).why.includes("Update"));
 
 if (failed) { console.error(`${failed} failed`); process.exit(1); }
 console.log("\nall passed");

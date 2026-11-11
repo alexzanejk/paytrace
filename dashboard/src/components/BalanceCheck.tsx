@@ -6,10 +6,11 @@ import { commandLine, isLive, POLL_MS, type PhoneCommand, type WalletName, walle
 import { nudgePhone } from "@/lib/wake";
 import { Button } from "@/components/ui/button";
 import { PhoneTrace } from "@/components/PhoneTrace";
+import { appBalanceFor } from "@/lib/sendWay";
 
-/** Asks this phone to read a wallet's balance (Nagad or bKash) through the provider's own USSD menu. Nothing is sent or spent: it only reads.
- *  The phone picks the request up on its next 30-second check and answers within about a minute and a half. */
-export function BalanceCheck({ deviceId, provider = "nagad" }: { deviceId: string; provider?: WalletName }) {
+/** Asks this phone to read a wallet's balance through the provider's own USSD menu, or for bKash through the bKash app
+ *  (migration 089, owner 2026-11-11). Nothing is sent or spent: it only reads. */
+export function BalanceCheck({ deviceId, provider = "nagad", appBalance }: { deviceId: string; provider?: WalletName; appBalance?: unknown }) {
   const label = walletLabel(provider);
   const [last, setLast] = useState<PhoneCommand | null>(null);
   const [problem, setProblem] = useState("");
@@ -19,7 +20,7 @@ export function BalanceCheck({ deviceId, provider = "nagad" }: { deviceId: strin
   const load = useCallback(async () => {
     const { data } = await sb
       .from("phone_commands")
-      .select("id,kind,provider,status,balance,error,created_at,finished_at,screens")
+      .select("id,kind,provider,status,balance,error,created_at,finished_at,screens,via")
       .eq("device_id", deviceId)
       .eq("kind", "balance")
       .eq("provider", provider)
@@ -37,10 +38,12 @@ export function BalanceCheck({ deviceId, provider = "nagad" }: { deviceId: strin
     return () => { if (timer.current) window.clearTimeout(timer.current); };
   }, [last, load]);
 
-  async function ask() {
+  async function ask(via: "ussd" | "app") {
     setProblem("");
     setBusy(true);
-    const { error } = await sb.rpc("queue_phone_command", { p_device: deviceId, p_kind: "balance", p_provider: provider });
+    const { error } = via === "app"
+      ? await sb.rpc("queue_balance_via", { p_device: deviceId, p_provider: provider, p_via: "app" })
+      : await sb.rpc("queue_phone_command", { p_device: deviceId, p_kind: "balance", p_provider: provider });
     setBusy(false);
     if (error) return setProblem(error.message);
     // Wake the phone so it takes this now rather than on its next 30-second beat. It is queued either way.
@@ -48,13 +51,25 @@ export function BalanceCheck({ deviceId, provider = "nagad" }: { deviceId: strin
     await load();
   }
 
+  const app = appBalanceFor(provider, appBalance);
   const line = commandLine(last, tk as (n: number) => string, when as (t: string) => string, label);
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-3">
-        <Button size="sm" variant="outline" onClick={() => void ask()} disabled={busy || isLive(last)}>
+        <Button size="sm" variant="outline" onClick={() => void ask("ussd")} disabled={busy || isLive(last)}>
           <Wallet aria-hidden /> {isLive(last) ? "Checking…" : `Check ${label} balance`}
         </Button>
+        {provider === "bkash" ? (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void ask("app")}
+            disabled={busy || isLive(last) || !app.ok}
+            title={app.ok ? "Opens the bKash app, logs in and taps Tap for Balance. Only reads." : app.why}
+          >
+            <Wallet aria-hidden /> Check in bKash app
+          </Button>
+        ) : null}
         {line ? <span role="status" className="text-sm text-muted-foreground">{line}</span> : null}
         {problem ? <span className="text-xs text-destructive">{problem}</span> : null}
       </div>

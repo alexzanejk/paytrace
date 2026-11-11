@@ -16,6 +16,8 @@ export interface PhoneCommand {
   trx_id?: string | null;
   /** The wallet's screens (statement), and for a failed run the phone's step log (see traceOf). */
   screens?: string[] | null;
+  /** ussd | app: the way the dashboard chose (migrations 082 and 089). */
+  via?: string | null;
 }
 
 /** The wallets a phone can be asked to work with. Rocket joined on 2026-11-02 from the owner's own recordings. */
@@ -118,12 +120,12 @@ export function commandLine(c: PhoneCommand | null, money: (n: number) => string
     // The dashboard pokes the phone the moment a command is queued, so this is usually a second or two. A phone that
     // the wake-up cannot reach still takes it on its own 30-second beat, so the line promises the slower one.
     case "queued": return "Waking the phone to take it now (within 30 seconds at worst)…";
-    case "running": return cashIn ? "The phone is sending it…" : "The phone is reading the balance…";
+    case "running": return cashIn ? "The phone is sending it…" : c.via === "app" ? "The phone is reading the balance in the bKash app…" : "The phone is reading the balance…";
     case "done":
       return cashIn
         ? `Sent ${c.amount == null ? "–" : money(c.amount)} to ${c.to_number ?? "–"}${c.trx_id ? `, receipt ${c.trx_id}` : ""}` +
           `${c.balance == null ? "" : `, ${label} balance now ${money(c.balance)}`} (${when(c.finished_at ?? c.created_at)})`
-        : `${label} balance ${c.balance == null ? "–" : money(c.balance)} as of ${when(c.finished_at ?? c.created_at)}`;
+        : `${label} balance ${c.balance == null ? "–" : money(c.balance)} as of ${when(c.finished_at ?? c.created_at)}${c.via === "app" ? " (read in the bKash app)" : ""}`;
     case "cancelled":
     case "failed":
       return cashIn
@@ -208,6 +210,7 @@ ERROR_TEXT.pin_refused = "The bKash app did not accept the PIN on the Cash In. I
 ERROR_TEXT.pin_not_entered = "The bKash app's PIN box did not show the right number of digits while PayTrace typed (the app was slow or a tap was lost), so PayTrace did NOT press Log in. No wrong PIN was sent. It tries again at the next half hour.";
 ERROR_TEXT.login_failed = "The bKash app did not accept the PIN PayTrace typed (it said the PIN is not correct, or kept asking for it). PayTrace never types it twice (bKash locks after wrong tries), and stops reading the app on this phone until you press \"Read bKash app now\" again. Check the bKash PIN saved in the phone app.";
 ERROR_TEXT.app_not_opened = "The bKash app did not open on the phone.";
+ERROR_TEXT.balance_not_shown = "The bKash app opened and logged in, but the balance did not show after three taps on \"Tap for Balance\". Nothing was sent. Try again, or check by USSD.";
 ERROR_TEXT.app_closed = "The bKash app left the screen while it was being read.";
 ERROR_TEXT.no_network = "The bKash app said \"check your network\" three times, so nothing was read. Check the phone's internet; the next read tries again by itself.";
 ERROR_TEXT.no_bkash_app = "No bKash app is installed on that phone.";

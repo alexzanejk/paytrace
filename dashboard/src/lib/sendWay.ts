@@ -28,3 +28,11 @@ export const wayToSend = (chosen: SendWay, o: AppWayInput): SendWay => (chosen =
 
 /** A few words for the confirm sentence. */
 export const wayWords = (w: SendWay): string => (w === "app" ? "through the bKash app (tap and hold)" : "by USSD (*247#)");
+
+/** The balance check's own app way (migration 089, owner 2026-11-11: "yes build balance check in app"): bKash only, and only
+ *  from a phone whose app build reported `app_balance`. Only reads; nothing is sent. */
+export function appBalanceFor(provider: string, appBalance: unknown): { ok: boolean; why: string } {
+  if (provider !== "bkash") return { ok: false, why: "Only bKash can be read in its app." };
+  if (appBalance !== true) return { ok: false, why: "This phone's PayTrace app is too old to read the balance in the bKash app. Update it to the newest version." };
+  return { ok: true, why: "" };
+}

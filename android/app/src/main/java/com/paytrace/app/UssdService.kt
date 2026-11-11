@@ -57,6 +57,7 @@ object UssdText {
         "no_answer_after_pin" -> "The PIN was entered but no balance came back. PayTrace did not try the PIN again. Check the Nagad SMS, then try again later."
         "unexpected_screen" -> "The wallet's menu looked different from what PayTrace expects, so it stopped. Nothing was sent."
         "too_many_steps" -> "The menu took too many steps, so it stopped."
+        "balance_not_shown" -> "The bKash app opened and logged in, but the balance did not show after three taps on Tap for Balance."
         "no_input_box", "no_send_button" -> "PayTrace could not use the phone's menu box."
         "sim_not_found" -> "Could not pick the SIM. Check the SIM number in settings."
         "dialled_as_call" -> "The phone turned the menu code into an ordinary call instead of opening the menu. PayTrace stopped it. Try the check again."
@@ -923,9 +924,13 @@ object UssdCommands {
             return
         }
         when (cmd.optString("kind")) {
-            "balance" -> UssdRunner.run(ctx, provider) { outcome ->
-                remember(ctx, provider, outcome)
-                report(ctx, id, outcome)
+            "balance" -> {
+                val finish: (UssdOutcome) -> Unit = { outcome ->
+                    remember(ctx, provider, outcome)
+                    report(ctx, id, outcome)
+                }
+                // migration 089: the dashboard chose the bKash app for this balance check instead of *247#.
+                if (cmd.optString("via") == "app") AppBalance.start(ctx, provider, finish) else UssdRunner.run(ctx, provider, finish)
             }
             "cashin" -> {
                 val order = CashInOrder(provider, cmd.optString("to_number"), cmd.optDouble("amount", -1.0))
