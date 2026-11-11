@@ -83,13 +83,23 @@ object AppReader {
     /** One search: no result and no "nothing found" after this long = give up on that TrxID for this run. */
     private const val SEARCH_WAIT_MS = 12_000L
     /** How long to look for the Statement search box (the page may need swiping back up to show it). */
-    private const val BOX_WAIT_MS = 25_000L
+    private const val BOX_WAIT_MS = 40_000L
     /** After pressing Search, wait this long for the list to change before pressing it another way. */
     private const val RESUBMIT_MS = 5_000L
     /** How many different ways of pressing Search are tried (see submitTry). */
     private const val SUBMIT_WAYS = 3
     /** Time between touching the search box and the first letter (the keyboard opening). */
     private const val BOX_TOUCH_MS = 900L
+    /** After filling the box, wait this long and read it again: what is still there then is what bKash kept. */
+    private const val BOX_SETTLE_MS = 1_400L
+    /** Before opening bKash: press Home and wait this long, so whatever was in front is put aside. */
+    const val HOME_FIRST_MS = 700L
+    /** bKash gone from the screen this long = another app came in front: open bKash again, up to [MAX_RELAUNCHES] times. */
+    private const val LEFT_MS = 3_000L
+    private const val MAX_RELAUNCHES = 3
+    /** Steps back toward a page with the bottom tabs before giving up. */
+    private const val MAX_WAY_BACK = 6
+    private val HOME_BACK = setOf("back to home", "হোম-এ ফিরে যান", "হোম -এ ফিরে যান", "হোম-এ ফিরে যাই", "হোম -এ ফিরে যাই")
     /** At most this many swipes toward the newest end before reading the list (the app keeps its scroll position). */
     private const val TOP_SWIPES = 8
     private val TIME = Regex("^\\s*(\\d{1,2}):(\\d{2})\\s*([ap]m)\\s+(\\d{2})/(\\d{2})/(\\d{2,4})\\s*$", RegexOption.IGNORE_CASE)
@@ -307,14 +317,14 @@ object AppReader {
                     if (root == null) {
                         if (seenApp == 0L && now - started > 6_000 && lastAct == 0L) { lastAct = now; note("opening the app again"); launch() }
                         if (seenApp == 0L && now - started > 20_000) return finish(false, "app_not_opened", "the app did not open")
-                        if (seenApp > 0 && now - seenApp > 6_000 && relaunches < 1) {
+                        if (seenApp > 0 && now - seenApp > LEFT_MS && relaunches < MAX_RELAUNCHES) {
                             relaunches++
                             val front = try { svc.rootInActiveWindow?.packageName?.toString() } catch (e: Exception) { null }
                             note("the bKash app left the screen (in front: ${front ?: "nothing readable"}); opening it again")
                             if (pinTypedAt == 0L && (pinTyped > 0 || keyPressed)) { retyping = true; pinTyped = 0; keyPressed = false; keyRetries = 0 }
                             launch(); seenApp = now
                         }
-                        if (seenApp > 0 && now - seenApp > 20_000) return finish(rows.isNotEmpty(), "app_closed", "the app left the screen")
+                        if (seenApp > 0 && now - seenApp > 20_000) return finish(rows.isNotEmpty() || fullRows.isNotEmpty(), "app_closed", "the app left the screen")
                     } else {
                         if (seenApp == 0L) nextActAt = now + pace.settle()
                         seenApp = now
@@ -450,11 +460,12 @@ object AppReader {
                                 if (now >= sTypedAt) {
                                     val box = searchBox(svc)
                                     val shown = box?.text?.toString()?.trim()?.uppercase(Locale.ROOT)
-                                    if (shown != t.trx && sTypeTries < 1) {
-                                        // The box lost some letters (the keyboard was still opening): clear it and type again.
+                                    if (shown != t.trx && sTypeTries < TYPE_WAYS.size - 1) {
+                                        // The box did not keep what was typed (2026-11-11: only "D" or "DK" stayed when typed one
+                                        // letter at a time): clear it and type again another way.
                                         sTypeTries++
-                                        note("Statement: the search box shows ${shown?.take(4) ?: "nothing"}…, typing $label again")
-                                        sTypedAt = typeInto(svc, t.trx, now, main, clearFirst = true); progressAt = now
+                                        note("Statement: the search box shows ${shown?.take(4)?.ifEmpty { "nothing" } ?: "nothing"}…, typing $label again (${TYPE_WAYS[sTypeTries]})")
+                                        sTypedAt = typeWay(svc, t.trx, now, main, sTypeTries); progressAt = now
                                     } else if (shown != t.trx) { note("Statement: the search box does not show $label, skipping it"); sTarget = null; if (outcome.isEmpty()) outcome = "could not type it" }
                                     else {
                                         val how = submitTry(svc, box, nodes, 0); sTries = 1
@@ -464,16 +475,26 @@ object AppReader {
                                 }
                             } else if (sTypedAt == 0L) {
                                 val box = searchBox(svc)
+                                val onStatements = texts.any { it.trim().lowercase(Locale.ROOT) in HISTORY }
                                 when {
-                                    box != null -> { sTypedAt = typeInto(svc, t.trx, now, main); progressAt = now }
-                                    pressAny(svc, SEARCH, root) -> { nextActAt = now + pace.settle(); progressAt = now }
-                                    // On the Statement page already but no box: it scrolled away with the list. Swipe back up.
-                                    sTabs >= 1 && sSwipes < 5 -> {
+                                    box != null -> {
+                                        note("Statement: typing $label (${TYPE_WAYS[sTypeTries]})")
+                                        sTypedAt = typeWay(svc, t.trx, now, main, sTypeTries); progressAt = now
+                                    }
+                                    now - sStartedAt > BOX_WAIT_MS -> { note("Statement: the search box was not found"); if (outcome.isEmpty()) outcome = "search box not found"; return finish(true, null, "$searchWhy, Statement search not reached") }
+                                    // On the Statement page but no box: the history tab first, then the box scrolled away with the list.
+                                    onStatements && sTabs < 2 && pressAny(svc, HISTORY, root) -> { sTabs++; nextActAt = now + pace.settle(); progressAt = now }
+                                    onStatements && sSwipes < 5 -> {
                                         if (sSwipes == 0) note("Statement: the search box is scrolled away, swiping back up")
                                         sSwipes++; progressAt = now; nextActAt = now + pace.readPause(); swipe(svc, up = false)
                                     }
-                                    pressAny(svc, STATEMENT, root) -> { sTabs++; nextActAt = now + pace.settle(); progressAt = now }
-                                    now - sStartedAt > BOX_WAIT_MS -> { note("Statement: the search box was not found"); if (outcome.isEmpty()) outcome = "search box not found"; return finish(true, null, "$searchWhy, Statement search not reached") }
+                                    pressTab(svc, STATEMENT, root) -> { sTabs++; nextActAt = now + pace.settle(); progressAt = now; note("opened Statements") }
+                                    // Not on a page with the Statements tab (a result page, a sheet, a sub-page): find the way back.
+                                    now - progressAt > 3_000 && backs < MAX_WAY_BACK -> {
+                                        backs++
+                                        note("on a page without the Statements tab (${lastScreen.take(60)}): ${wayBack(svc, nodes)}")
+                                        progressAt = now; nextActAt = now + pace.settle()
+                                    }
                                 }
                             }
                             main.postDelayed(this, TICK_MS); return
@@ -604,18 +625,17 @@ object AppReader {
                                 note("the Statement list " + (if (AppBanners.emptyList(texts)) "came up empty" else "did not load") + ", reading the Inbox instead")
                             }
                             canAct && !useInbox && pressAny(svc, HISTORY, root) -> { listPresses++; nextActAt = now + pace.settle(); note("opened the Statement list") }
-                            canAct && !useInbox && pressAny(svc, STATEMENT, root) -> { listPresses++; nextActAt = now + pace.settle(); note("opened Statements") }
+                            canAct && !useInbox && pressTab(svc, STATEMENT, root) -> { listPresses++; nextActAt = now + pace.settle(); note("opened Statements") }
                             canAct && useInbox && pressAny(svc, TAB, root) -> { nextActAt = now + pace.settle(); note("opened the transactions tab") }
-                            canAct && useInbox && pressAny(svc, INBOX, root) -> { nextActAt = now + pace.settle(); note("opened the inbox") }
+                            canAct && useInbox && pressTab(svc, INBOX, root) -> { nextActAt = now + pace.settle(); note("opened the inbox") }
                             else -> {
                                 // Something left open over the app (a sheet, a sub-page, an offer): Back closes it and never
                                 // confirms anything. Never on a screen with no words (the logo, the loading bird).
-                                if (canAct && texts.isNotEmpty() && backs < 2 && now - progressAt > 8_000 + backs * 6_000L) {
+                                if (canAct && texts.isNotEmpty() && backs < MAX_WAY_BACK && now - progressAt > 3_000 + backs * 2_000L) {
                                     backs++
-                                    note("a screen PayTrace does not know (${lastScreen.take(70)}): pressing Back")
-                                    svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                                    note("a screen PayTrace does not know (${lastScreen.take(70)}): ${wayBack(svc, nodes)}")
                                     nextActAt = now + pace.settle()
-                                } else if (now - progressAt > STUCK_MS) return finish(rows.isNotEmpty(), "unexpected_screen", "a screen PayTrace does not know")
+                                } else if (now - progressAt > STUCK_MS + backs * 3_000L) return finish(rows.isNotEmpty(), "unexpected_screen", "a screen PayTrace does not know")
                             }
                         }
                     }
@@ -648,7 +668,11 @@ object AppReader {
             note("phone was asleep: opening the bKash app through the wake window")
             ScreenWake.wakeUp(svc, open)
         } else {
-            try { svc.startActivity(open) } catch (e: Exception) { note("could not open the app") }
+            // Whatever the person was doing on the phone is put aside first (owner 2026-11-11: "close or minimize
+            // everything and enter the bKash app"): Home, then bKash. Nothing of theirs is closed or lost.
+            val home = (svc as? AccessibilityService)?.let { s -> try { s.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME) } catch (e: Exception) { false } } == true
+            val go = Runnable { try { svc.startActivity(open) } catch (e: Exception) { note("could not open the app") } }
+            if (home) Handler(Looper.getMainLooper()).postDelayed(go, HOME_FIRST_MS) else go.run()
         }
     }
 
@@ -686,47 +710,98 @@ object AppReader {
         return found
     }
 
-    /** Types [text] into the search box one character at a time, like fingers. Returns when it will be done. */
-    private fun typeInto(svc: AccessibilityService, text: String, now: Long, main: Handler, clearFirst: Boolean = false): Long {
-        // Like a finger: touch the box first so it takes the focus and the keyboard opens, then type into it.
+    /** The ways the search box is filled, tried in turn until the box shows exactly the TrxID. */
+    private val TYPE_WAYS = listOf("all at once", "pasted", "touched, then all at once", "letter by letter")
+
+    private fun setText(svc: AccessibilityService, text: String) {
         searchBox(svc)?.let { b ->
-            if (!tap(svc, b)) try { b.performAction(AccessibilityNodeInfo.ACTION_CLICK) } catch (e: Exception) { }
-            try { b.performAction(AccessibilityNodeInfo.ACTION_FOCUS) } catch (e: Exception) { }
+            val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
+            try { b.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args) } catch (e: Exception) { }
         }
-        var at = BOX_TOUCH_MS
-        if (clearFirst) main.postDelayed({
-            searchBox(svc)?.let { b ->
-                val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "") }
-                try { b.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args) } catch (e: Exception) { }
+    }
+
+    /** Fills the search box with [text] the [way]-th way (see [TYPE_WAYS]), clearing it first. Returns when it will be done.
+     *  Way 0 needs no keyboard: the 2026-11-11 tries that opened the keyboard and typed letter by letter kept only "D" or
+     *  "DK" (the keyboard's own memory of the box wrote over the letters). */
+    private fun typeWay(svc: AccessibilityService, text: String, now: Long, main: Handler, way: Int): Long {
+        setText(svc, "")
+        return when (way) {
+            0 -> { main.postDelayed({ setText(svc, text) }, 400); now + 400 + BOX_SETTLE_MS }
+            1 -> {
+                // Through the phone's clipboard, the way a person pastes: the box takes it as its own input.
+                try {
+                    val cm = svc.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("TrxID", text))
+                } catch (e: Exception) { }
+                main.postDelayed({
+                    searchBox(svc)?.let { b ->
+                        try { b.performAction(AccessibilityNodeInfo.ACTION_FOCUS) } catch (e: Exception) { }
+                        try { b.performAction(AccessibilityNodeInfo.ACTION_PASTE) } catch (e: Exception) { }
+                    }
+                }, 400)
+                now + 400 + BOX_SETTLE_MS
             }
-        }, at / 2)
-        for (i in 1..text.length) {
-            at += pace.charGap()
-            val part = text.substring(0, i)
-            main.postDelayed({
-                searchBox(svc)?.let { b ->
-                    val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, part) }
-                    try { b.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args) } catch (e: Exception) { }
+            2 -> {
+                searchBox(svc)?.let { b -> if (!tap(svc, b)) try { b.performAction(AccessibilityNodeInfo.ACTION_CLICK) } catch (e: Exception) { } }
+                main.postDelayed({ setText(svc, text) }, BOX_TOUCH_MS)
+                now + BOX_TOUCH_MS + BOX_SETTLE_MS
+            }
+            else -> {
+                searchBox(svc)?.let { b -> if (!tap(svc, b)) try { b.performAction(AccessibilityNodeInfo.ACTION_CLICK) } catch (e: Exception) { } }
+                var at = BOX_TOUCH_MS
+                for (i in 1..text.length) {
+                    at += pace.charGap()
+                    val part = text.substring(0, i)
+                    main.postDelayed({ setText(svc, part) }, at)
                 }
-            }, at)
+                now + at + BOX_SETTLE_MS
+            }
         }
-        return now + at + pace.afterKeys()
+    }
+
+    /** One step back toward a page with the bottom tabs, from wherever the bKash app was left: the app's own Close / "Back
+     *  to Home" / back arrow first, the phone's Back key last. None of these ever confirms anything. Says what it did. */
+    private fun wayBack(svc: AccessibilityService, nodes: List<AccessibilityNodeInfo>): String {
+        if (closeSheet(svc, nodes)) return "closed it"
+        val home = nodes.firstOrNull { (it.text?.toString() ?: "").trim().lowercase(Locale.ROOT).let { t -> t in HOME_BACK } }
+        if (home != null && pressNode(svc, home)) return "pressed its \"back to Home\" button"
+        val arrow = nodes.firstOrNull { idEnds(it, "tag_toolbar_navigation_up") }
+        if (arrow != null && pressNode(svc, arrow)) return "pressed its back arrow"
+        svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        return "pressed Back"
+    }
+
+    private fun pressNode(svc: AccessibilityService, n: AccessibilityNodeInfo): Boolean {
+        var p: AccessibilityNodeInfo? = n
+        var hops = 0
+        while (p != null && hops < 4) { if (p.isClickable) break; p = p.parent; hops++ }
+        val target = p ?: n
+        return tap(svc, target) || target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+    }
+
+    /** A bottom tab ("Statements", "Inbox"): the LOWEST node with that word, so the page title of the same name is
+     *  never pressed instead. */
+    internal fun pressTab(svc: AccessibilityService, labels: Set<String>, root0: AccessibilityNodeInfo? = null): Boolean {
+        val root = root0 ?: bkashRoot(svc) ?: return false
+        val nodes = ArrayList<AccessibilityNodeInfo>()
+        collect(root, nodes, 0)
+        val hit = nodes.filter { it.text?.toString()?.trim()?.lowercase(Locale.ROOT) in labels }
+            .maxByOrNull { n -> Rect().also { n.getBoundsInScreen(it) }.top } ?: return false
+        return pressNode(svc, hit)
     }
 
     /** Presses Search, a different way on each try ([n] = 0, 1, 2), because one way may do nothing on this phone:
-     *  0 = the keyboard's Search key (the owner's own way; Android 11+), else the page's Search button;
-     *  1 = the page's Search button (tag_search_button) pressed the invisible way; 2 = a finger tap on that button. */
+     *  0 = the page's Search button (tag_search_button) pressed directly; 1 = a finger tap on it; 2 = the keyboard's
+     *  Search key (Android 11+). */
     private fun submitTry(svc: AccessibilityService, box: AccessibilityNodeInfo?, nodes: List<AccessibilityNodeInfo>, n: Int): String {
         val button = nodes.firstOrNull { idEnds(it, "tag_search_button") }
-        if (n == 0) {
-            if (box != null && Build.VERSION.SDK_INT >= 30) {
-                try { if (box.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)) return "keyboard Search key" } catch (e: Exception) { }
-            }
-            if (button != null && tap(svc, button)) return "Search button"
-            return if (pressAny(svc, SEARCH)) "Search button (by its word)" else "no way to press Search found"
-        }
-        if (n == 1 && button != null) {
+        if (n == 0 && button != null) {
             try { if (button.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return "Search button, pressed directly" } catch (e: Exception) { }
+        }
+        if (n <= 1 && button != null && tap(svc, button)) return "Search button, tapped"
+        if (box != null && Build.VERSION.SDK_INT >= 30) {
+            try { box.performAction(AccessibilityNodeInfo.ACTION_FOCUS) } catch (e: Exception) { }
+            try { if (box.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)) return "keyboard Search key" } catch (e: Exception) { }
         }
         if (button != null && tap(svc, button)) return "Search button, tapped"
         return if (pressAny(svc, SEARCH)) "Search button (by its word)" else "no way to press Search found"
