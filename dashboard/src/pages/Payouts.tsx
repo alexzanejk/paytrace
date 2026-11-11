@@ -494,7 +494,7 @@ function PayoutPanel({
             <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
             {byHand
               ? `Record that you paid ${tk(split!.send)}${nums.number ? ` to ${groupDigits(nums.number)}` : ""} and kept ${tk(split!.keep)}. The ${chosen.length} transaction${chosen.length === 1 ? "" : "s"} will show Paid.`
-              : `Send ${tk(split!.send)} by ${METHOD_WORDS[sendMethod(sender!.account)]} to ${groupDigits(nums.number!)} from ${sender!.label}, ${wayWords(way)}.${split!.fee ? ` ${tk(split!.fee)} is set aside for the bKash fee.` : ""} You keep ${tk(split!.keep)}. ${way === "app" ? "The phone sends only when the bKash app shows this number and this amount." : "The phone types the PIN only on the wallet screen that shows this number and this amount."}`}
+              : `Send ${tk(split!.send)} by ${METHOD_WORDS[sendMethod(sender!.account)]} to ${groupDigits(nums.number!)} from ${sender!.label}, ${wayWords(way, sender!.provider)}.${split!.fee ? ` ${tk(split!.fee)} is set aside for the bKash fee.` : ""} You keep ${tk(split!.keep)}. ${way === "app" ? `The phone sends only when the ${sender!.provider === "nagad" ? "Nagad" : "bKash"} app shows this number and this amount.` : "The phone types the PIN only on the wallet screen that shows this number and this amount."}`}
           </p>
           <div className="flex flex-wrap gap-2">
             <Button disabled={busy} onClick={() => void go()}>{busy ? "Working…" : byHand ? "Yes, mark paid" : "Yes, send it"}</Button>

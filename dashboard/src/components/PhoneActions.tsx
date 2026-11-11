@@ -7,7 +7,8 @@ import { nudgePhone } from "@/lib/wake";
 import { Button } from "@/components/ui/button";
 import { PhoneTrace } from "@/components/PhoneTrace";
 
-const ICON: Record<PhoneActionKind, typeof RotateCw> = { restart: RotateCw, inbox: Inbox, resend: Send, screen: Sun, ring: Bell, apprecord: ListChecks, appread: ReceiptText };
+const ICON: Record<PhoneActionKind, typeof RotateCw> = { restart: RotateCw, inbox: Inbox, resend: Send, screen: Sun, ring: Bell, apprecord: ListChecks, appread: ReceiptText, nagadrecord: ListChecks, nagadread: ReceiptText };
+const APP_KINDS = new Set<string>(["appread", "apprecord", "nagadread", "nagadrecord"]);
 
 /** Phone controls (owner request 2026-11-02): restart PayTrace, read the inbox now, send what is waiting, wake the
  *  screen, ring. None touches a wallet. They queue like a balance check and the phone takes them on its next beat,
@@ -73,7 +74,7 @@ export function PhoneActions({ deviceId }: { deviceId: string }) {
         })}
       </div>
       {line ? <p role="status" className="text-sm text-muted-foreground">{line}</p> : null}
-      {last && (last.kind === "appread" || last.kind === "apprecord") && !live ? (
+      {last && APP_KINDS.has(last.kind) && !live ? (
         <PhoneTrace screens={last.screens} label={last.status === "done" ? "How the phone did it (login and scrolling)" : undefined} />
       ) : null}
       {problem ? <p className="text-xs text-destructive">{problem}</p> : null}

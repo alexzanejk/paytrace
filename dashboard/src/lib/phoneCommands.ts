@@ -125,7 +125,7 @@ export function commandLine(c: PhoneCommand | null, money: (n: number) => string
       return cashIn
         ? `Sent ${c.amount == null ? "–" : money(c.amount)} to ${c.to_number ?? "–"}${c.trx_id ? `, receipt ${c.trx_id}` : ""}` +
           `${c.balance == null ? "" : `, ${label} balance now ${money(c.balance)}`} (${when(c.finished_at ?? c.created_at)})`
-        : `${label} balance ${c.balance == null ? "–" : money(c.balance)} as of ${when(c.finished_at ?? c.created_at)}${c.via === "app" ? " (read in the bKash app)" : ""}`;
+        : `${label} balance ${c.balance == null ? "–" : money(c.balance)} as of ${when(c.finished_at ?? c.created_at)}${c.via === "app" ? ` (read in the ${label} app)` : ""}`;
     case "cancelled":
     case "failed":
       return cashIn
@@ -136,7 +136,7 @@ export function commandLine(c: PhoneCommand | null, money: (n: number) => string
 
 // ---- Phone controls (owner request 2026-11-02): commands that need no wallet ----
 
-export type PhoneActionKind = "restart" | "inbox" | "resend" | "screen" | "ring" | "apprecord" | "appread";
+export type PhoneActionKind = "restart" | "inbox" | "resend" | "screen" | "ring" | "apprecord" | "appread" | "nagadrecord" | "nagadread";
 
 export interface PhoneAction {
   kind: PhoneActionKind;
@@ -169,7 +169,18 @@ export const PHONE_ACTIONS: PhoneAction[] = [
   { kind: "appread", label: "Read bKash app now", busy: "Reading the bKash app's transaction list on the phone (about a minute)…",
     done: "The bKash app's transactions were read",
     help: "Opens the bKash Agent app on the phone, logs in with the bKash PIN saved in PayTrace, and reads the transaction list back to the last read. The server also does this every 30 minutes. It never taps a transaction or sends money." },
+  // The Nagad agent app (owner 2026-11-11, migration 093). The phone routes these two by name (NagadApp.KINDS), not
+  // through PhoneActions.KINDS.
+  { kind: "nagadrecord", label: "Record Nagad app (10 min)", busy: "Opening the Nagad app on the phone to start recording…",
+    done: "Recording on the phone",
+    help: "For mapping the Nagad agent app: PayTrace opens it on the phone ITSELF and then, for up to 10 minutes, saves every screen you go through by hand. It never taps or types anything, and never reads the PIN." },
+  { kind: "nagadread", label: "Read Nagad app now", busy: "Reading the Nagad app's statement on the phone (about a minute)…",
+    done: "The Nagad app's transactions were read",
+    help: "Opens the Nagad agent app on the phone, signs in with the Nagad PIN saved in PayTrace, opens বিবরণী → লেনদেন and reads the list back to the last read. The server also does this every 30 minutes. It never sends money." },
 ];
+
+/** The Nagad app's controls (the rest are bKash's or the phone's own). */
+export const isNagadAction = (kind: string | null | undefined): boolean => kind === "nagadrecord" || kind === "nagadread";
 
 export const PHONE_ACTION_KINDS: PhoneActionKind[] = PHONE_ACTIONS.map((a) => a.kind);
 
@@ -184,22 +195,25 @@ export function actionLine(c: PhoneCommand | null, when: (t: string) => string):
     case "queued": return "Waking the phone to take it now (within 30 seconds at worst)…";
     case "running": return a.busy;
     case "done":
-      if (c.kind === "apprecord") return recordingLine(c.finished_at ?? c.created_at, when);
+      if (c.kind === "apprecord" || c.kind === "nagadrecord") return recordingLine(c.finished_at ?? c.created_at, when, Date.now(), c.kind === "nagadrecord" ? "Nagad" : "bKash");
       return `${a.done} (${when(c.finished_at ?? c.created_at)})`;
     case "cancelled":
-    case "failed":
-      return `"${a.label}" at ${when(c.finished_at ?? c.created_at)} did not work. ${errorText(c.error)}`;
+    case "failed": {
+      // The shared error texts speak of the bKash app; for a Nagad control they mean the Nagad app.
+      const why = isNagadAction(c.kind) ? errorText(c.error).replace(/bKash/g, "Nagad") : errorText(c.error);
+      return `"${a.label}" at ${when(c.finished_at ?? c.created_at)} did not work. ${why}`;
+    }
   }
 }
 
 /** The recorder's command is answered the moment recording STARTS (the screens follow one by one for up to 10
  *  minutes), so "done" must never read as "finished": it says until when the phone records. */
 export const RECORD_MS = 10 * 60_000;
-export function recordingLine(startedIso: string, when: (t: string) => string, now = Date.now()): string {
+export function recordingLine(startedIso: string, when: (t: string) => string, now = Date.now(), app = "bKash"): string {
   const end = new Date(new Date(startedIso).getTime() + RECORD_MS);
   if (now < end.getTime())
-    return `Recording: the phone opened the bKash app by itself at ${when(startedIso)} and saves every screen until ${when(end.toISOString())} at the latest. Use the bKash app on the phone now.`;
-  return `Recording started at ${when(startedIso)} and has ended (10 minutes at most, or 2 minutes outside the bKash app). The screens are saved for checking.`;
+    return `Recording: the phone opened the ${app} app by itself at ${when(startedIso)} and saves every screen until ${when(end.toISOString())} at the latest. Use the ${app} app on the phone now.`;
+  return `Recording started at ${when(startedIso)} and has ended (10 minutes at most, or 2 minutes outside the ${app} app). The screens are saved for checking.`;
 }
 
 // The one failure a phone control can report on its own; the rest come from the shared list above.
@@ -212,6 +226,8 @@ ERROR_TEXT.login_failed = "The bKash app did not accept the PIN PayTrace typed (
 ERROR_TEXT.app_not_opened = "The bKash app did not open on the phone.";
 ERROR_TEXT.balance_not_shown = "The bKash app opened and logged in, but the balance did not show after three taps on \"Tap for Balance\". Nothing was sent. Try again, or check by USSD.";
 ERROR_TEXT.app_closed = "The bKash app left the screen while it was being read.";
+ERROR_TEXT.no_nagad_app = "The Nagad agent app (Uddokta) was not found on this phone. Install it, or check that the customer Nagad app is not the only one.";
+ERROR_TEXT.no_answer_after_confirm = "The Nagad app was told to send (\"হ্যাঁ\" pressed) but no receipt came back. The money may have gone: check the Nagad app or its statement before sending again.";
 ERROR_TEXT.no_network = "The bKash app said \"check your network\" three times, so nothing was read. Check the phone's internet; the next read tries again by itself.";
 ERROR_TEXT.no_bkash_app = "No bKash app is installed on that phone.";
 ERROR_TEXT.app_not_readable = "The bKash app was opened, but PayTrace could not read any of its screens: the app may hide itself from accessibility services, or it was never brought to the front.";

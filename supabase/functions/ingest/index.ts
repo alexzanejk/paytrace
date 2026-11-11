@@ -227,6 +227,9 @@ async function judgeWalletCheck(commandId: string, ok: boolean, balance: number 
 
 /** After a bKash app read: each held payment the app listed was released, each one two reads did not list is a likely
  *  fake (migration 085, `app_read_recorded` event). Only messages; nothing here touches a payment. */
+/** Command kinds that read a wallet app (bKash: appread/appsearch; Nagad: nagadread/nagadsearch, migration 093). */
+const APP_LOOK_KINDS = new Set(["appread", "appsearch", "nagadread", "nagadsearch"]);
+
 async function tellAppVerdicts(commandId: string, deviceName: string): Promise<void> {
   try {
     const { data } = await db.from("events").select("detail").eq("kind", "app_read_recorded").eq("detail->>command", commandId)
@@ -237,7 +240,7 @@ async function tellAppVerdicts(commandId: string, deviceName: string): Promise<v
     } | null;
     let matched = false;
     for (const c of d?.app_confirmed ?? []) {
-      await notify.send(confirmedMessage({ provider: c.provider ?? "bkash", amount: Number(c.amount) || 0, trxId: String(c.trx_id ?? ""), how: "bKash app", detail: String(c.detail ?? ""), result: String(c.result ?? "") }));
+      await notify.send(confirmedMessage({ provider: c.provider ?? "bkash", amount: Number(c.amount) || 0, trxId: String(c.trx_id ?? ""), how: c.provider === "nagad" ? "Nagad app" : "bKash app", detail: String(c.detail ?? ""), result: String(c.result ?? "") }));
       if (c.result === "matched") matched = true;
     }
     for (const f of d?.app_fake ?? []) {
@@ -499,7 +502,8 @@ async function handle(req: Request): Promise<Response> {
         ...(cmd.via === "app" ? { via: "app" } : {}),
         // What an app read should look for: how far back, and which rows to open for their TrxID (migration 086);
         // for the owner's own search (migration 090), the TrxID or number to search the bKash app's Statement for.
-        ...((cmd.kind === "appread" || cmd.kind === "appsearch") && cmd.look && typeof cmd.look === "object" ? { look: cmd.look } : {}),
+        // The Nagad agent app's own read and search (migration 093) carry the same kind of look.
+        ...(APP_LOOK_KINDS.has(String(cmd.kind)) && cmd.look && typeof cmd.look === "object" ? { look: cmd.look } : {}),
       }
       : null;
     return json({
@@ -546,7 +550,7 @@ async function handle(req: Request): Promise<Response> {
     // A statement list feeds the wallet ledger (migration 059).
     if (ok && kind === "statement" && screens && screens.length > 0) defer(recordStatement(id, screens, device.name));
     // A bKash app read judged the wallet's held payments in the database (migration 085): tell the owner what it found.
-    if (ok && (kind === "appread" || kind === "appsearch")) defer(tellAppVerdicts(id, device.name));
+    if (ok && APP_LOOK_KINDS.has(kind)) defer(tellAppVerdicts(id, device.name));
     return json({ success: true });
   }
 

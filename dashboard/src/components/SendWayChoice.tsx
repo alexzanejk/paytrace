@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { sb } from "@/lib/supabase";
-import { appWayFor, WAY_LABEL, type SendWay } from "@/lib/sendWay";
+import { appWayFor, wayLabel, type SendWay } from "@/lib/sendWay";
 
 /** "Send by: USSD (*247#) / bKash app" (owner 2026-11-10). The app way is offered only for a bKash agent Cash In from a phone
  *  whose app build can do it; otherwise it is shown greyed out with the reason, and the choice stays USSD. */
@@ -13,17 +13,20 @@ export function SendWayChoice({ deviceId, provider, account, method, value, onCh
   onChange: (w: SendWay) => void;
 }) {
   const [appCashin, setAppCashin] = useState<unknown>(undefined);
-  const app = appWayFor({ provider: provider ?? "", account, method, appCashin });
+  const [appNagad, setAppNagad] = useState<unknown>(undefined);
+  const app = appWayFor({ provider: provider ?? "", account, method, appCashin, appNagad });
+  const wallet = provider === "nagad" ? "Nagad" : "bKash";
   // Read whether the phone's app can do it; while it cannot yet, read again every 15 s, so a phone updated while this page
   // is open turns the choice on by itself (owner 2026-11-10: "bkash app not selectable" right after updating the Vivo).
-  const waiting = provider === "bkash" && account !== "personal" && method !== "send_money" && appCashin !== true;
+  const waiting = (provider === "bkash" || provider === "nagad") && account !== "personal" && method !== "send_money" && !app.ok;
 
   useEffect(() => {
     let live = true;
     if (!deviceId) { setAppCashin(undefined); return; }
     const read = () =>
       void sb.from("devices").select("info").eq("id", deviceId).maybeSingle().then(({ data }) => {
-        if (live) setAppCashin((data?.info as { app_cashin?: unknown } | null)?.app_cashin);
+        const info = data?.info as { app_cashin?: unknown; app_nagad?: unknown } | null;
+        if (live) { setAppCashin(info?.app_cashin); setAppNagad(info?.app_nagad); }
       });
     read();
     const t = waiting ? window.setInterval(read, 15_000) : undefined;
@@ -52,15 +55,17 @@ export function SendWayChoice({ deviceId, provider, account, method, value, onCh
               onClick={() => onChange(w)}
               className={`rounded-lg border px-3 py-1.5 text-sm ${on ? "border-primary bg-primary text-primary-foreground" : "bg-card"} disabled:cursor-not-allowed disabled:opacity-50`}
             >
-              {WAY_LABEL[w]}
+              {wayLabel(w, provider)}
             </button>
           );
         })}
       </div>
-      {!app.ok && provider === "bkash" ? <p className="text-xs text-muted-foreground">{app.why}</p> : null}
+      {!app.ok && (provider === "bkash" || provider === "nagad") ? <p className="text-xs text-muted-foreground">{app.why}</p> : null}
       {value === "app" ? (
         <p className="text-xs text-muted-foreground">
-          The phone opens the bKash app, types the PIN slowly, and does the tap and hold only when the app shows exactly this number and amount.
+          {provider === "nagad"
+            ? "The phone opens the Nagad app, fills in the number, amount and PIN, and presses হ্যাঁ only when the confirmation shows exactly this number and amount."
+            : `The phone opens the ${wallet} app, types the PIN slowly, and does the tap and hold only when the app shows exactly this number and amount.`}
         </p>
       ) : null}
     </div>

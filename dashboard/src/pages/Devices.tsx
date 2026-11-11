@@ -475,7 +475,7 @@ function DeviceCard({
         <div className="flex flex-col gap-2">
           <PhoneActions deviceId={d.id} />
           <PhonePermissions device={d} onChanged={onChanged} />
-          {d.allow_balance !== false ? WALLETS.map((w) => <BalanceCheck key={w} deviceId={d.id} provider={w} appBalance={(d.info as { app_balance?: unknown } | null | undefined)?.app_balance} />) : null}
+          {d.allow_balance !== false ? WALLETS.map((w) => <BalanceCheck key={w} deviceId={d.id} provider={w} appBalance={(d.info as { app_balance?: unknown } | null | undefined)?.app_balance} appNagad={(d.info as { app_nagad?: unknown } | null | undefined)?.app_nagad} />) : null}
           {d.allow_cashin === true ? <CashInSection deviceId={d.id} /> : null}
           {d.allow_cashin === true ? <B2bCommand deviceId={d.id} /> : null}
           {d.allow_balance !== false ? <StatementSection deviceId={d.id} wallets={d.info?.wallets} /> : null}

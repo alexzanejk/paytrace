@@ -85,14 +85,18 @@ test("a cash-in is described in full, so nothing is sent on a glance", () => {
 // ---- Phone controls (2026-11-02) ----
 {
   const ctl: PhoneCommand = { id: "c", kind: "restart", provider: null, status: "queued", balance: null, error: null, created_at: "2026-11-02T10:00:00Z", finished_at: null };
-  // The phone's PhoneActions.KINDS names exactly these seven; another here would be queued and answered "unsupported".
+  // The phone's PhoneActions.KINDS names the first seven and NagadApp.KINDS the two Nagad ones; another here would be
+  // queued and answered "unsupported".
   {
     const t0 = "2026-11-11T08:02:14Z", w = (x: string) => x.slice(11, 16);
     check("the recorder says it is still recording, not that it read anything",
       recordingLine(t0, w, Date.parse(t0) + 60_000).startsWith("Recording:") && recordingLine(t0, w, Date.parse(t0) + 60_000).includes("08:12"));
     check("and says it ended after 10 minutes", recordingLine(t0, w, Date.parse(t0) + 11 * 60_000).includes("has ended"));
   }
-  check("the seven phone controls, in this order", JSON.stringify(PHONE_ACTION_KINDS) === JSON.stringify(["restart", "inbox", "resend", "screen", "ring", "apprecord", "appread"]));
+  check("the nine phone controls, in this order", JSON.stringify(PHONE_ACTION_KINDS) === JSON.stringify(["restart", "inbox", "resend", "screen", "ring", "apprecord", "appread", "nagadrecord", "nagadread"]));
+  check("a Nagad control's failure speaks of the Nagad app", actionLine({ ...ctl, kind: "nagadread", status: "failed", error: "login_failed", finished_at: "2026-11-11T10:00:00Z" }, when).includes("Nagad app") &&
+    !actionLine({ ...ctl, kind: "nagadread", status: "failed", error: "login_failed", finished_at: "2026-11-11T10:00:00Z" }, when).includes("bKash"));
+  check("the Nagad recorder says Nagad", recordingLine("2026-11-11T08:02:14Z", (x) => x, Date.parse("2026-11-11T08:03:00Z"), "Nagad").includes("Nagad app"));
   check("every control has a button, a busy line, a done line and a why", PHONE_ACTIONS.every((a) => a.label && a.busy && a.done && a.help));
   check("wallet commands are not controls", !isPhoneAction("balance") && !isPhoneAction("cashin") && !isPhoneAction("statement") && !isPhoneAction(null));
   check("controls carry no wallet", ctl.provider === null && isPhoneAction(ctl.kind));

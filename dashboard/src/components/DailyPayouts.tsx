@@ -240,7 +240,7 @@ function PartnerDays({
                 <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
                 {byHand
                   ? `Record ${ticked.size} day${ticked.size === 1 ? "" : "s"} of ${nameOf(partnerId)}'s commission (${tk(split.total)}) as paid.`
-                  : `Send ${tk(split.send)} to ${number} by ${option!.method === "cash_in" ? "Cash In" : "Send Money"} (${option!.label}), ${wayWords(way)}. ${way === "app" ? "The phone sends only when the bKash app shows this number and this amount." : "The phone types the PIN only on the wallet screen that shows this number and this amount."}`}
+                  : `Send ${tk(split.send)} to ${number} by ${option!.method === "cash_in" ? "Cash In" : "Send Money"} (${option!.label}), ${wayWords(way, option!.provider)}. ${way === "app" ? `The phone sends only when the ${option!.provider === "nagad" ? "Nagad" : "bKash"} app shows this number and this amount.` : "The phone types the PIN only on the wallet screen that shows this number and this amount."}`}
               </p>
               <div className="flex gap-2">
                 <Button disabled={busy} onClick={() => void go()}>{busy ? "Working…" : byHand ? "Yes, mark paid" : "Yes, pay it"}</Button>

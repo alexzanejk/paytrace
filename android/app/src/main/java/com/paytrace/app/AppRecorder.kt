@@ -147,15 +147,21 @@ object AppRecorder {
 
     fun recording(): Boolean = running
 
-    fun start(ctx: Context, commandId: String?, done: (UssdOutcome) -> Unit) {
+    fun start(ctx: Context, commandId: String?, done: (UssdOutcome) -> Unit) = start(ctx, commandId, "bkash", done)
+
+    /** [target] "nagad" records the Nagad agent app instead (owner 2026-11-11), the same way. */
+    fun start(ctx: Context, commandId: String?, target: String, done: (UssdOutcome) -> Unit) {
+        val nagad = target == NagadRead.APP
+        val name = if (nagad) "Nagad" else "bKash"
+        val match: (String?) -> Boolean = if (nagad) { p -> NagadRead.isNagad(p) } else { p -> isBkash(p) }
         val app = ctx.applicationContext
         val svc = UssdSession.launchContext() as? AccessibilityService
             ?: return done(UssdOutcome(false, null, "accessibility_not_running"))
         if (running || AppReader.active() || UssdSession.active() || UssdApi.active()) return done(UssdOutcome(false, null, "busy"))
-        val pkg = findApp(app) ?: return done(UssdOutcome(false, null, "no_bkash_app"))
+        val pkg = (if (nagad) NagadApp.findApp(app) else findApp(app)) ?: return done(UssdOutcome(false, null, if (nagad) "no_nagad_app" else "no_bkash_app"))
         val command = commandId?.takeIf { Regex("^[0-9a-fA-F-]{36}$").matches(it) } ?: return done(UssdOutcome(false, null, "bad_command"))
         running = true
-        notifyPerson(app)
+        notifyPerson(app, name)
         try {
             svc.startActivity(app.packageManager.getLaunchIntentForPackage(pkg)!!.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (e: Exception) {
@@ -164,7 +170,7 @@ object AppRecorder {
         val version = try { app.packageManager.getPackageInfo(pkg, 0).versionName ?: "?" } catch (e: Exception) { "?" }
         // Answered at once: the screens follow one by one (app_screens on the server).
         done(UssdOutcome(true, null, null, screens = listOf(
-            "bKash app recording started: up to ${MAP_MS / 60_000} minutes, every new screen is sent to the server as it appears\npackage: $pkg\nversion: $version")))
+            "$name app recording started: up to ${MAP_MS / 60_000} minutes, every new screen is sent to the server as it appears\npackage: $pkg\nversion: $version")))
 
         val settings = AppSettings(app)
         val sender = Executors.newSingleThreadExecutor()
@@ -205,8 +211,8 @@ object AppRecorder {
                     val roots = ArrayList<AccessibilityNodeInfo>()
                     try { svc.windows?.forEach { w -> w.root?.let { roots.add(it) } } } catch (e: Exception) { }
                     if (roots.isEmpty()) svc.rootInActiveWindow?.let { roots.add(it) }
-                    val mine = roots.filter { isBkash(it.packageName?.toString()) }
-                    val others = roots.mapNotNull { it.packageName?.toString() }.filter { !isBkash(it) && it != app.packageName }.distinct().take(5)
+                    val mine = roots.filter { match(it.packageName?.toString()) }
+                    val others = roots.mapNotNull { it.packageName?.toString() }.filter { !match(it) && it != app.packageName }.distinct().take(5)
                     if (mine.isNotEmpty()) {
                         lastSeen = now
                         val lines = ArrayList<String>()
@@ -225,8 +231,8 @@ object AppRecorder {
                 }
                 when {
                     now - started >= MAP_MS -> finish("10 minutes are up")
-                    lastSeen > 0 && now - lastSeen >= AWAY_MS -> finish("the bKash app was not on screen for 2 minutes")
-                    lastSeen == 0L && now - started >= AWAY_MS -> finish("the bKash app never came on screen")
+                    lastSeen > 0 && now - lastSeen >= AWAY_MS -> finish("the $name app was not on screen for 2 minutes")
+                    lastSeen == 0L && now - started >= AWAY_MS -> finish("the $name app never came on screen")
                     seq >= MAX_SENT -> finish("screen limit")
                     else -> main.postDelayed(this, TICK_MS)
                 }
@@ -262,7 +268,7 @@ object AppRecorder {
         for (i in 0 until n.childCount) deep(n.getChild(i), out, count, depth + 1)
     }
 
-    private fun notifyPerson(app: Context) {
+    private fun notifyPerson(app: Context, name: String) {
         try {
             val nm = app.getSystemService(NotificationManager::class.java) ?: return
             nm.createNotificationChannel(NotificationChannel(CHANNEL, "Reading the bKash app (test)", NotificationManager.IMPORTANCE_HIGH))
@@ -270,12 +276,12 @@ object AppRecorder {
                 NOTIF_ID,
                 NotificationCompat.Builder(app, CHANNEL)
                     .setSmallIcon(android.R.drawable.ic_dialog_info)
-                    .setContentTitle("PayTrace is recording the bKash app (10 minutes)")
+                    .setContentTitle("PayTrace is recording the $name app (10 minutes)")
                     .setContentText("Go through the screens slowly. Wait a second on each one.")
                     .setStyle(NotificationCompat.BigTextStyle().bigText(
-                        "Mapping the bKash app for the owner: go through the screens slowly and wait a second on each one, so it " +
+                        "Mapping the $name app for the owner: go through the screens slowly and wait a second on each one, so it " +
                             "is saved. PayTrace only reads the screen; it never taps or types anything. It stops after 10 minutes " +
-                            "or 2 minutes after you leave the bKash app.",
+                            "or 2 minutes after you leave the $name app.",
                     ))
                     .setAutoCancel(true)
                     .setTimeoutAfter(MAP_MS)

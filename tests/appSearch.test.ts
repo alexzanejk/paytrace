@@ -1,4 +1,4 @@
-import { searchQuery, maskNumber, readSearch, outcomeWords, searchPhones, searchTargets, queueErrorText } from "../dashboard/src/lib/appSearch.ts";
+import { searchQuery, maskNumber, nagadMask, readSearch, outcomeWords, searchPhones, searchTargets, queueErrorText, SEARCH_RPC } from "../dashboard/src/lib/appSearch.ts";
 
 let failed = 0;
 const check = (name: string, ok: boolean, got?: unknown) => {
@@ -35,6 +35,19 @@ check("auto without a known phone asks them all", searchTargets("auto", phones, 
 check("a chosen phone only", searchTargets("c", phones, "a").join() === "c" && searchTargets("zz", phones, null).length === 0);
 check("all is all", searchTargets("all", phones, "c").join() === "a,c");
 check("refusals in words", queueErrorText("app_not_ready").includes("Update") && queueErrorText("bad_query").includes("TrxID"));
+
+// ---- The Nagad agent app (migration 093) ----
+{
+  const devs = [
+    { id: "n", name: "Vivo", status: "approved", last_seen_at: new Date().toISOString(), info: { app_search: true, app_nagad: true } },
+    { id: "b", name: "Old", status: "approved", last_seen_at: new Date().toISOString(), info: { app_search: true } },
+  ];
+  check("only phones that can drive the Nagad app search it", searchPhones(devs, Date.now(), "nagad").map((p) => p.id).join() === "n");
+  check("bKash search still asks both", searchPhones(devs, Date.now(), "bkash").length === 2);
+  check("a Nagad search goes to its own queue", SEARCH_RPC.nagad === "queue_nagad_search" && SEARCH_RPC.bkash === "queue_app_search");
+  check("a Nagad answer is read like a bKash one", readSearch(["Nagad app search\nquery: 76AUQR5I\noutcome: found\nrow: ক্যাশ আউট · 018XXXX8710 · 09:43 PM 11/11/26 · ৳500 · 76AUQR5I"])?.found === true);
+  check("Nagad hides a number its own way", nagadMask("01883718710") === "018****8710");
+}
 
 if (failed) { console.error(`${failed} failed`); process.exit(1); }
 console.log("\nall passed");

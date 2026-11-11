@@ -3,7 +3,7 @@ import { Search } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { errorText, isLive, POLL_MS, type PhoneCommand } from "@/lib/phoneCommands";
-import { maskNumber, outcomeWords, queueErrorText, readSearch, searchPhones, searchQuery, searchTargets, type SearchKind } from "@/lib/appSearch";
+import { maskNumber, nagadMask, outcomeWords, queueErrorText, readSearch, SEARCH_APP_LABEL, SEARCH_RPC, searchPhones, searchQuery, searchTargets, type SearchApp, type SearchKind } from "@/lib/appSearch";
 import { nudgePhone } from "@/lib/wake";
 import { reviewReasonText } from "@/lib/reasons";
 import { useDevices } from "@/hooks/useDevices";
@@ -16,13 +16,19 @@ import { Card } from "@/components/ui/card";
 interface Known { trx_id: string; status: string; review_reason: string | null; amount: number; provider: string; device_id: string | null; received_at: string }
 interface Answer { deviceId: string; cmd: PhoneCommand | null; problem?: string }
 
+/** The shared error texts speak of the bKash app; for a Nagad search they mean the Nagad app. */
+const appWords = (t: string, app: SearchApp) => (app === "nagad" ? t.replace(/bKash/g, "Nagad") : t);
+
 const TONE: Record<string, string> = { ok: "text-emerald-700 dark:text-emerald-400", warn: "text-amber-700 dark:text-amber-400", idle: "text-muted-foreground" };
 
 /** "Search the bKash app" (owner 2026-11-11): type a TrxID or a customer's number, and a phone looks it up in its own bKash
  *  agent app (Statements search). Read only; a held payment whose TrxID is found there is released by the server. */
 export function AppSearch() {
   const devices = useDevices(30000);
-  const phones = searchPhones(devices.list);
+  const [app, setApp] = useState<SearchApp>("bkash");
+  const phones = searchPhones(devices.list, Date.now(), app);
+  const appName = SEARCH_APP_LABEL[app];
+  const wallet = app === "nagad" ? "Nagad" : "bKash";
   const [text, setText] = useState("");
   const [choice, setChoice] = useState("auto");
   const [problem, setProblem] = useState("");
@@ -37,7 +43,7 @@ export function AppSearch() {
 
   /** Queues one search, wakes the phone, and waits for its answer (about a minute). */
   async function askPhone(deviceId: string, query: string): Promise<Answer> {
-    const { data, error } = await sb.rpc("queue_app_search", { p_device: deviceId, p_query: query });
+    const { data, error } = await sb.rpc(SEARCH_RPC[app], { p_device: deviceId, p_query: query });
     if (error) return { deviceId, cmd: null, problem: queueErrorText(error.message) };
     nudgePhone(deviceId);
     const id = data as string;
@@ -62,10 +68,10 @@ export function AppSearch() {
     // What PayTrace itself knows: the SMS with this TrxID, or the SMS from this number.
     const k = q.kind === "trx"
       ? await sb.from("payments").select("trx_id,status,review_reason,amount,provider,device_id,received_at").eq("trx_id", q.query).limit(5)
-      : await sb.from("payments").select("trx_id,status,review_reason,amount,provider,device_id,received_at").in("counterparty", [q.query, maskNumber(q.query)]).order("received_at", { ascending: false }).limit(5);
+      : await sb.from("payments").select("trx_id,status,review_reason,amount,provider,device_id,received_at").in("counterparty", [q.query, maskNumber(q.query), nagadMask(q.query)]).order("received_at", { ascending: false }).limit(5);
     const rows = (k.data ?? []) as Known[];
     setKnown(rows);
-    const targets = searchTargets(choice, phones, q.kind === "trx" ? rows.find((r) => r.provider === "bkash")?.device_id ?? null : null);
+    const targets = searchTargets(choice, phones, q.kind === "trx" ? rows.find((r) => r.provider === app)?.device_id ?? null : null);
     if (targets.length === 0) { setBusy(false); return setProblem("No phone can search yet: each needs the newest PayTrace app."); }
     for (const deviceId of targets) {
       if (!alive.current) return;
@@ -82,10 +88,27 @@ export function AppSearch() {
 
   return (
     <Card className="mb-4 p-4">
-      <div className="mb-1 flex items-center gap-2 font-semibold"><Search className="h-4 w-4" aria-hidden /> Search the bKash app</div>
+      <div className="mb-1 flex flex-wrap items-center gap-2 font-semibold">
+        <Search className="h-4 w-4" aria-hidden /> Search the
+        <span className="inline-flex gap-1" role="radiogroup" aria-label="Which wallet app">
+          {(["bkash", "nagad"] as const).map((a) => (
+            <button
+              key={a}
+              type="button"
+              role="radio"
+              aria-checked={app === a}
+              disabled={busy}
+              onClick={() => { setApp(a); setChoice("auto"); setAnswers([]); }}
+              className={`rounded-md border px-2 py-0.5 text-sm ${app === a ? "border-primary bg-primary text-primary-foreground" : "bg-card"}`}
+            >
+              {SEARCH_APP_LABEL[a]}
+            </button>
+          ))}
+        </span>
+      </div>
       <p className="mb-3 text-sm text-muted-foreground">
-        A phone opens its bKash agent app, searches Statements and shows what bKash itself has. It only reads. A held payment
-        whose TrxID is found there is released by itself. Takes about a minute per phone.
+        A phone opens its {wallet} agent app, searches its statement and shows what {wallet} itself has. It only reads. A held
+        payment whose TrxID is found there is released by itself. Takes about a minute per phone.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Input
@@ -105,7 +128,7 @@ export function AppSearch() {
           className="h-10 w-[calc(50%-0.25rem)] rounded-lg border border-input bg-card px-3 text-sm sm:w-56"
         >
           <option value="auto">Best phone (the one that got the SMS)</option>
-          <option value="all">All bKash phones</option>
+          <option value="all">All {wallet} phones</option>
           {phones.map((p) => <option key={p.id} value={p.id}>{p.name}{p.online ? "" : " (offline)"}</option>)}
         </select>
         <Button size="sm" onClick={() => void run()} disabled={busy || !text.trim()}>
@@ -145,9 +168,9 @@ export function AppSearch() {
           <div key={a.deviceId} className="mt-3 rounded-lg border p-3 text-sm">
             <div className="mb-1 font-medium">{nameOf(a.deviceId)}</div>
             {a.problem ? <p className="text-destructive">{a.problem}</p>
-              : !a.cmd || isLive(a.cmd) ? <p className="text-muted-foreground">{a.cmd?.status === "running" ? "The phone is searching its bKash app (about a minute)…" : "Waking the phone…"}</p>
-              : a.cmd.status !== "done" ? <p className="text-amber-700 dark:text-amber-400">The search did not work. {errorText(a.cmd.error, "bKash")}</p>
-              : words ? <p className={TONE[words.tone]}>{words.text}</p>
+              : !a.cmd || isLive(a.cmd) ? <p className="text-muted-foreground">{a.cmd?.status === "running" ? `The phone is searching its ${appName} (about a minute)…` : "Waking the phone…"}</p>
+              : a.cmd.status !== "done" ? <p className="text-amber-700 dark:text-amber-400">The search did not work. {appWords(errorText(a.cmd.error, wallet), app)}</p>
+              : words ? <p className={TONE[words.tone]}>{appWords(words.text, app)}</p>
               : <p className="text-muted-foreground">The phone answered, but not with a search result. Update its PayTrace app.</p>}
             {r && r.rows.length ? (
               <ul className="mt-2 space-y-1">
