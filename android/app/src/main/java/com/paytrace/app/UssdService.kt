@@ -913,6 +913,28 @@ object UssdCommands {
         // Phone controls (restart, inbox, resend, screen, ring) name no wallet, so they are routed BEFORE the wallet
         // check below, which would otherwise answer "unsupported" to every one of them.
         val kind = cmd.optString("kind")
+        // The Nagad agent app (owner 2026-11-11): its own three kinds, so nothing on the server mixes them with bKash's
+        // (migration 093).
+        if (kind in NagadApp.KINDS) {
+            val app = ctx.applicationContext
+            val look = AppLook.parse(cmd.optJSONObject("look"))
+            val back: (UssdOutcome) -> Unit = { outcome -> report(ctx, id, outcome, kind) }
+            Handler(Looper.getMainLooper()).post {
+                when (kind) {
+                    NagadApp.RECORD_KIND -> AppRecorder.start(app, id, NagadRead.APP, back)
+                    NagadApp.SEARCH_KIND ->
+                        if (look?.query == null) back(UssdOutcome(false, null, "bad_search")) else NagadApp.start(app, NagadTask.Search(look.query), back)
+                    else -> {
+                        val now = System.currentTimeMillis()
+                        // Back far enough for any held payment the server names, never more than 7 days.
+                        val asked = look?.backTo?.let { maxOf(it - 600_000L, now - 7 * 86_400_000L) }
+                        val cut = NagadApp.cutoff(app, now).let { c -> if (asked != null) minOf(c, asked) else c }
+                        NagadApp.start(app, NagadTask.Read(cut), back)
+                    }
+                }
+            }
+            return
+        }
         // The owner's own search of the bKash app (owner 2026-11-11): a TrxID or a phone number, read only.
         if (kind == AppReader.SEARCH_KIND) {
             val look = AppLook.parse(cmd.optJSONObject("look"))
@@ -937,7 +959,10 @@ object UssdCommands {
                     report(ctx, id, outcome)
                 }
                 // migration 089: the dashboard chose the bKash app for this balance check instead of *247#.
-                if (cmd.optString("via") == "app") AppBalance.start(ctx, provider, finish) else UssdRunner.run(ctx, provider, finish)
+                if (cmd.optString("via") == "app") {
+                    if (provider == UssdProviders.NAGAD) Handler(Looper.getMainLooper()).post { NagadApp.start(ctx, NagadTask.Balance, finish) }
+                    else AppBalance.start(ctx, provider, finish)
+                } else UssdRunner.run(ctx, provider, finish)
             }
             "cashin" -> {
                 val order = CashInOrder(provider, cmd.optString("to_number"), cmd.optDouble("amount", -1.0))
@@ -946,7 +971,10 @@ object UssdCommands {
                     report(ctx, id, outcome, "cashin")
                 }
                 // migration 082: the dashboard chose the bKash app for this one instead of USSD.
-                if (cmd.optString("via") == "app") AppCashIn.start(ctx, order, finish) else UssdRunner.runCashIn(ctx, order, finish)
+                if (cmd.optString("via") == "app") {
+                    if (provider == UssdProviders.NAGAD) Handler(Looper.getMainLooper()).post { NagadApp.start(ctx, NagadTask.CashIn(order), finish) }
+                    else AppCashIn.start(ctx, order, finish)
+                } else UssdRunner.runCashIn(ctx, order, finish)
             }
             "sendmoney" -> {
                 val order = CashInOrder(provider, cmd.optString("to_number"), cmd.optDouble("amount", -1.0))

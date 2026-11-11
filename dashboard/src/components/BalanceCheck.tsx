@@ -10,7 +10,7 @@ import { appBalanceFor } from "@/lib/sendWay";
 
 /** Asks this phone to read a wallet's balance through the provider's own USSD menu, or for bKash through the bKash app
  *  (migration 089, owner 2026-11-11). Nothing is sent or spent: it only reads. */
-export function BalanceCheck({ deviceId, provider = "nagad", appBalance }: { deviceId: string; provider?: WalletName; appBalance?: unknown }) {
+export function BalanceCheck({ deviceId, provider = "nagad", appBalance, appNagad }: { deviceId: string; provider?: WalletName; appBalance?: unknown; appNagad?: unknown }) {
   const label = walletLabel(provider);
   const [last, setLast] = useState<PhoneCommand | null>(null);
   const [problem, setProblem] = useState("");
@@ -51,7 +51,8 @@ export function BalanceCheck({ deviceId, provider = "nagad", appBalance }: { dev
     await load();
   }
 
-  const app = appBalanceFor(provider, appBalance);
+  const app = appBalanceFor(provider, appBalance, appNagad);
+  const appName = provider === "nagad" ? "Nagad app" : "bKash app";
   const line = commandLine(last, tk as (n: number) => string, when as (t: string) => string, label);
   return (
     <div className="space-y-2">
@@ -59,15 +60,15 @@ export function BalanceCheck({ deviceId, provider = "nagad", appBalance }: { dev
         <Button size="sm" variant="outline" onClick={() => void ask("ussd")} disabled={busy || isLive(last)}>
           <Wallet aria-hidden /> {isLive(last) ? "Checking…" : `Check ${label} balance`}
         </Button>
-        {provider === "bkash" ? (
+        {provider === "bkash" || provider === "nagad" ? (
           <Button
             size="sm"
             variant="outline"
             onClick={() => void ask("app")}
             disabled={busy || isLive(last) || !app.ok}
-            title={app.ok ? "Opens the bKash app, logs in and taps Tap for Balance. Only reads." : app.why}
+            title={app.ok ? `Opens the ${appName}, signs in and taps for the balance. Only reads.` : app.why}
           >
-            <Wallet aria-hidden /> Check in bKash app
+            <Wallet aria-hidden /> Check in {appName}
           </Button>
         ) : null}
         {line ? <span role="status" className="text-sm text-muted-foreground">{line}</span> : null}

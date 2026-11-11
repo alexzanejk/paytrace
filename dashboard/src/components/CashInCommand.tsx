@@ -144,7 +144,7 @@ export function CashInCommand({ deviceId, provider }: { deviceId: string; provid
         <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">
           <p className="flex items-start gap-2 font-medium">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-            <span>{cashInSummary(label, amount, numberLabel(chosen), tk as (n: number) => string)} Sent {wayWords(way)}.</span>
+            <span>{cashInSummary(label, amount, numberLabel(chosen), tk as (n: number) => string)} Sent {wayWords(way, provider)}.</span>
           </p>
           <p className="mt-1 text-muted-foreground">
             This really sends the money. Check the amount and the number: it cannot be taken back.

@@ -127,6 +127,8 @@ object Sender {
         o.put("app_balance", true)
         // This build searches the bKash app's Statement for a TrxID or phone number the dashboard sends (kind appsearch).
         o.put("app_search", true)
+        // This build can drive the Nagad agent app too: balance, statement read, search, Cash In (migration 093).
+        o.put("app_nagad", true)
         // The accessibility service, as it really is: Android's switch can read ON while the service is dead (the phone killed
         // the app). The dashboard shows it, and how often this phone has mended it by itself (AccessibilityRepair).
         o.put("accessibility_on", UssdSetup.accessibilityOn(ctx))

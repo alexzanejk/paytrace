@@ -67,7 +67,7 @@ object AppReader {
 
     @Volatile private var running = false
     /** True while the reader OR an app cash-in drives the bKash app: USSD runs and each other wait. */
-    fun active(): Boolean = running || AppCashIn.running || AppB2b.running || AppBalance.running || AppRecorder.recording()
+    fun active(): Boolean = running || AppCashIn.running || AppB2b.running || AppBalance.running || AppRecorder.recording() || NagadApp.running
 
     internal val LOGIN = setOf("লগ ইন", "log in", "login")
     private val INBOX = setOf("ইনবক্স", "inbox")
@@ -965,7 +965,7 @@ object AppReader {
 
     /** A finger drag up (to older rows) or down (back to newer ones), then a short still hold before lifting, so the
      *  list does not fling on by itself. */
-    private fun swipe(svc: AccessibilityService, up: Boolean) {
+    internal fun swipe(svc: AccessibilityService, up: Boolean) {
         val dm = svc.resources.displayMetrics
         val (fx, low, high) = pace.swipe().let { Triple(it[0], it[1], it[2]) }
         val x0 = (dm.widthPixels * fx).toFloat()
@@ -985,6 +985,15 @@ object AppReader {
             }, null)
         } catch (e: Exception) { }
     }
+}
+
+/** A finger drag in from the left edge (opens a side menu that has no button PayTrace can find). Top-level so the Nagad
+ *  app can use it too. */
+internal fun AppReader.edgeSwipe(svc: AccessibilityService) {
+    val dm = svc.resources.displayMetrics
+    val y = dm.heightPixels * 0.4f
+    val path = Path().apply { moveTo(4f, y); lineTo(dm.widthPixels * 0.65f, y + 10f) }
+    try { svc.dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, pace.swipeMs())).build(), null, null) } catch (e: Exception) { }
 }
 
 /** Human pacing for driving the bKash app (owner 2026-11-10: "perform humanly, not too fast, smooth like a human"):

@@ -23,7 +23,7 @@ export interface SearchResult { query: string; outcome: string; rows: string[]; 
 /** The phone's summary screen, or null when the answer is not a search answer. */
 export function readSearch(screens: string[] | null | undefined): SearchResult | null {
   const first = (screens ?? [])[0];
-  if (!first || !first.startsWith("bKash app search")) return null;
+  if (!first || !/^(bKash|Nagad) app search/.test(first)) return null;
   let query = "", outcome = "", sheet = "";
   const rows: string[] = [];
   for (const line of first.split("\n")) {
@@ -57,10 +57,22 @@ export interface SearchPhone { id: string; name: string; online: boolean }
 
 interface DeviceLike { id: string; name?: string | null; pair_code?: string | null; status: string; last_seen_at?: string | null; info?: unknown }
 
-/** Phones that can search: approved, and their app build says so (heartbeat `app_search`). Online ones first. */
-export function searchPhones(devices: DeviceLike[], now = Date.now()): SearchPhone[] {
+/** 01883718710 -> 018****8710, the way Nagad's SMS and app hide a number. */
+export const nagadMask = (n: string): string => (/^01[0-9]{9}$/.test(n) ? `${n.slice(0, 3)}****${n.slice(-4)}` : n);
+
+/** Which wallet app a search looks in (owner 2026-11-11: the Nagad agent app as well as bKash's, migration 093). */
+export type SearchApp = "bkash" | "nagad";
+export const SEARCH_APP_LABEL: Record<SearchApp, string> = { bkash: "bKash app", nagad: "Nagad app" };
+/** The heartbeat flag that says a phone's build can search that app. */
+const SEARCH_FLAG: Record<SearchApp, string> = { bkash: "app_search", nagad: "app_nagad" };
+/** The server's queue function for that app. */
+export const SEARCH_RPC: Record<SearchApp, string> = { bkash: "queue_app_search", nagad: "queue_nagad_search" };
+
+/** Phones that can search: approved, and their app build says so (heartbeat `app_search`, or `app_nagad` for the Nagad
+ *  app). Online ones first. */
+export function searchPhones(devices: DeviceLike[], now = Date.now(), app: SearchApp = "bkash"): SearchPhone[] {
   return devices
-    .filter((d) => d.status === "approved" && (d.info as { app_search?: unknown } | null | undefined)?.app_search === true)
+    .filter((d) => d.status === "approved" && (d.info as Record<string, unknown> | null | undefined)?.[SEARCH_FLAG[app]] === true)
     .map((d) => ({
       id: d.id,
       name: d.name || d.pair_code || "Phone",
