@@ -56,6 +56,16 @@ android {
     buildFeatures {
         compose = true
     }
+    // CI runs lint for ONE thing only: a call to an Android feature newer than minSdk without a version check. Such a
+    // call compiles fine and crashes only on an older phone (setForegroundServiceBehavior, Android 12+, crashed a
+    // Realme on Android 11 on every start, 2026-11-11). Any such call now fails the build instead.
+    lint {
+        checkOnly += "NewApi"
+        abortOnError = true
+        checkDependencies = false
+        textReport = true
+        textOutput = file("stdout")
+    }
 }
 
 dependencies {

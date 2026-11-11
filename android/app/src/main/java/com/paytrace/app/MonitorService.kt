@@ -52,7 +52,7 @@ class MonitorService : Service() {
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        return Notification.Builder(this, CHANNEL)
+        val b = Notification.Builder(this, CHANNEL)
             .setContentTitle("PayTrace is watching for payments")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_notify_sync_noanim)
@@ -61,9 +61,11 @@ class MonitorService : Service() {
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_SERVICE)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
-            .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
             .setDeleteIntent(Keepalive.repostIntent(this)) // swiped away: it comes straight back
-            .build()
+        // Android 12+ only. Calling it on Android 11 crashed PayTrace on every start (Realme RMX3261, 2026-11-11, seen
+        // through CrashLog; very likely the Oppo A15 too). Older Android shows the notice at once anyway.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) b.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
+        return b.build()
     }
 
     /** What the notification says right now: all fine, paused, or something to fix. */

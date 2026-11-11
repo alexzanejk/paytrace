@@ -1,1 +1,1 @@
-bKash app: the PIN is typed a little faster (about 7-8 seconds instead of 13), still digit by digit; Log in is still pressed only when bKash lights the button. If PayTrace ever stops on start, the next start shows why (please send a screenshot); phones whose secure storage refuses a key no longer crash on first start.
+Fixed: PayTrace closed at once on phones with Android 11 or older (Realme, Oppo). Those phones can now run it.
