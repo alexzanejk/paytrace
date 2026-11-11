@@ -71,6 +71,10 @@ object AppReader {
     private val INBOX = setOf("ইনবক্স", "inbox")
     private val TAB = setOf("লেনদেনসমূহ", "transactions")
     private val STATEMENT = setOf("স্টেটমেন্ট", "statement", "statements")
+    /** The Statement page's own list tab. Since 2026-11-11 (owner: "statement main, inbox backup") this list is read first:
+     *  the owner's recording showed it listing a real Tk 2,000 Cash Out the Inbox left out, with the commission on every row,
+     *  while the Inbox first shows an old copy of itself for a few seconds. */
+    private val HISTORY = setOf("লেনদেনের বিবরণী", "transaction history")
     private val SEARCH = setOf("সার্চ করুন", "search")
     /** Start the Statement search by this point of a run if TrxIDs are still unread, so it gets its share of the time. */
     private const val SEARCH_AT_MS = 95_000L
@@ -224,6 +228,8 @@ object AppReader {
         // The list must be read from its newest end: bKash keeps the scroll position between visits, and a read that starts
         // halfway down never sees anything newer (2026-11-11: the 13:33 / 13:34 reads began at 13:15 / 11:38).
         var topped = false
+        var useInbox = false     // the Statement list came up empty or never loaded: read the Inbox instead
+        var listPresses = 0
         var topKey: String? = null
         var topSwipes = 0
         var gapFrom: Set<String>? = null
@@ -507,8 +513,15 @@ object AppReader {
                                     if (idleScrolls >= 2 && scrollDown(svc, root)) note("scrolled by the list") else swipe(svc, up = true)
                                 }
                             }
-                            canAct && pressAny(svc, TAB, root) -> { nextActAt = now + pace.settle(); note("opened the transactions tab") }
-                            canAct && pressAny(svc, INBOX, root) -> { nextActAt = now + pace.settle(); note("opened the inbox") }
+                            // Statement list first; the Inbox only when the Statement list shows nothing.
+                            canAct && !useInbox && (AppBanners.emptyList(texts) || listPresses >= 4) -> {
+                                useInbox = true; topped = false; topSwipes = 0; topKey = null
+                                note("the Statement list " + (if (AppBanners.emptyList(texts)) "came up empty" else "did not load") + ", reading the Inbox instead")
+                            }
+                            canAct && !useInbox && pressAny(svc, HISTORY, root) -> { listPresses++; nextActAt = now + pace.settle(); note("opened the Statement list") }
+                            canAct && !useInbox && pressAny(svc, STATEMENT, root) -> { listPresses++; nextActAt = now + pace.settle(); note("opened Statements") }
+                            canAct && useInbox && pressAny(svc, TAB, root) -> { nextActAt = now + pace.settle(); note("opened the transactions tab") }
+                            canAct && useInbox && pressAny(svc, INBOX, root) -> { nextActAt = now + pace.settle(); note("opened the inbox") }
                             else -> {
                                 // Something left open over the app (a sheet, a sub-page, an offer): Back closes it and never
                                 // confirms anything. Never on a screen with no words (the logo, the loading bird).
