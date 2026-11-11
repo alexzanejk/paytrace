@@ -1,1 +1,1 @@
-bKash app: the "change your agent status" question bKash shows after login is closed with its X (the status itself is never changed), so automatic reads, app Cash In and B2B go on past it.
+bKash app: when bKash says the agent status is CLOSE, app Cash In and B2B switch it to OPEN first (checked in bKash's side menu) and then go on; automatic reads just close that question.

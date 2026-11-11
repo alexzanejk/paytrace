@@ -176,6 +176,7 @@ object AppCashIn {
         var backs = 0
         var held = false
         var statusHits = 0
+        val opener = AgentOpener { note(it) }
         var heldAt = 0L
         var holdTries = 0
 
@@ -327,14 +328,21 @@ object AppCashIn {
                         if (!held) {
                             if (AppBanners.wrongPin(texts)) return stop(if (cashPin.submittedAt > 0) "pin_refused" else "login_failed", "bKash says the PIN is not correct; never typed again")
                             if (AppBanners.network(texts)) return stop("app_stopped_before_send", "bKash says: check your network (nothing was sent)")
-                            // "Change the agent status" after login: closed with its X, the status is never changed.
+                            // "Change the agent status" after login: while the status is CLOSE bKash will not do Cash In or
+                            // B2B (owner 2026-11-11), so it is switched to OPEN and checked in the side menu first.
+                            if (opener.active) {
+                                when (opener.step(svc, nodes, texts, now, pace.settle())) {
+                                    AgentOpener.Result.FAILED -> return stop("app_stopped_before_send", "the agent status could not be set to OPEN (nothing was sent)")
+                                    AgentOpener.Result.DONE -> { progressAt = now; nextActAt = now + pace.settle() }
+                                    AgentOpener.Result.WORKING -> progressAt = now
+                                }
+                                main.postDelayed(this, TICK_MS); return
+                            }
                             if (AppBanners.agentStatus(texts)) {
                                 if (canAct) {
                                     statusHits++
                                     if (statusHits > 3) return stop("app_stopped_before_send", "bKash keeps asking to change the agent status (nothing was sent)")
-                                    note("bKash asks to change the agent status: closing the question with its X, the status is left as it is")
-                                    if (!AppReader.closeAgentStatus(svc, nodes)) svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-                                    nextActAt = now + pace.settle()
+                                    opener.start(now)
                                 }
                                 main.postDelayed(this, TICK_MS); return
                             }
