@@ -210,6 +210,7 @@ object AppReader {
         var retyping = false     // the app left the screen while the PIN was being typed and was opened again
         var relaunches = 0
         var netHits = 0
+        var statusHits = 0
         var backs = 0
         var scrolls = 0
         var idleScrolls = 0
@@ -289,6 +290,16 @@ object AppReader {
                                 if (netHits >= 3) return finish(rows.isNotEmpty(), "no_network", "the bKash app has no network")
                                 closeBanner(svc, nodes)
                                 progressAt = now; nextActAt = now + pace.settle() + 4_000
+                            }
+                            main.postDelayed(this, TICK_MS); return
+                        }
+                        if (AppBanners.agentStatus(texts)) {
+                            if (canAct) {
+                                statusHits++
+                                if (statusHits > 3) return finish(rows.isNotEmpty(), "unexpected_screen", "bKash keeps asking to change the agent status")
+                                note("bKash asks to change the agent status (it says CLOSE): closing the question with its X, the status is left as it is")
+                                if (!closeAgentStatus(svc, nodes)) svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                                progressAt = now; nextActAt = now + pace.settle()
                             }
                             main.postDelayed(this, TICK_MS); return
                         }
@@ -592,6 +603,14 @@ object AppReader {
         return tap(svc, c) || c.performAction(AccessibilityNodeInfo.ACTION_CLICK)
     }
 
+    /** Closes the "change the agent status" sheet by its X (`tag_agent_cancel`), never by its "পরিবর্তন করুন" button. */
+    internal fun closeAgentStatus(svc: AccessibilityService, nodes: List<AccessibilityNodeInfo>): Boolean {
+        val c = nodes.firstOrNull { (it.viewIdResourceName ?: "").endsWith("tag_agent_cancel") }
+            ?: nodes.firstOrNull { (it.contentDescription?.toString() ?: "").trim().equals("icon close", ignoreCase = true) }
+            ?: return false
+        return tap(svc, c) || c.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+    }
+
     /** Every node, skipping boxes being typed into. */
     internal fun collect(n: AccessibilityNodeInfo?, out: MutableList<AccessibilityNodeInfo>, depth: Int) {
         if (n == null || depth > 40 || out.size > 1500) return
@@ -755,6 +774,11 @@ object AppBanners {
     fun pinHint(texts: List<String>): Boolean = has(texts, "পিন নাম্বার দিন")
     /** A list that did not load says "আপনি সম্প্রতি কোনো লেনদেন সম্পন্ন করেন নি"; it says nothing about any payment. */
     fun emptyList(texts: List<String>): Boolean = has(texts, "সম্প্রতি", "লেনদেন", "করেন নি")
+    /** The sheet "স্ট্যাটাস পরিবর্তন করুন / আপনার এজেন্ট অ্যাপের বর্তমান স্ট্যাটাসটি CLOSE রয়েছে ..." (recorder run 65408217,
+     *  2026-11-11): bKash asks after login to switch the agent's shop status. It is closed with its X; the status is the
+     *  owner's business and is never changed by PayTrace (its "পরিবর্তন করুন" button is never pressed). */
+    fun agentStatus(texts: List<String>): Boolean =
+        has(texts, "স্ট্যাটাস পরিবর্তন করুন") || has(texts, "এজেন্ট অ্যাপের", "স্ট্যাটাস") || has(texts, "change", "agent", "status")
 }
 
 /** Pressing Log in only when bKash has lit the button: it stays grey until the whole PIN is in, so a grey button after

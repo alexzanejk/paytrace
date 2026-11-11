@@ -145,6 +145,14 @@ class AppReaderTest {
         assertFalse(AppBanners.pinHint(listOf("বিকাশ পিন নাম্বার", "পিন ভুলে গিয়েছেন?")))
         assertTrue(AppBanners.emptyList(listOf("আপনি সম্প্রতি কোনো লেনদেন সম্পন্ন করেন নি")))
         assertFalse(AppBanners.emptyList(listOf("কোন লেনদেন পাওয়া যায়নি")))
+    }
+
+    @Test fun theAgentStatusSheetIsKnownButTheDrawerIsNot() {
+        // Recorder run 65408217 (2026-11-11): the sheet after login, and the side menu that also names the status.
+        assertTrue(AppBanners.agentStatus(listOf("স্ট্যাটাস পরিবর্তন করুন",
+            "আপনার এজেন্ট অ্যাপের বর্তমান স্ট্যাটাসটি CLOSE রয়েছে, দয়া করে স্ট্যাটাসটি পরিবর্তন করুন", "পরিবর্তন করুন")))
+        assertFalse(AppBanners.agentStatus(listOf("বিকাশ মেন্যু", "English", "এজেন্টের স্ট্যাটাস", "খোলা", "হোম", "লগ আউট")))
+        assertFalse(AppBanners.agentStatus(listOf("ক্যাশ ইন", "বিটুবি ট্রান্সফার", "সর্বশেষ লেনদেন", "ব্যালেন্স জানতে ট্যাপ করুন")))
         // The Statement search's own "nothing found" (it says কোন, not কোনো).
         assertTrue(AppLook.nothingFound(listOf("কোন লেনদেন পাওয়া যায়নি", "অনুসন্ধান বাতিল করুন")))
         assertFalse(AppLook.nothingFound(listOf("আপনি সম্প্রতি কোনো লেনদেন সম্পন্ন করেন নি")))

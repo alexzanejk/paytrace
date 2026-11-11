@@ -168,6 +168,7 @@ object AppB2b {
         var pinBoxTaps = 0
         var backs = 0
         var held = false
+        var statusHits = 0
         var heldAt = 0L
         var holdTries = 0
         var result: AppB2bRead.Done? = null
@@ -373,6 +374,17 @@ object AppB2b {
                         if (!held) {
                             if (AppBanners.wrongPin(texts)) return stop(if (b2bPin.submittedAt > 0) "pin_refused" else "login_failed", "bKash says the PIN is not correct; never typed again")
                             if (AppBanners.network(texts)) return stop("app_stopped_before_send", "bKash says: check your network (nothing was sent)")
+                            // "Change the agent status" after login: closed with its X, the status is never changed.
+                            if (AppBanners.agentStatus(texts)) {
+                                if (canAct) {
+                                    statusHits++
+                                    if (statusHits > 3) return stop("app_stopped_before_send", "bKash keeps asking to change the agent status (nothing was sent)")
+                                    note("bKash asks to change the agent status: closing the question with its X, the status is left as it is")
+                                    if (!AppReader.closeAgentStatus(svc, nodes)) svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                                    nextActAt = now + pace.settle()
+                                }
+                                main.postDelayed(this, TICK_MS); return
+                            }
                         }
                         if (held && screen != AppB2bRead.Screen.RESULT && screen != AppB2bRead.Screen.CONFIRM) {
                             if (now - heldAt > RESULT_WAIT_MS) return stop("no_answer_after_hold", "no result after the hold")

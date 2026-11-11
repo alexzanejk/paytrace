@@ -1,1 +1,1 @@
-bKash app: Log in is pressed only when bKash has lit the button (a lost digit can no longer send a short PIN), a wrong-PIN or check-your-network message is understood, a screen left open is closed with Back, and the Statement search uses the page's own Search button.
+bKash app: the "change your agent status" question bKash shows after login is closed with its X (the status itself is never changed), so automatic reads, app Cash In and B2B go on past it.
