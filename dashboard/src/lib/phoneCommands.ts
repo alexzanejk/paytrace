@@ -161,9 +161,9 @@ export const PHONE_ACTIONS: PhoneAction[] = [
     help: "Turns the screen on and keeps it on for two minutes." },
   { kind: "ring", label: "Ring", busy: "Ringing…", done: "The phone rang",
     help: "Sounds the alarm tone for 20 seconds so whoever has the phone notices it." },
-  { kind: "apprecord", label: "Read bKash app (test)", busy: "Reading the bKash app for 2½ minutes: log in on the phone and scroll its transaction list…",
-    done: "The bKash app was read; what the phone could see is saved for checking",
-    help: "Test (Vivo first): opens the bKash app on the phone and, for 2½ minutes, writes down what PayTrace can read on its screens while you log in and scroll the transaction list by hand. It never taps or types, and never reads the PIN." },
+  { kind: "apprecord", label: "Record bKash app (10 min)", busy: "Opening the bKash app on the phone to start recording…",
+    done: "Recording on the phone",
+    help: "For mapping the bKash app: PayTrace opens the bKash app on the phone ITSELF and then, for up to 10 minutes, saves every screen you go through by hand (it stops early if you stay out of bKash for 2 minutes). It never taps or types anything, and never reads the PIN." },
   { kind: "appread", label: "Read bKash app now", busy: "Reading the bKash app's transaction list on the phone (about a minute)…",
     done: "The bKash app's transactions were read",
     help: "Opens the bKash Agent app on the phone, logs in with the bKash PIN saved in PayTrace, and reads the transaction list back to the last read. The server also does this every 30 minutes. It never taps a transaction or sends money." },
@@ -181,11 +181,23 @@ export function actionLine(c: PhoneCommand | null, when: (t: string) => string):
   switch (c.status) {
     case "queued": return "Waking the phone to take it now (within 30 seconds at worst)…";
     case "running": return a.busy;
-    case "done": return `${a.done} (${when(c.finished_at ?? c.created_at)})`;
+    case "done":
+      if (c.kind === "apprecord") return recordingLine(c.finished_at ?? c.created_at, when);
+      return `${a.done} (${when(c.finished_at ?? c.created_at)})`;
     case "cancelled":
     case "failed":
       return `"${a.label}" at ${when(c.finished_at ?? c.created_at)} did not work. ${errorText(c.error)}`;
   }
+}
+
+/** The recorder's command is answered the moment recording STARTS (the screens follow one by one for up to 10
+ *  minutes), so "done" must never read as "finished": it says until when the phone records. */
+export const RECORD_MS = 10 * 60_000;
+export function recordingLine(startedIso: string, when: (t: string) => string, now = Date.now()): string {
+  const end = new Date(new Date(startedIso).getTime() + RECORD_MS);
+  if (now < end.getTime())
+    return `Recording: the phone opened the bKash app by itself at ${when(startedIso)} and saves every screen until ${when(end.toISOString())} at the latest. Use the bKash app on the phone now.`;
+  return `Recording started at ${when(startedIso)} and has ended (10 minutes at most, or 2 minutes outside the bKash app). The screens are saved for checking.`;
 }
 
 // The one failure a phone control can report on its own; the rest come from the shared list above.

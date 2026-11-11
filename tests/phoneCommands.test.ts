@@ -1,4 +1,4 @@
-import { commandLine, errorText, isLive, type PhoneCommand, cashInSummary, looksLikeANumber, CASH_IN_AMOUNTS, MOST_PER_CASH_IN, LEAST_PER_CASH_IN, parseCashInAmount, numberLabel, PHONE_ACTIONS, PHONE_ACTION_KINDS, isPhoneAction, actionLine, traceOf, walletScreens } from "../dashboard/src/lib/phoneCommands.ts";
+import { commandLine, errorText, isLive, type PhoneCommand, cashInSummary, looksLikeANumber, CASH_IN_AMOUNTS, MOST_PER_CASH_IN, LEAST_PER_CASH_IN, parseCashInAmount, numberLabel, PHONE_ACTIONS, PHONE_ACTION_KINDS, isPhoneAction, actionLine, traceOf, walletScreens, recordingLine } from "../dashboard/src/lib/phoneCommands.ts";
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, extra?: unknown) {
@@ -83,6 +83,12 @@ test("a cash-in is described in full, so nothing is sent on a glance", () => {
 {
   const ctl: PhoneCommand = { id: "c", kind: "restart", provider: null, status: "queued", balance: null, error: null, created_at: "2026-11-02T10:00:00Z", finished_at: null };
   // The phone's PhoneActions.KINDS names exactly these seven; another here would be queued and answered "unsupported".
+  {
+    const t0 = "2026-11-11T08:02:14Z", w = (x: string) => x.slice(11, 16);
+    check("the recorder says it is still recording, not that it read anything",
+      recordingLine(t0, w, Date.parse(t0) + 60_000).startsWith("Recording:") && recordingLine(t0, w, Date.parse(t0) + 60_000).includes("08:12"));
+    check("and says it ended after 10 minutes", recordingLine(t0, w, Date.parse(t0) + 11 * 60_000).includes("has ended"));
+  }
   check("the seven phone controls, in this order", JSON.stringify(PHONE_ACTION_KINDS) === JSON.stringify(["restart", "inbox", "resend", "screen", "ring", "apprecord", "appread"]));
   check("every control has a button, a busy line, a done line and a why", PHONE_ACTIONS.every((a) => a.label && a.busy && a.done && a.help));
   check("wallet commands are not controls", !isPhoneAction("balance") && !isPhoneAction("cashin") && !isPhoneAction("statement") && !isPhoneAction(null));
