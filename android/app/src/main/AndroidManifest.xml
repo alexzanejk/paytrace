@@ -50,6 +50,7 @@
     </queries>
 
     <application
+        android:name=".PayTraceApp"
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
         android:label="支付追踪"

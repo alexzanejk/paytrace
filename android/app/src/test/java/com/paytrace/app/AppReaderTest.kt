@@ -59,8 +59,8 @@ class AppReaderTest {
     @Test fun pacedLikeAPerson() {
         val p = HumanPace(java.util.Random(7))
         repeat(200) {
-            assertTrue(p.keyGap() in 800L..1_400L)
-            assertTrue(p.afterKeys() in 1_000L..1_600L)
+            assertTrue(p.keyGap() in 450L..800L)
+            assertTrue(p.afterKeys() in 700L..1_100L)
             assertTrue(p.settle() in 1_800L..3_200L)
             assertTrue(p.readPause() in 1_300L..2_600L)
             assertTrue(p.swipeMs() in 600L..1_000L)
@@ -108,8 +108,8 @@ class AppReaderTest {
         assertEquals(S["LOGIN"], PinTyping.next(5, 5, 5, pressed = false, waitedMs = 0, retries = 0))
         assertEquals(S["STOP"], PinTyping.next(5, 5, 4, pressed = false, waitedMs = 0, retries = 0))
         // A box that cannot be read: slow timing alone.
-        assertEquals(S["WAIT"], PinTyping.next(1, 5, null, pressed = true, waitedMs = 900, retries = 0))
-        assertEquals(S["CONFIRMED"], PinTyping.next(1, 5, null, pressed = true, waitedMs = 1_700, retries = 0))
+        assertEquals(S["WAIT"], PinTyping.next(1, 5, null, pressed = true, waitedMs = PinTyping.BLIND_MS - 100, retries = 0))
+        assertEquals(S["CONFIRMED"], PinTyping.next(1, 5, null, pressed = true, waitedMs = PinTyping.BLIND_MS, retries = 0))
         assertEquals(S["LOGIN"], PinTyping.next(5, 5, null, pressed = false, waitedMs = 0, retries = 0))
     }
 

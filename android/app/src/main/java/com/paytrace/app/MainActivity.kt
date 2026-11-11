@@ -91,6 +91,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // A crash last time: show it (and start nothing) so the owner can send it; "Open PayTrace" starts the app as usual.
+        if (CrashLog.showIfAny(this) { recreate() }) return
         intent?.getStringExtra(EXTRA_OPEN_THREAD)?.let { LaunchRequest.address = it }
         ThemeState.dark = AppSettings(this).darkMode
         MonitorService.start(this) // always on: it also tells the dashboard this phone is online

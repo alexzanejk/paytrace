@@ -779,9 +779,11 @@ object AppReader {
 class HumanPace(private val rnd: java.util.Random = java.util.Random()) {
     private fun between(a: Long, b: Long): Long = a + (rnd.nextDouble() * (b - a)).toLong()
     private fun between(a: Double, b: Double): Double = a + rnd.nextDouble() * (b - a)
-    /** Between PIN digits, after the box has shown the last one (owner 2026-11-10: the app lagged at 0.3-0.65 s). */
-    fun keyGap(): Long = between(800L, 1_400L)
-    fun afterKeys(): Long = between(1_000L, 1_600L)
+    /** Between PIN digits, after the box has shown the last one (owner 2026-11-10: the app lagged at 0.3-0.65 s with no check;
+     *  owner 2026-11-11: 0.8-1.4 s + 1.6 s per blind digit was "slower than a human", so 0.45-0.8 s + 0.9 s; the lit Log in
+     *  button still decides). */
+    fun keyGap(): Long = between(450L, 800L)
+    fun afterKeys(): Long = between(700L, 1_100L)
     fun settle(): Long = between(1_800L, 3_200L)
     fun readPause(): Long = between(1_300L, 2_600L)
     fun tapMs(): Long = between(55L, 120L)
@@ -842,7 +844,7 @@ object PinTyping {
     /** A digit not shown after this long is pressed again (at most [RETRIES] times); with no box to read, a digit
      *  counts as typed after [BLIND_MS]. */
     const val SHOW_MS = 1_800L
-    const val BLIND_MS = 1_600L
+    const val BLIND_MS = 900L
     const val RETRIES = 2
 
     /** Digits in the box: 0 when empty or showing its hint, else its length without spaces. */

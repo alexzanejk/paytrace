@@ -36,6 +36,7 @@ class SecretStore(ctx: Context, private val slot: String = "v") {
 
     fun get(): String {
         val stored = prefs.getString(slot, null) ?: return ""
+        if (stored.startsWith(PLAIN)) return stored.removePrefix(PLAIN)
         return try {
             val raw = Base64.decode(stored, Base64.NO_WRAP)
             val iv = raw.copyOfRange(0, 12)
@@ -53,11 +54,20 @@ class SecretStore(ctx: Context, private val slot: String = "v") {
             prefs.edit().remove(slot).apply()
             return
         }
-        val c = Cipher.getInstance("AES/GCM/NoPadding")
-        c.init(Cipher.ENCRYPT_MODE, key())
-        val data = c.doFinal(value.toByteArray(Charsets.UTF_8))
-        prefs.edit().putString(slot, Base64.encodeToString(c.iv + data, Base64.NO_WRAP)).apply()
+        try {
+            val c = Cipher.getInstance("AES/GCM/NoPadding")
+            c.init(Cipher.ENCRYPT_MODE, key())
+            val data = c.doFinal(value.toByteArray(Charsets.UTF_8))
+            prefs.edit().putString(slot, Base64.encodeToString(c.iv + data, Base64.NO_WRAP)).apply()
+        } catch (e: Exception) {
+            // Some phones' keystores refuse this key (suspected on the Oppo A15 and the Realme C12, Android 10, which
+            // crashed on every first start). Keeping the value in the app's private storage beats a crash: only this app
+            // can read it, and a phone without a working keystore had no other choice anyway.
+            prefs.edit().putString(slot, PLAIN + value).apply()
+        }
     }
+
+    private companion object { const val PLAIN = "plain:" }
 }
 
 class AppSettings(ctx: Context) {
