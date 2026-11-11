@@ -81,4 +81,40 @@ class AppCashInTest {
         assertEquals("200.50", AppCashInRead.amountText(200.5))
         assertEquals("200", AppCashInRead.boxDigits("৳200"))
     }
+
+    // English screens (recorder run 380c3c2f, 2026-11-11, a real Tk 200 Cash In to 01320352256, TrxID DKB8CCKAZY).
+    // The PIN screen and the sheet were not caught by the recorder; they follow the English B2B screens of the same run.
+    private val enHome = listOf("Cashin", "B2B Transfer", "Loan", "Recent Transactions", "Refresh", "Cash Out", "+ ৳500",
+        "S", "SONAR BANGLA TRADERS_01706630756", "Tap for Balance", "Home", "Inbox", "Scan QR", "Statements")
+    private val enNumber = listOf("Enter Customer name or number", "Tap to scan customer's QR", "All Contacts",
+        "You have no saved contact", "Add new contact", "Cash In")
+    private val enAmount = listOf("Customer", "01320352256", "Amount", "৳500", "৳1000", "৳2000", "৳5000", "৳0",
+        "Available Balance:", "৳12237.07", "Proceed to the next step", "Cash In")
+    private val enPin = listOf("Customer", "৳200.00", "+ ৳0.75", "Enter PIN", "Confirm", "Cash In") + digits
+    private val enSheet = listOf("Confirm Cash In", "01320352256", "৳200.00", "New Balance", "৳12037.82", "Tap and hold to make Cash In")
+    private val enResult = listOf("Your Cash In transfer is complete.", "01320352256", "01:14pm 11/11/26", "DKB8CCKAZY",
+        "৳12237.07", "৳12037.82", "৳200.00", "Commission", "৳0.75", "Check Offers", "Back to Home")
+    private val enLogin = listOf("বাংলা", "Login to your bKash account", "Account Number", "+88", "01706630756",
+        "bKash PIN Number", "Agent PIN", "Forgot your PIN?", "Log in") + digits
+
+    @Test fun theEnglishScreensAreKnownToo() {
+        assertEquals(Screen.LOGIN, AppCashInRead.screenOf(enLogin, true))
+        assertEquals(Screen.HOME, AppCashInRead.screenOf(enHome, false))
+        assertEquals(Screen.NUMBER, AppCashInRead.screenOf(enNumber, false))
+        assertEquals(Screen.AMOUNT, AppCashInRead.screenOf(enAmount, false))
+        assertEquals(Screen.PIN, AppCashInRead.screenOf(enPin, true))
+        assertEquals(Screen.CONFIRM, AppCashInRead.screenOf(enSheet, false))
+        assertEquals(Screen.RESULT, AppCashInRead.screenOf(enResult, false))
+        assertEquals(12237.07, AppCashInRead.usableBalance(enAmount)!!, 0.001)
+        assertTrue(AppCashInRead.numberOk(enAmount, order.number, own))
+        assertTrue(AppCashInRead.pinScreenOk(enPin, order, own))
+        assertTrue(AppCashInRead.mayHold(enSheet, order, own))
+        assertFalse(AppCashInRead.mayHold(enSheet.map { it.replace("01320352256", "01320352257") }, order, own))
+        assertEquals("DKB8CCKAZY", AppCashInRead.result(enResult, order, own).trx)
+        // The page title "Cash In" is not the typed-number row; a row that shows the number is.
+        assertNull(AppCashInRead.typedShown(enNumber))
+        assertEquals("01320352256", AppCashInRead.typedShown(enNumber + "Cash In 01320352256"))
+        assertTrue(AppBanners.pinHint(enLogin))
+        assertFalse(AppBanners.pinHint(enLogin - "Agent PIN"))
+    }
 }

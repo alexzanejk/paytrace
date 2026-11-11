@@ -28,31 +28,36 @@ import java.util.Locale
 object AppCashInRead {
     enum class Screen { LOGIN, HOME, NUMBER, AMOUNT, PIN, CONFIRM, RESULT, UNKNOWN }
 
-    const val TILE = "ক্যাশ ইন"
-    const val NEXT = "পরবর্তী ধাপে এগিয়ে যান"
-    const val CONFIRM_PIN = "নিশ্চিত করুন"
+    // Every label in both of the app's languages (English from recorder run 380c3c2f, 2026-11-11), lower case, because
+    // AppReader.pressAny compares lower case. The English Home tile says "Cashin" (one word).
+    val TILE = setOf("ক্যাশ ইন", "cashin", "cash in")
+    val NEXT = setOf("পরবর্তী ধাপে এগিয়ে যান", "proceed to the next step")
+    val CONFIRM_PIN = setOf("নিশ্চিত করুন", "confirm")
     const val HOLD_TEXT = "ক্যাশ ইন করতে ট্যাপ করে ধরে রাখুন"
-    const val HOME_BACK = "হোম-এ ফিরে যান"
-    const val PIN_HINT = "পিন নাম্বার দিন"
-    const val TYPED_PREFIX = "ক্যাশ ইন করুন"
-    private const val NEW_BALANCE = "নতুন ব্যালেন্স"
-    private const val USABLE = "ব্যবহারযোগ্য ব্যালেন্স"
+    val HOME_BACK = setOf("হোম-এ ফিরে যান", "হোম -এ ফিরে যান", "back to home")
+    val PIN_HINT = setOf("পিন নাম্বার দিন", "enter pin")
+    private val TYPED_PREFIX = listOf("ক্যাশ ইন করুন", "cash in")
+    val NEW_BALANCE = listOf("নতুন ব্যালেন্স", "new balance")
+    private val USABLE = listOf("ব্যবহারযোগ্য ব্যালেন্স", "available balance")
+    private fun lc(s: String) = s.trim().lowercase(Locale.ROOT)
     private val NUMBER = Regex("01[0-9]{9}")
     private val TAKA = Regex("^৳\\s*([0-9][0-9,]*(?:\\.[0-9]+)?)$")
     private val TRX = Regex("^[A-Z0-9]{8,12}$")
 
     fun screenOf(texts: List<String>, keypad: Boolean): Screen {
-        val t = texts.map { it.trim() }
-        fun has(s: String) = t.any { it == s }
-        fun hasPart(s: String) = t.any { s in it }
+        val t = texts.map { lc(it) }
+        fun has(vararg s: String) = s.any { w -> t.any { it == w } }
+        fun hasPart(vararg s: String) = s.any { w -> t.any { w in it } }
+        val customer = has("কাস্টমার", "customer")
         return when {
-            hasPart("ক্যাশ ইন ট্রান্সফার সম্পন্ন") -> Screen.RESULT
-            hasPart(HOLD_TEXT) || has("ক্যাশ ইন নিশ্চিত করুন") -> Screen.CONFIRM
-            keypad && (has("লগ ইন") || t.any { it.lowercase(Locale.ROOT) == "log in" }) -> Screen.LOGIN
-            has("কাস্টমার") && has(CONFIRM_PIN) -> Screen.PIN
-            has("কাস্টমার") && has("অ্যামাউন্ট") -> Screen.AMOUNT
-            has("সব কন্ট্যাক্টস") -> Screen.NUMBER
-            has("সর্বশেষ লেনদেন") -> Screen.HOME
+            hasPart("ক্যাশ ইন ট্রান্সফার সম্পন্ন", "cash in transfer is complete") -> Screen.RESULT
+            hasPart(HOLD_TEXT) || has("ক্যাশ ইন নিশ্চিত করুন", "confirm cash in") ||
+                t.any { "tap and hold" in it && "cash in" in it } -> Screen.CONFIRM
+            keypad && has("লগ ইন", "log in") -> Screen.LOGIN
+            customer && CONFIRM_PIN.any { has(it) } -> Screen.PIN
+            customer && has("অ্যামাউন্ট", "amount") -> Screen.AMOUNT
+            has("সব কন্ট্যাক্টস", "all contacts", "enter customer name or number") -> Screen.NUMBER
+            has("সর্বশেষ লেনদেন", "recent transactions") -> Screen.HOME
             else -> Screen.UNKNOWN
         }
     }
@@ -65,7 +70,12 @@ object AppCashInRead {
 
     /** The number the number screen shows back after typing ("ক্যাশ ইন করুন 01320352256"), or null. */
     fun typedShown(texts: List<String>): String? =
-        texts.firstOrNull { it.trim().startsWith(TYPED_PREFIX) }?.let { NUMBER.find(it.replace(" ", "").replace("-", ""))?.value }
+        typedRow(texts)?.let { NUMBER.find(it.replace(" ", "").replace("-", ""))?.value }
+
+    /** The row that shows the typed number back ("ক্যাশ ইন করুন 01320352256"): it starts with the prefix AND holds a number
+     *  (the English page title "Cash In" alone is not it). */
+    fun typedRow(texts: List<String>): String? =
+        texts.firstOrNull { x -> TYPED_PREFIX.any { lc(x).startsWith(it) } && NUMBER.containsMatchIn(x.replace(" ", "").replace("-", "")) }
 
     /** True when every number on screen (but the agent's own) is exactly [number], and there is at least one. */
     fun numberOk(texts: List<String>, number: String, own: String?): Boolean {
@@ -88,11 +98,15 @@ object AppCashInRead {
         numberOk(texts, order.number, own) && same(takaValues(texts).firstOrNull(), order.amount)
 
     /** The taka value printed right after the label [label] (or right after a text that starts with it). */
-    fun valueAfter(texts: List<String>, label: String): Double? {
-        val i = texts.indexOfFirst { it.trim().startsWith(label) }
+    fun valueAfter(texts: List<String>, label: String): Double? = valueAfter(texts, listOf(label))
+
+    /** The same, for a label in either language. */
+    fun valueAfter(texts: List<String>, labels: List<String>): Double? {
+        val i = texts.indexOfFirst { x -> labels.any { lc(x).startsWith(lc(it)) } }
         if (i < 0) return null
+        val label = labels.first { lc(texts[i]).startsWith(lc(it)) }
         // "ব্যবহারযোগ্য ব্যালেন্স: ৳11407.68" may be one text or two.
-        TAKA.find(texts[i].substringAfter(label).trim().trimStart(':').trim())?.let { return it.groupValues[1].replace(",", "").toDoubleOrNull() }
+        TAKA.find(texts[i].trim().drop(label.trim().length).trim().trimStart(':').trim())?.let { return it.groupValues[1].replace(",", "").toDoubleOrNull() }
         return texts.drop(i + 1).firstNotNullOfOrNull { TAKA.find(it.trim())?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull() }
     }
 
@@ -175,6 +189,8 @@ object AppCashIn {
         var pinBoxTaps = 0
         var backs = 0
         var held = false
+        var statusHits = 0
+        val opener = AgentOpener { note(it) }
         var heldAt = 0L
         var holdTries = 0
 
@@ -229,7 +245,7 @@ object AppCashIn {
             val nodes = ArrayList<AccessibilityNodeInfo>()
             AppReader.collect(root, nodes, 0)
             for (n in nodes) {
-                if (n.text?.toString()?.trim() != AppCashInRead.TILE) continue
+                if (n.text?.toString()?.trim()?.lowercase(Locale.ROOT) !in AppCashInRead.TILE) continue
                 var target: AccessibilityNodeInfo = n
                 var p: AccessibilityNodeInfo? = n
                 var hops = 0
@@ -248,7 +264,7 @@ object AppCashIn {
             val nodes = ArrayList<AccessibilityNodeInfo>()
             AppReader.collect(root, nodes, 0)
             val target = nodes.firstOrNull { (it.contentDescription?.toString() ?: "").lowercase(Locale.ROOT).contains("tap and hold") }
-                ?: nodes.firstOrNull { (it.text?.toString() ?: "").trim() == AppCashInRead.HOLD_TEXT }
+                ?: nodes.firstOrNull { (it.text?.toString() ?: "").trim() == AppCashInRead.HOLD_TEXT || (it.text?.toString() ?: "").lowercase(Locale.ROOT).contains("tap and hold") }
                 ?: return false
             val r = Rect()
             target.getBoundsInScreen(r)
@@ -326,6 +342,24 @@ object AppCashIn {
                         if (!held) {
                             if (AppBanners.wrongPin(texts)) return stop(if (cashPin.submittedAt > 0) "pin_refused" else "login_failed", "bKash says the PIN is not correct; never typed again")
                             if (AppBanners.network(texts)) return stop("app_stopped_before_send", "bKash says: check your network (nothing was sent)")
+                            // "Change the agent status" after login: while the status is CLOSE bKash will not do Cash In or
+                            // B2B (owner 2026-11-11), so it is switched to OPEN and checked in the side menu first.
+                            if (opener.active) {
+                                when (opener.step(svc, nodes, texts, now, pace.settle())) {
+                                    AgentOpener.Result.FAILED -> return stop("app_stopped_before_send", "the agent status could not be set to OPEN (nothing was sent)")
+                                    AgentOpener.Result.DONE -> { progressAt = now; nextActAt = now + pace.settle() }
+                                    AgentOpener.Result.WORKING -> progressAt = now
+                                }
+                                main.postDelayed(this, TICK_MS); return
+                            }
+                            if (AppBanners.agentStatus(texts)) {
+                                if (canAct) {
+                                    statusHits++
+                                    if (statusHits > 3) return stop("app_stopped_before_send", "bKash keeps asking to change the agent status (nothing was sent)")
+                                    opener.start(now)
+                                }
+                                main.postDelayed(this, TICK_MS); return
+                            }
                         }
                         if (held && screen != AppCashInRead.Screen.RESULT && screen != AppCashInRead.Screen.CONFIRM) {
                             if (now - heldAt > RESULT_WAIT_MS) return stop("no_answer_after_hold", "no result after the hold")
@@ -365,8 +399,8 @@ object AppCashIn {
                                         nextPresses++
                                         note("number shown back exactly, going on")
                                         // Next first; if the screen stays, the row "ক্যাশ ইন করুন <number>" itself.
-                                        val ok = if (nextPresses % 2 == 1) AppReader.pressAny(svc, setOf(AppCashInRead.NEXT), root)
-                                                 else AppReader.pressAny(svc, setOf(texts.first { it.startsWith(AppCashInRead.TYPED_PREFIX) }.lowercase(Locale.ROOT)), root)
+                                        val ok = if (nextPresses % 2 == 1) AppReader.pressAny(svc, AppCashInRead.NEXT, root)
+                                                 else AppReader.pressAny(svc, setOf((AppCashInRead.typedRow(texts) ?: "").trim().lowercase(Locale.ROOT)), root)
                                         if (!ok) note("next not found")
                                         nextActAt = now + pace.settle()
                                     }
@@ -395,7 +429,7 @@ object AppCashIn {
                                         if (nextPresses >= 8) return stop("app_stopped_before_send", "the amount screen did not move on")
                                         nextPresses++
                                         note("amount in the box, going on")
-                                        if (!AppReader.pressAny(svc, setOf(AppCashInRead.NEXT), root)) note("next not found")
+                                        if (!AppReader.pressAny(svc, AppCashInRead.NEXT, root)) note("next not found")
                                         nextActAt = now + pace.settle()
                                     }
                                 }
@@ -408,18 +442,18 @@ object AppCashIn {
                                     if (canAct) {
                                         if (pinBoxTaps >= 3) return stop("app_stopped_before_send", "the PIN keypad did not open")
                                         pinBoxTaps++
-                                        if (!AppReader.pressAny(svc, setOf(AppCashInRead.PIN_HINT), root)) {
+                                        if (!AppReader.pressAny(svc, AppCashInRead.PIN_HINT, root)) {
                                             // The hint is gone once the box has focus; tap the PIN box itself.
                                             note("PIN hint not found, waiting for the keypad")
                                         }
                                         nextActAt = now + pace.settle()
                                     }
-                                } else if (!typePin(cashPin, root, now, canAct, { AppReader.pressAny(svc, setOf(AppCashInRead.CONFIRM_PIN), root) }, "cash in")) return
+                                } else if (!typePin(cashPin, root, now, canAct, { AppReader.pressAny(svc, AppCashInRead.CONFIRM_PIN, root) }, "cash in")) return
                             }
                             AppCashInRead.Screen.CONFIRM -> {
                                 if (!AppCashInRead.mayHold(texts, order, own)) {
                                     note("the sheet does not show exactly this number and amount: closing it, nothing sent")
-                                    nodes.firstOrNull { (it.contentDescription?.toString() ?: "").lowercase(Locale.ROOT) == "close" }?.let { c ->
+                                    nodes.firstOrNull { (it.contentDescription?.toString() ?: "").lowercase(Locale.ROOT).let { d -> d == "close" || "close sheet" in d || "cancel" in d } }?.let { c ->
                                         if (!AppReader.tap(svc, c)) c.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                                     }
                                     if (!held) return stop("confirm_does_not_match", "the final sheet did not match")
@@ -437,7 +471,7 @@ object AppCashIn {
                             AppCashInRead.Screen.RESULT -> {
                                 val r = AppCashInRead.result(texts, order, own)
                                 note("result: TrxID ${r.trx ?: "?"}, number ${if (r.numberOk) "matches" else "DIFFERS"}, amount ${if (r.amountOk) "matches" else "DIFFERS"}")
-                                main.postDelayed({ AppReader.pressAny(svc, setOf(AppCashInRead.HOME_BACK)) }, pace.readPause())
+                                main.postDelayed({ AppReader.pressAny(svc, AppCashInRead.HOME_BACK) }, pace.readPause())
                                 val summary = "bKash app Cash In\nto: ${order.number}\namount: ${order.amount}\nTrxID: ${r.trx ?: "?"}\nnew balance: ${r.newBalance ?: "?"}" +
                                     (if (r.numberOk && r.amountOk) "" else "\nNOTE: the result screen did not show exactly this number and amount")
                                 return finish(UssdOutcome(true, r.newBalance, null, trx = r.trx, screens = listOf(summary)), "done")

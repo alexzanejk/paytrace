@@ -104,4 +104,30 @@ class AppB2bTest {
         assertTrue(B2bOrder(dso, 5000.0).sane())
         assertFalse(B2bOrder("0132424501", 5000.0).sane())
     }
+
+    // English screens (recorder run 380c3c2f, 2026-11-11, a real Tk 5,000 B2B to 01324245010, TrxID DKB9CCL5EP).
+    private val enPin = listOf("DSO", "01324245010", "৳5000.00", "Enter PIN", "Confirm") + digits + "B2B Transfer"
+    private val enSheet = listOf("Confirm B2B Transfer", "01324245010", "৳5000.00", "New Balance", "৳7037.82",
+        "Tap and hold to make B2B Transfer")
+    private val enResult = listOf("Your B2B Transfer is complete.", "01324245010", "01:15pm 11/11/26", "DKB9CCL5EP",
+        "৳12037.82", "New Balance", "৳7037.82", "৳5000.00", "Back to Home")
+    private val enQuestion = listOf("Confirm B2B", "Have you received cash Tk. 5000.0 instantly in the presence of DSO?",
+        "No", "Yes", "A: You cannot do any transaction until you confirm")
+
+    @Test fun theEnglishScreensAreKnownToo() {
+        assertEquals(Screen.PIN, AppB2bRead.screenOf(enPin, true))
+        assertEquals(Screen.CONFIRM, AppB2bRead.screenOf(enSheet, false))
+        assertEquals(Screen.RESULT, AppB2bRead.screenOf(enResult, false))
+        assertEquals(Screen.CASH_QUESTION, AppB2bRead.screenOf(enQuestion, false))
+        assertEquals(Screen.AMOUNT, AppB2bRead.screenOf(listOf("DSO", "01324245010", "Amount", "৳25000",
+            "Available Balance:", "৳12037.82", "Proceed to the next step", "B2B Transfer"), false))
+        assertTrue(AppB2bRead.pinScreenOk(enPin, 5000.0, dso, own))
+        assertTrue(AppB2bRead.mayHold(enSheet, 5000.0, dso, own))
+        assertEquals(5000.0, AppB2bRead.questionAmount(enQuestion)!!, 0.001)
+        assertTrue(AppB2bRead.mayAnswerYes(enQuestion, 5000.0))
+        assertFalse(AppB2bRead.mayAnswerYes(enQuestion, 4000.0))
+        val r = AppB2bRead.result(enResult, 5000.0, dso, own)
+        assertEquals("DKB9CCL5EP", r.trx)
+        assertEquals(7037.82, r.newBalance!!, 0.001)
+    }
 }

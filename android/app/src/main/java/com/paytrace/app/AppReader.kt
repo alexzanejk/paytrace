@@ -70,7 +70,7 @@ object AppReader {
     internal val LOGIN = setOf("লগ ইন", "log in", "login")
     private val INBOX = setOf("ইনবক্স", "inbox")
     private val TAB = setOf("লেনদেনসমূহ", "transactions")
-    private val STATEMENT = setOf("স্টেটমেন্ট", "statement")
+    private val STATEMENT = setOf("স্টেটমেন্ট", "statement", "statements")
     private val SEARCH = setOf("সার্চ করুন", "search")
     /** Start the Statement search by this point of a run if TrxIDs are still unread, so it gets its share of the time. */
     private const val SEARCH_AT_MS = 95_000L
@@ -210,6 +210,7 @@ object AppReader {
         var retyping = false     // the app left the screen while the PIN was being typed and was opened again
         var relaunches = 0
         var netHits = 0
+        var statusHits = 0
         var backs = 0
         var scrolls = 0
         var idleScrolls = 0
@@ -289,6 +290,16 @@ object AppReader {
                                 if (netHits >= 3) return finish(rows.isNotEmpty(), "no_network", "the bKash app has no network")
                                 closeBanner(svc, nodes)
                                 progressAt = now; nextActAt = now + pace.settle() + 4_000
+                            }
+                            main.postDelayed(this, TICK_MS); return
+                        }
+                        if (AppBanners.agentStatus(texts)) {
+                            if (canAct) {
+                                statusHits++
+                                if (statusHits > 3) return finish(rows.isNotEmpty(), "unexpected_screen", "bKash keeps asking to change the agent status")
+                                note("bKash asks to change the agent status (it says CLOSE): closing the question with its X, the status is left as it is")
+                                if (!closeAgentStatus(svc, nodes)) svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                                progressAt = now; nextActAt = now + pace.settle()
                             }
                             main.postDelayed(this, TICK_MS); return
                         }
@@ -380,7 +391,7 @@ object AppReader {
                                     when (PinTyping.next(pinTyped, keys.size, shown, keyPressed, now - keyPressedAt, keyRetries)) {
                                         PinTyping.Step.PRESS -> if (canAct) {
                                             // Never type on top of digits already in the box: the hint must be showing.
-                                            if (pinTyped == 0 && !hint && (retyping || texts.any { it == "লগ ইন" }))
+                                            if (pinTyped == 0 && !hint && (retyping || texts.any { it == "লগ ইন" || it.equals("log in", ignoreCase = true) }))
                                                 return finish(false, "pin_not_entered", "the PIN box was not empty (its hint is not showing); nothing typed, Log in NOT pressed")
                                             if (pinTyped == 0) note("login screen: typing the saved PIN slowly, one digit at a time")
                                             progressAt = now
@@ -592,6 +603,14 @@ object AppReader {
         return tap(svc, c) || c.performAction(AccessibilityNodeInfo.ACTION_CLICK)
     }
 
+    /** Closes the "change the agent status" sheet by its X (`tag_agent_cancel`), never by its "পরিবর্তন করুন" button. */
+    internal fun closeAgentStatus(svc: AccessibilityService, nodes: List<AccessibilityNodeInfo>): Boolean {
+        val c = nodes.firstOrNull { (it.viewIdResourceName ?: "").endsWith("tag_agent_cancel") }
+            ?: nodes.firstOrNull { (it.contentDescription?.toString() ?: "").trim().equals("icon close", ignoreCase = true) }
+            ?: return false
+        return tap(svc, c) || c.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+    }
+
     /** Every node, skipping boxes being typed into. */
     internal fun collect(n: AccessibilityNodeInfo?, out: MutableList<AccessibilityNodeInfo>, depth: Int) {
         if (n == null || depth > 40 || out.size > 1500) return
@@ -633,8 +652,8 @@ object AppReader {
     private fun closeSheet(svc: AccessibilityService, nodes: List<AccessibilityNodeInfo>): Boolean {
         val c = nodes.firstOrNull { n ->
             val d = (n.contentDescription?.toString() ?: "").lowercase(Locale.ROOT)
-            "শিট বন্ধ" in d || d == "close"
-        } ?: nodes.firstOrNull { (it.text?.toString() ?: "").trim() == "বন্ধ করুন" } ?: return false
+            "শিট বন্ধ" in d || d == "close" || "close sheet" in d
+        } ?: nodes.firstOrNull { (it.text?.toString() ?: "").trim().lowercase(Locale.ROOT) in setOf("বন্ধ করুন", "close") } ?: return false
         var target: AccessibilityNodeInfo = c
         var p: AccessibilityNodeInfo? = c
         var hops = 0
@@ -752,9 +771,14 @@ object AppBanners {
     /** "অনুগ্রহ করে আপনার নেটওয়ার্ক চেক করুন": the app could not reach bKash. */
     fun network(texts: List<String>): Boolean = has(texts, "নেটওয়ার্ক চেক") || has(texts, "check", "network")
     /** The login screen's PIN box shows "এজেন্ট পিন নাম্বার দিন" only while it is empty. */
-    fun pinHint(texts: List<String>): Boolean = has(texts, "পিন নাম্বার দিন")
+    fun pinHint(texts: List<String>): Boolean = has(texts, "পিন নাম্বার দিন") || texts.any { it.trim().equals("agent pin", ignoreCase = true) }
     /** A list that did not load says "আপনি সম্প্রতি কোনো লেনদেন সম্পন্ন করেন নি"; it says nothing about any payment. */
-    fun emptyList(texts: List<String>): Boolean = has(texts, "সম্প্রতি", "লেনদেন", "করেন নি")
+    fun emptyList(texts: List<String>): Boolean = has(texts, "সম্প্রতি", "লেনদেন", "করেন নি") || has(texts, "haven't made any transactions")
+    /** The sheet "স্ট্যাটাস পরিবর্তন করুন / আপনার এজেন্ট অ্যাপের বর্তমান স্ট্যাটাসটি CLOSE রয়েছে ..." (recorder run 65408217,
+     *  2026-11-11): bKash asks after login to switch the agent's shop status. It is closed with its X; the status is the
+     *  owner's business and is never changed by PayTrace (its "পরিবর্তন করুন" button is never pressed). */
+    fun agentStatus(texts: List<String>): Boolean =
+        has(texts, "স্ট্যাটাস পরিবর্তন করুন") || has(texts, "এজেন্ট অ্যাপের", "স্ট্যাটাস") || has(texts, "change", "agent", "status")
 }
 
 /** Pressing Log in only when bKash has lit the button: it stays grey until the whole PIN is in, so a grey button after

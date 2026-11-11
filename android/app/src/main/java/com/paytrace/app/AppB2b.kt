@@ -46,30 +46,35 @@ data class B2bOrder(val number: String?, val amount: Double) {
 object AppB2bRead {
     enum class Screen { LOGIN, HOME, AMOUNT, PIN, CONFIRM, RESULT, CASH_QUESTION, RATING, UNKNOWN }
 
-    const val TILE = "বিটুবি ট্রান্সফার"
-    const val NEXT = AppCashInRead.NEXT
-    const val CONFIRM_PIN = AppCashInRead.CONFIRM_PIN
-    const val PIN_HINT = AppCashInRead.PIN_HINT
+    // Both languages, lower case (English from recorder run 380c3c2f, 2026-11-11).
+    val TILE = setOf("বিটুবি ট্রান্সফার", "b2b transfer")
+    val NEXT = AppCashInRead.NEXT
+    val CONFIRM_PIN = AppCashInRead.CONFIRM_PIN
+    val PIN_HINT = AppCashInRead.PIN_HINT
     const val HOLD_TEXT = "বিটুবি ট্রান্সফার করতে ট্যাপ করে ধরে রাখুন"
-    const val YES = "হ্যাঁ"
-    val HOME_BACK = setOf("হোম -এ ফিরে যাই", "হোম-এ ফিরে যাই", "হোম -এ ফিরে যান", "হোম-এ ফিরে যান")
-    private const val DSO = "ডিএসও"
-    private val QUESTION_AMOUNT = Regex("ক্যাশ\\s*([0-9][0-9,]*(?:\\.[0-9]+)?)\\s*টাকা")
+    val YES = setOf("হ্যাঁ", "yes")
+    val HOME_BACK = setOf("হোম -এ ফিরে যাই", "হোম-এ ফিরে যাই", "হোম -এ ফিরে যান", "হোম-এ ফিরে যান", "back to home")
+    private val DSO = setOf("ডিএসও", "dso")
+    // "... ক্যাশ 5000.0 টাকা ..." / "Have you received cash Tk. 5000.0 instantly ..."
+    private val QUESTION_AMOUNT = listOf(Regex("ক্যাশ\\s*([0-9][0-9,]*(?:\\.[0-9]+)?)\\s*টাকা"),
+        Regex("cash\\s*tk\\.?\\s*([0-9][0-9,]*(?:\\.[0-9]+)?)", RegexOption.IGNORE_CASE))
+    private fun lc(s: String) = s.trim().lowercase(Locale.ROOT)
 
     fun screenOf(texts: List<String>, keypad: Boolean): Screen {
-        val t = texts.map { it.trim() }
-        fun has(s: String) = t.any { it == s }
-        fun hasPart(s: String) = t.any { s in it }
+        val t = texts.map { lc(it) }
+        fun has(vararg s: String) = s.any { w -> t.any { it == w } }
+        fun hasPart(vararg s: String) = s.any { w -> t.any { w in it } }
+        val dso = DSO.any { has(it) }
         return when {
             // The cash question and the rating are sheets on top of another screen: they are read first.
-            hasPart("বুঝে পেয়েছেন") -> Screen.CASH_QUESTION
-            hasPart("মতামত দিন") || hasPart("সার্বিক সেবা") -> Screen.RATING
-            hasPart("বিটুবি ট্রান্সফার সম্পন্ন") -> Screen.RESULT
-            hasPart(HOLD_TEXT) || has("বিটুবি ট্রান্সফার নিশ্চিত করুন") -> Screen.CONFIRM
-            keypad && (has("লগ ইন") || t.any { it.lowercase(Locale.ROOT) == "log in" }) -> Screen.LOGIN
-            has(DSO) && has(CONFIRM_PIN) -> Screen.PIN
-            has(DSO) && has("পরিমাণ") -> Screen.AMOUNT
-            has("সর্বশেষ লেনদেন") -> Screen.HOME
+            hasPart("বুঝে পেয়েছেন", "in the presence of dso") -> Screen.CASH_QUESTION
+            hasPart("মতামত দিন", "সার্বিক সেবা", "give feedback", "rate your") -> Screen.RATING
+            hasPart("বিটুবি ট্রান্সফার সম্পন্ন", "b2b transfer is complete") -> Screen.RESULT
+            hasPart(HOLD_TEXT, "tap and hold to make b2b") || has("বিটুবি ট্রান্সফার নিশ্চিত করুন", "confirm b2b transfer") -> Screen.CONFIRM
+            keypad && has("লগ ইন", "log in") -> Screen.LOGIN
+            dso && CONFIRM_PIN.any { has(it) } -> Screen.PIN
+            dso && has("পরিমাণ", "amount") -> Screen.AMOUNT
+            has("সর্বশেষ লেনদেন", "recent transactions") -> Screen.HOME
             else -> Screen.UNKNOWN
         }
     }
@@ -98,14 +103,14 @@ object AppB2bRead {
 
     fun result(texts: List<String>, amount: Double, dso: String, own: String?): Done {
         val trx = texts.map { it.trim() }.firstOrNull { Regex("^[A-Z0-9]{8,12}$").matches(it) && it.any(Char::isDigit) && it.any(Char::isLetter) }
-        return Done(trx, AppCashInRead.valueAfter(texts, "নতুন ব্যালেন্স"), AppCashInRead.numberOk(texts, dso, own),
+        return Done(trx, AppCashInRead.valueAfter(texts, AppCashInRead.NEW_BALANCE), AppCashInRead.numberOk(texts, dso, own),
             AppCashInRead.takaValues(texts).any { same(it, amount) })
     }
 
     /** The amount the cash question names ("ক্যাশ 5000.0 টাকা"), or null. Bangla digits are read too. */
     fun questionAmount(texts: List<String>): Double? {
         val joined = texts.joinToString(" ").map { c -> if (c in '০'..'৯') '0' + (c - '০') else c }.joinToString("")
-        return QUESTION_AMOUNT.find(joined)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
+        return QUESTION_AMOUNT.firstNotNullOfOrNull { it.find(joined) }?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
     }
 
     /** "হ্যাঁ" may be pressed only when the question names exactly this amount. */
@@ -168,6 +173,8 @@ object AppB2b {
         var pinBoxTaps = 0
         var backs = 0
         var held = false
+        var statusHits = 0
+        val opener = AgentOpener { note(it) }
         var heldAt = 0L
         var holdTries = 0
         var result: AppB2bRead.Done? = null
@@ -233,7 +240,7 @@ object AppB2b {
             val nodes = ArrayList<AccessibilityNodeInfo>()
             AppReader.collect(root, nodes, 0)
             for (n in nodes) {
-                if (n.text?.toString()?.trim() != AppB2bRead.TILE) continue
+                if (n.text?.toString()?.trim()?.lowercase(Locale.ROOT) !in AppB2bRead.TILE) continue
                 var target: AccessibilityNodeInfo = n
                 var p: AccessibilityNodeInfo? = n
                 var hops = 0
@@ -251,7 +258,7 @@ object AppB2b {
             val nodes = ArrayList<AccessibilityNodeInfo>()
             AppReader.collect(root, nodes, 0)
             val target = nodes.firstOrNull { (it.contentDescription?.toString() ?: "").lowercase(Locale.ROOT).contains("tap and hold") }
-                ?: nodes.firstOrNull { (it.text?.toString() ?: "").trim() == AppB2bRead.HOLD_TEXT }
+                ?: nodes.firstOrNull { (it.text?.toString() ?: "").trim() == AppB2bRead.HOLD_TEXT || (it.text?.toString() ?: "").lowercase(Locale.ROOT).contains("tap and hold") }
                 ?: return false
             val r = Rect()
             target.getBoundsInScreen(r)
@@ -267,7 +274,7 @@ object AppB2b {
         fun closeSheet(nodes: List<AccessibilityNodeInfo>): Boolean {
             val c = nodes.firstOrNull {
                 val d = (it.contentDescription?.toString() ?: "").lowercase(Locale.ROOT)
-                d == "close" || "cancel" in d || "শিট বন্ধ" in d
+                d == "close" || "close sheet" in d || "cancel" in d || "শিট বন্ধ" in d
             } ?: return false
             return AppReader.tap(svc, c) || c.performAction(AccessibilityNodeInfo.ACTION_CLICK)
         }
@@ -343,7 +350,7 @@ object AppB2b {
                                     answered = true
                                     if (AppB2bRead.mayAnswerYes(texts, order.amount)) {
                                         note("bKash asks whether the DSO paid the cash for this amount: answering হ্যাঁ (the owner confirmed it on the dashboard)")
-                                        if (!AppReader.pressAny(svc, setOf(AppB2bRead.YES), root)) {
+                                        if (!AppReader.pressAny(svc, AppB2bRead.YES, root)) {
                                             note("the হ্যাঁ button was not found")
                                             answerNote = "bKash asks whether the DSO paid the cash: please answer it on the phone"
                                         } else answerNote = "bKash asked whether the DSO paid the cash: answered yes"
@@ -373,6 +380,24 @@ object AppB2b {
                         if (!held) {
                             if (AppBanners.wrongPin(texts)) return stop(if (b2bPin.submittedAt > 0) "pin_refused" else "login_failed", "bKash says the PIN is not correct; never typed again")
                             if (AppBanners.network(texts)) return stop("app_stopped_before_send", "bKash says: check your network (nothing was sent)")
+                            // "Change the agent status" after login: while the status is CLOSE bKash will not do Cash In or
+                            // B2B (owner 2026-11-11), so it is switched to OPEN and checked in the side menu first.
+                            if (opener.active) {
+                                when (opener.step(svc, nodes, texts, now, pace.settle())) {
+                                    AgentOpener.Result.FAILED -> return stop("app_stopped_before_send", "the agent status could not be set to OPEN (nothing was sent)")
+                                    AgentOpener.Result.DONE -> { progressAt = now; nextActAt = now + pace.settle() }
+                                    AgentOpener.Result.WORKING -> progressAt = now
+                                }
+                                main.postDelayed(this, TICK_MS); return
+                            }
+                            if (AppBanners.agentStatus(texts)) {
+                                if (canAct) {
+                                    statusHits++
+                                    if (statusHits > 3) return stop("app_stopped_before_send", "bKash keeps asking to change the agent status (nothing was sent)")
+                                    opener.start(now)
+                                }
+                                main.postDelayed(this, TICK_MS); return
+                            }
                         }
                         if (held && screen != AppB2bRead.Screen.RESULT && screen != AppB2bRead.Screen.CONFIRM) {
                             if (now - heldAt > RESULT_WAIT_MS) return stop("no_answer_after_hold", "no result after the hold")
@@ -430,7 +455,7 @@ object AppB2b {
                                         if (nextPresses >= 6) return stop("app_stopped_before_send", "the amount screen did not move on")
                                         nextPresses++
                                         note("amount in the box, going on")
-                                        if (!AppReader.pressAny(svc, setOf(AppB2bRead.NEXT), root)) note("next not found")
+                                        if (!AppReader.pressAny(svc, AppB2bRead.NEXT, root)) note("next not found")
                                         nextActAt = now + pace.settle()
                                     }
                                 }
@@ -444,10 +469,10 @@ object AppB2b {
                                     if (canAct) {
                                         if (pinBoxTaps >= 3) return stop("app_stopped_before_send", "the PIN keypad did not open")
                                         pinBoxTaps++
-                                        if (!AppReader.pressAny(svc, setOf(AppB2bRead.PIN_HINT), root)) note("PIN hint not found, waiting for the keypad")
+                                        if (!AppReader.pressAny(svc, AppB2bRead.PIN_HINT, root)) note("PIN hint not found, waiting for the keypad")
                                         nextActAt = now + pace.settle()
                                     }
-                                } else if (!typePin(b2bPin, root, now, canAct, { AppReader.pressAny(svc, setOf(AppB2bRead.CONFIRM_PIN), root) }, "B2B")) return
+                                } else if (!typePin(b2bPin, root, now, canAct, { AppReader.pressAny(svc, AppB2bRead.CONFIRM_PIN, root) }, "B2B")) return
                             }
                             AppB2bRead.Screen.CONFIRM -> {
                                 val d = dso
