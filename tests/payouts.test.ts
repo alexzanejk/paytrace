@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import {
-  checkNumbers, feeLine, keepPctFor, parseSendAmount, groupDigits, parseFee, liveItemsByPayment, parsePct, payoutLine, payoutRefusal, recentNumbers, sendMethod, sendProblem, senderOptions, splitPayout,
+  checkNumbers, feeLine, keepPctFor, parseSendAmount, groupDigits, parseFee, liveItemsByPayment, parsePct, payoutLine, payoutRefusal, tickableRefusal, recentNumbers, sendMethod, sendProblem, senderOptions, splitPayout,
   type PayoutRow,
 } from "../dashboard/src/lib/payouts.ts";
 import { accountTitle, checkLine, figures, sourceLine, type DayMoneyRow } from "../dashboard/src/lib/dayMoney.ts";
@@ -46,6 +46,8 @@ const none = new Set<string>();
 check("a customer's cash-out can be paid out", payoutRefusal(pay({}), none) === null);
 check("send money received can be paid out", payoutRefusal(pay({ txn_type: "send_money_received", status: "unmatched" }), none) === null);
 check("a possible fake (chain hold) cannot", payoutRefusal(pay({ status: "review", review_reason: "balance_chain_mismatch", chain_status: "mismatch" }), none) === "Held for review");
+check("a held one can still be ticked to mark paid by hand (owner 2026-11-11)", tickableRefusal(payoutRefusal(pay({ status: "review", review_reason: "balance_chain_mismatch", chain_status: "mismatch" }), none)));
+check("an ignored one can never be ticked", !tickableRefusal(payoutRefusal(pay({ status: "ignored", review_reason: "cash_in_sent", chain_status: "ok" }), none)));
 check("a wrong-amount hold with a sound chain is real money and can", payoutRefusal(pay({ status: "review", review_reason: "amount_mismatch: received 490.00 expected 500.00" }), none) === null);
 check("money the agent sent out cannot", payoutRefusal(pay({ txn_type: "unknown", status: "ignored", review_reason: "cash_in_sent" }), none) === "Not money received");
 check("not yours cannot", payoutRefusal(pay({ status: "ignored", review_reason: "not_ours" }), none) === "Not one of this phone's wallets");

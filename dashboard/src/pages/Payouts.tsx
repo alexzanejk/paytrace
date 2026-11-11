@@ -6,7 +6,7 @@ import { tk, when } from "@/lib/format";
 import { PROVIDERS, PROVIDER_LABEL, type Payment } from "@/lib/types";
 import { rangeBounds, rangeLabel, periodRange } from "@/lib/period";
 import {
-  PAYOUT_WORDS, UNSURE_HELP, checkNumbers, groupDigits, liveItemsByPayment, parsePct, parseSendAmount, keepPctFor, payoutLine, payoutRefusal, recentNumbers,
+  PAYOUT_WORDS, UNSURE_HELP, checkNumbers, groupDigits, liveItemsByPayment, parsePct, parseSendAmount, keepPctFor, payoutLine, payoutRefusal, recentNumbers, tickableRefusal, HELD_REFUSAL,
   parseFee, sendMethod, sendProblem, senderOptions, splitPayout, ROCKET_NOTE, METHOD_WORDS, type PayoutItemRow, type PayoutRow,
 } from "@/lib/payouts";
 import { nudgePhone } from "@/lib/wake";
@@ -104,7 +104,7 @@ export function Payouts() {
   // Drop ticks on rows that are gone or became unpayable (another tab paid them, a payout started).
   useEffect(() => {
     setTicked((t) => {
-      const ok = new Set([...t].filter((id) => rows.some((r) => r.id === id && !payoutRefusal(r, taken))));
+      const ok = new Set([...t].filter((id) => rows.some((r) => r.id === id && tickableRefusal(payoutRefusal(r, taken)))));
       return ok.size === t.size ? t : ok;
     });
   }, [rows, taken]);
@@ -121,7 +121,7 @@ export function Payouts() {
       return n;
     });
   }
-  const tickable = shown.filter((r) => !payoutRefusal(r, taken));
+  const tickable = shown.filter((r) => tickableRefusal(payoutRefusal(r, taken)));
   const allTicked = tickable.length > 0 && tickable.every((r) => ticked.has(r.id));
 
   const phoneOptions = devices.list.filter((d) => d.status === "approved").map((d) => ({ value: d.id, label: devices.nameOf(d.id) }));
@@ -211,8 +211,8 @@ export function Payouts() {
                     className="mt-1 h-4 w-4 accent-[var(--color-primary)]"
                     aria-label={`Tick ${p.trx_id}`}
                     checked={ticked.has(p.id)}
-                    disabled={!!why}
-                    title={why ?? "Tick to pay this out"}
+                    disabled={!tickableRefusal(why)}
+                    title={why === HELD_REFUSAL ? "Held for review: can only be marked paid by hand, and stays held" : why ?? "Tick to pay this out"}
                     onChange={() => toggle(p.id)}
                   />
                   <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setOpen(isOpen ? null : p.id)} aria-expanded={isOpen}>
@@ -233,7 +233,8 @@ export function Payouts() {
                           {payout.status === "paid" ? <CheckCircle2 className="mr-1 inline h-3 w-3" aria-hidden /> : null}
                           {PAYOUT_WORDS[payout.status].label}
                         </Badge>
-                      ) : why && why !== "Already paid out" ? <span className="text-status-warn">{why}</span> : null}
+                      ) : why === HELD_REFUSAL ? <span className="text-status-warn">Held: mark paid by hand only</span>
+                        : why && why !== "Already paid out" ? <span className="text-status-warn">{why}</span> : null}
                     </div>
                   </button>
                 </div>
@@ -279,7 +280,9 @@ function PayoutPanel({
   const [first, setFirst] = useState("");
   const [second, setSecond] = useState("");
   const [note, setNote] = useState("");
-  const [byHand, setByHand] = useState(false);
+  // A held transaction can only be marked paid by hand (migration 092); a phone never sends money for it.
+  const heldCount = chosen.filter((r) => payoutRefusal(r, new Set()) === HELD_REFUSAL).length;
+  const [byHand, setByHand] = useState(heldCount > 0);
   const [trx, setTrx] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -405,9 +408,15 @@ function PayoutPanel({
       ) : null}
 
       <div className="flex flex-wrap gap-2 text-sm" role="group" aria-label="How it is paid">
-        <Button variant={byHand ? "outline" : "default"} size="sm" onClick={() => { setByHand(false); setConfirming(false); }}>Send from a phone</Button>
+        <Button variant={byHand ? "outline" : "default"} size="sm" disabled={heldCount > 0} onClick={() => { setByHand(false); setConfirming(false); }}>Send from a phone</Button>
         <Button variant={byHand ? "default" : "outline"} size="sm" onClick={() => { setByHand(true); setConfirming(false); }}>Mark paid by hand</Button>
       </div>
+      {heldCount > 0 ? (
+        <p className="text-sm text-status-warn">
+          {heldCount === 1 ? "One ticked transaction is" : `${heldCount} ticked transactions are`} held for review, so this can only be marked paid by
+          hand. {heldCount === 1 ? "It stays" : "They stay"} held on Review: not counted in the totals, and Admin Hub still shows {heldCount === 1 ? "it" : "them"} as held.
+        </p>
+      ) : null}
 
       {!byHand ? (
         <label className="block space-y-1 text-sm">
