@@ -115,4 +115,12 @@ class AppLookTest {
         // An ordinary read's look still works and carries no query.
         assertNull(AppLook.parse(org.json.JSONObject("""{"back_to": 1700000000000}"""))!!.query)
     }
+
+    @Test fun aSearchedListIsToldFromThePlainOne() {
+        // From the owner's recording: the plain Statement list hides numbers, the searched one shows them in full.
+        assertFalse(AppLook.searchShown(listOf("0132XXXX256", "0160XXXX034"), listOf("Transaction History", "Search")))
+        assertTrue(AppLook.searchShown(listOf("01320352256"), listOf("Transaction History")))
+        assertTrue(AppLook.searchShown(emptyList(), listOf("No transaction was found", "Clear Search")))
+        assertFalse(AppLook.searchShown(emptyList(), listOf("You haven't made any transactions recently")))
+    }
 }

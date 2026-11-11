@@ -74,6 +74,11 @@ data class AppLook(val backTo: Long?, val finds: List<Target>, val query: String
             (norm("লেনদেন") in s && (norm("পাওয়া যায়নি") in s || norm("পাওয়া যায় নি") in s)) || "no transaction" in s
         }
 
+        /** bKash really ran the search: a searched list shows a FULL number on its rows (01320352256) where the plain
+         *  list hides it (0132XXXX256), or it says nothing was found (owner's recording 573a9296, 2026-11-11). */
+        fun searchShown(references: List<String>, texts: List<String>): Boolean =
+            references.any { Regex("^01[0-9]{9}$").matches(it.trim()) } || nothingFound(texts)
+
         private fun norm(s: String): String = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
 
         /** True when a list row is this target: the same minute (+/- 1), the same amount, the same masked number (when both

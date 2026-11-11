@@ -1,1 +1,1 @@
-New: the dashboard can ask this phone to search its bKash app for a TrxID or a customer's number.
+Fix: the bKash app search now makes sure bKash really runs the search. It touches the search box first, checks that the list changed, and presses Search another way if it did not.
