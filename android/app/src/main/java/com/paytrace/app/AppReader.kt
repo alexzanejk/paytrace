@@ -65,17 +65,25 @@ object AppReader {
 
     @Volatile private var running = false
     /** True while the reader OR an app cash-in drives the bKash app: USSD runs and each other wait. */
-    fun active(): Boolean = running || AppCashIn.running || AppB2b.running || AppRecorder.recording()
+    fun active(): Boolean = running || AppCashIn.running || AppB2b.running || AppBalance.running || AppRecorder.recording()
 
     internal val LOGIN = setOf("লগ ইন", "log in", "login")
     private val INBOX = setOf("ইনবক্স", "inbox")
     private val TAB = setOf("লেনদেনসমূহ", "transactions")
     private val STATEMENT = setOf("স্টেটমেন্ট", "statement", "statements")
+    /** The Statement page's own list tab. Since 2026-11-11 (owner: "statement main, inbox backup") this list is read first:
+     *  the owner's recording showed it listing a real Tk 2,000 Cash Out the Inbox left out, with the commission on every row,
+     *  while the Inbox first shows an old copy of itself for a few seconds. */
+    private val HISTORY = setOf("লেনদেনের বিবরণী", "transaction history")
     private val SEARCH = setOf("সার্চ করুন", "search")
     /** Start the Statement search by this point of a run if TrxIDs are still unread, so it gets its share of the time. */
     private const val SEARCH_AT_MS = 95_000L
     /** One search: no result and no "nothing found" after this long = give up on that TrxID for this run. */
     private const val SEARCH_WAIT_MS = 12_000L
+    /** How long to look for the Statement search box (the page may need swiping back up to show it). */
+    private const val BOX_WAIT_MS = 25_000L
+    /** At most this many swipes toward the newest end before reading the list (the app keeps its scroll position). */
+    private const val TOP_SWIPES = 8
     private val TIME = Regex("^\\s*(\\d{1,2}):(\\d{2})\\s*([ap]m)\\s+(\\d{2})/(\\d{2})/(\\d{2,4})\\s*$", RegexOption.IGNORE_CASE)
     private val AMOUNT = Regex("^\\s*[+-]\\s*৳\\s*[\\d,]+(\\.\\d+)?\\s*$")
 
@@ -191,6 +199,8 @@ object AppReader {
         var sTypedAt = 0L       // when typing will be done
         var sSubmittedAt = 0L
         var sOpened = false
+        var sTabs = 0
+        var sSwipes = 0
         val searchedRows = LinkedHashSet<String>()
         val trace = ArrayList<String>()
         fun note(s: String) { if (trace.size < 40) trace.add(String.format(Locale.US, "%5.1fs %s", (SystemClock.elapsedRealtime() - started) / 1000.0, s)) }
@@ -215,6 +225,13 @@ object AppReader {
         var scrolls = 0
         var idleScrolls = 0
         var prevFound: Set<String> = emptySet()
+        // The list must be read from its newest end: bKash keeps the scroll position between visits, and a read that starts
+        // halfway down never sees anything newer (2026-11-11: the 13:33 / 13:34 reads began at 13:15 / 11:38).
+        var topped = false
+        var useInbox = false     // the Statement list came up empty or never loaded: read the Inbox instead
+        var listPresses = 0
+        var topKey: String? = null
+        var topSwipes = 0
         var gapFrom: Set<String>? = null
         var backSteps = 0
         var totalBacks = 0
@@ -329,7 +346,7 @@ object AppReader {
                             if (sTarget == null) {
                                 if (searchQueue.isEmpty()) return finish(true, null, "$searchWhy, Statement searched")
                                 if (now - started > RUN_MS - 15_000) return finish(true, null, "$searchWhy, no time left to search")
-                                sTarget = searchQueue.removeAt(0); sStartedAt = now; sTypedAt = 0L; sSubmittedAt = 0L; sOpened = false
+                                sTarget = searchQueue.removeAt(0); sStartedAt = now; sTypedAt = 0L; sSubmittedAt = 0L; sOpened = false; sTabs = 0; sSwipes = 0
                             }
                             val t = sTarget!!
                             val label = "${t.trx.take(4)}…"
@@ -365,8 +382,13 @@ object AppReader {
                                 when {
                                     box != null -> { sTypedAt = typeInto(svc, t.trx, now, main); progressAt = now }
                                     pressAny(svc, SEARCH, root) -> { nextActAt = now + pace.settle(); progressAt = now }
-                                    pressAny(svc, STATEMENT, root) -> { nextActAt = now + pace.settle(); progressAt = now }
-                                    now - sStartedAt > SEARCH_WAIT_MS -> { note("Statement: the search box was not found"); return finish(true, null, "$searchWhy, Statement search not reached") }
+                                    // On the Statement page already but no box: it scrolled away with the list. Swipe back up.
+                                    sTabs >= 1 && sSwipes < 5 -> {
+                                        if (sSwipes == 0) note("Statement: the search box is scrolled away, swiping back up")
+                                        sSwipes++; progressAt = now; nextActAt = now + pace.readPause(); swipe(svc, up = false)
+                                    }
+                                    pressAny(svc, STATEMENT, root) -> { sTabs++; nextActAt = now + pace.settle(); progressAt = now }
+                                    now - sStartedAt > BOX_WAIT_MS -> { note("Statement: the search box was not found"); return finish(true, null, "$searchWhy, Statement search not reached") }
                                 }
                             }
                             main.postDelayed(this, TICK_MS); return
@@ -428,6 +450,18 @@ object AppReader {
                                     }
                                 }
                             }
+                            found.isNotEmpty() && !topped -> {
+                                for ((key, at) in found) if (!rows.containsKey(key) && rows.size < MAX_ROWS) rows[key] = at
+                                if (canAct) {
+                                    val first = found.first().first
+                                    when {
+                                        topSwipes > 0 && first == topKey -> topped = true
+                                        topSwipes >= TOP_SWIPES -> topped = true
+                                        else -> { topKey = first; topSwipes++; progressAt = now; nextActAt = now + pace.readPause(); swipe(svc, up = false) }
+                                    }
+                                    if (topped) { note("at the newest end of the list (${topSwipes} swipe(s) up)"); prevFound = found.map { it.first }.toSet() }
+                                }
+                            }
                             found.isNotEmpty() -> {
                                 val keysNow = found.map { it.first }.toSet()
                                 // The list moved more than a screen since the last read: go back until it meets rows
@@ -479,8 +513,15 @@ object AppReader {
                                     if (idleScrolls >= 2 && scrollDown(svc, root)) note("scrolled by the list") else swipe(svc, up = true)
                                 }
                             }
-                            canAct && pressAny(svc, TAB, root) -> { nextActAt = now + pace.settle(); note("opened the transactions tab") }
-                            canAct && pressAny(svc, INBOX, root) -> { nextActAt = now + pace.settle(); note("opened the inbox") }
+                            // Statement list first; the Inbox only when the Statement list shows nothing.
+                            canAct && !useInbox && (AppBanners.emptyList(texts) || listPresses >= 4) -> {
+                                useInbox = true; topped = false; topSwipes = 0; topKey = null
+                                note("the Statement list " + (if (AppBanners.emptyList(texts)) "came up empty" else "did not load") + ", reading the Inbox instead")
+                            }
+                            canAct && !useInbox && pressAny(svc, HISTORY, root) -> { listPresses++; nextActAt = now + pace.settle(); note("opened the Statement list") }
+                            canAct && !useInbox && pressAny(svc, STATEMENT, root) -> { listPresses++; nextActAt = now + pace.settle(); note("opened Statements") }
+                            canAct && useInbox && pressAny(svc, TAB, root) -> { nextActAt = now + pace.settle(); note("opened the transactions tab") }
+                            canAct && useInbox && pressAny(svc, INBOX, root) -> { nextActAt = now + pace.settle(); note("opened the inbox") }
                             else -> {
                                 // Something left open over the app (a sheet, a sub-page, an offer): Back closes it and never
                                 // confirms anything. Never on a screen with no words (the logo, the loading bird).

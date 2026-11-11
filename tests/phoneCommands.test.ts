@@ -10,6 +10,9 @@ const base: PhoneCommand = { id: "x", kind: "balance", provider: "nagad", status
 const money = (n: number) => `Tk ${n.toFixed(2)}`;
 const when = (t: string) => `@${t}`;
 
+check("a balance read in the bKash app says so", commandLine({ ...base, provider: "bkash", via: "app", status: "done", balance: 11923.83, finished_at: "2026-11-11T08:23:00Z" }, money, when, "bKash").includes("read in the bKash app") && !commandLine({ ...base, status: "done", balance: 5 }, money, when).includes("bKash app"));
+check("a running app balance check says where it reads", commandLine({ ...base, via: "app", status: "running" }, money, when).includes("bKash app"));
+check("the app balance error is in words", errorText("balance_not_shown", "bKash").includes("Tap for Balance"));
 check("queued and running are live", isLive(base) && isLive({ ...base, status: "running" }));
 check("done, failed and cancelled are not live", !isLive({ ...base, status: "done" }) && !isLive({ ...base, status: "failed" }) && !isLive({ ...base, status: "cancelled" }));
 check("no command is not live", !isLive(null));

@@ -123,6 +123,8 @@ object Sender {
         o.put("app_cashin", true)
         // This build opens bKash app rows to read their TrxID (AppLook), so the server may hold out for an exact TrxID.
         o.put("app_trx", true)
+        // This build reads the bKash balance through the bKash app when the dashboard asks for that way (AppBalance).
+        o.put("app_balance", true)
         // The accessibility service, as it really is: Android's switch can read ON while the service is dead (the phone killed
         // the app). The dashboard shows it, and how often this phone has mended it by itself (AccessibilityRepair).
         o.put("accessibility_on", UssdSetup.accessibilityOn(ctx))

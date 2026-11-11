@@ -13,6 +13,10 @@ class AgentStatusTest {
         assertEquals(true, AgentStatusRead.drawerStatus(menu("খোলা")))
         assertEquals(false, AgentStatusRead.drawerStatus(menu("বন্ধ")))
         assertNull(AgentStatusRead.drawerStatus(listOf("ক্যাশ ইন", "বিটুবি ট্রান্সফার", "হোম")))
+        // English side menu (recorder run 573a9296): "Agent Status" with "On" / "Off".
+        val en = listOf("bKash Menu", "English", "Agent Status", "On", "Home", "Suspicious Activity Report", "Log Out")
+        assertEquals(true, AgentStatusRead.drawerStatus(en))
+        assertEquals(false, AgentStatusRead.drawerStatus(en.map { if (it == "On") "Off" else it }))
         assertNull(AgentStatusRead.drawerStatus(listOf("স্ট্যাটাস পরিবর্তন করুন", "পরিবর্তন করুন")))
     }
 
