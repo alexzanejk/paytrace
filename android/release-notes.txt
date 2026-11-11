@@ -1,1 +1,1 @@
-bKash app: works with the bKash app in Bangla or English. When bKash says the agent status is CLOSE, app Cash In and B2B switch it to OPEN first; automatic reads just close that question.
+bKash app in English: app Cash In now presses Proceed on the number page (English shows no number row), and the agent status "On"/"Off" in the side menu is understood.

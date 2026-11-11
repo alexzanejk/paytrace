@@ -410,6 +410,15 @@ object AppCashIn {
                                         note("typing the number")
                                         nextActAt = typeSlowly(order.number, now)
                                     }
+                                    // The English page shows no "Cash In <number>" row (recorder run 573a9296): the box
+                                    // itself holds exactly this number, so Proceed is pressed (it stays grey until it is whole).
+                                    shown == null && inBox == order.number -> {
+                                        if (nextPresses >= 4) return stop("app_stopped_before_send", "the number screen did not move on")
+                                        nextPresses++
+                                        note("the box shows exactly the number, going on")
+                                        if (!AppReader.pressAny(svc, AppCashInRead.NEXT, root)) note("next not found")
+                                        nextActAt = now + pace.settle()
+                                    }
                                     else -> { nextActAt = now + 1_500 }
                                 }
                             }

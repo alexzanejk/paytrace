@@ -90,8 +90,12 @@ class AppCashInTest {
         "You have no saved contact", "Add new contact", "Cash In")
     private val enAmount = listOf("Customer", "01320352256", "Amount", "৳500", "৳1000", "৳2000", "৳5000", "৳0",
         "Available Balance:", "৳12237.07", "Proceed to the next step", "Cash In")
-    private val enPin = listOf("Customer", "৳200.00", "+ ৳0.75", "Enter PIN", "Confirm", "Cash In") + digits
-    private val enSheet = listOf("Confirm Cash In", "01320352256", "৳200.00", "New Balance", "৳12037.82", "Tap and hold to make Cash In")
+    // The PIN screen and the sheet as recorded later (run 573a9296, a real Tk 250 Cash In, DKB0CFV5UM): in English the PIN
+    // screen DOES show the number, and the sheet says "Cash In Confirm" / "Tap and hold for Cash In".
+    private val enPin = listOf("Customer", "01320352256", "৳200.00", "Commission", "+ ৳0.75", "Enter PIN", "Confirm") + digits + "Cash In"
+    private val enSheet = listOf("Cash In Confirm", "01320352256", "৳200.00", "৳11674.77", "Tap and hold for Cash In")
+    // The number page after typing: no "Cash In <number>" row, only the box and a Proceed button.
+    private val enNumberTyped = listOf("Tap to scan customer's QR", "All Contacts", "No matching contact", "Proceed to the next step", "Cash In")
     private val enResult = listOf("Your Cash In transfer is complete.", "01320352256", "01:14pm 11/11/26", "DKB8CCKAZY",
         "৳12237.07", "৳12037.82", "৳200.00", "Commission", "৳0.75", "Check Offers", "Back to Home")
     private val enLogin = listOf("বাংলা", "Login to your bKash account", "Account Number", "+88", "01706630756",
@@ -101,6 +105,8 @@ class AppCashInTest {
         assertEquals(Screen.LOGIN, AppCashInRead.screenOf(enLogin, true))
         assertEquals(Screen.HOME, AppCashInRead.screenOf(enHome, false))
         assertEquals(Screen.NUMBER, AppCashInRead.screenOf(enNumber, false))
+        assertEquals(Screen.NUMBER, AppCashInRead.screenOf(enNumberTyped, false))
+        assertNull(AppCashInRead.typedShown(enNumberTyped))
         assertEquals(Screen.AMOUNT, AppCashInRead.screenOf(enAmount, false))
         assertEquals(Screen.PIN, AppCashInRead.screenOf(enPin, true))
         assertEquals(Screen.CONFIRM, AppCashInRead.screenOf(enSheet, false))

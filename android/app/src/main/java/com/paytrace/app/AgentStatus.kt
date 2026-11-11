@@ -13,8 +13,9 @@ import android.view.accessibility.AccessibilityNodeInfo
  */
 object AgentStatusRead {
     const val TITLE = "এজেন্টের স্ট্যাটাস"
-    val OPEN = setOf("খোলা", "open")
-    val CLOSED = setOf("বন্ধ", "closed", "close")
+    // English labels from recorder run 573a9296 (2026-11-11): the switch reads "On" / "Off" next to "Agent Status".
+    val OPEN = setOf("খোলা", "open", "on")
+    val CLOSED = setOf("বন্ধ", "closed", "close", "off")
 
     /** In the side menu: true = OPEN, false = CLOSED; null = not the side menu or no label. */
     fun drawerStatus(texts: List<String>): Boolean? {
