@@ -7,6 +7,7 @@ import { PAGE_INTRO, PAYMENT_STATUS } from "@/lib/words";
 import { openHelp } from "@/lib/nav";
 import { nudgePhone } from "@/lib/wake";
 import { walletCheckLine, type PaymentCheck } from "@/lib/walletCheck";
+import { amountNote, typedOrderFor } from "@/lib/reviewOrder";
 import { useDevices } from "@/hooks/useDevices";
 import { DeviceChip } from "@/components/DeviceChip";
 import { ProviderChip } from "@/components/ProviderChip";
@@ -32,6 +33,7 @@ export function Review() {
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState<Record<string, string>>({});
   const [showNoOrder, setShowNoOrder] = useState(false);
+  const [other, setOther] = useState<Record<string, boolean>>({});
   const devices = useDevices();
 
   const { data, error, loading, refresh } = useQuery(
@@ -74,7 +76,22 @@ export function Review() {
       const late = trx.length
         ? (must(await sb.from("payments").select("*").in("trx_id", trx).in("status", ["tracked_only", "unmatched"]).limit(100)) as Payment[])
         : [];
-      return { payments, orders: [...open, ...expired], late, checks };
+      // The order each payment's TrxID was typed on (any age the database still lets us credit), so the right order is known
+      // without picking it from a list (owner 2026-11-11: "the system already knows whose order it is").
+      const shownTrx = [...new Set([...payments, ...late].map((p) => p.trx_id))];
+      const claimers = shownTrx.length
+        ? (must(
+            await sb
+              .from("orders")
+              .select("id,order_no,expected_amount,customer_name,status,wallet_method,claimed_trx_id,claimed_provider,expires_at,created_at,api_key_id")
+              .in("claimed_trx_id", shownTrx)
+              .in("status", ["pending", "review", "expired"]),
+          ) as Order[])
+        : [];
+      const sites = must(await sb.from("api_keys").select("id,name")) as { id: string; name: string | null }[];
+      const seen = new Set<string>();
+      const all = [...open, ...expired, ...claimers].filter((o) => (seen.has(o.id) ? false : (seen.add(o.id), true)));
+      return { payments, orders: all, claimers, late, checks, sites };
     },
     [],
     { refreshMs: 20000 },
@@ -108,7 +125,11 @@ export function Review() {
   }
   const expiredOrderOf = (p: Payment) => orders.find((o) => o.status === "expired" && o.claimed_trx_id === p.trx_id && o.claimed_provider === p.provider) ?? null;
 
+  const siteName = (id: string | null) => (id ? data?.sites.find((k) => k.id === id)?.name ?? null : null);
+
   const card = (p: Payment) => {
+    const typed = typedOrderFor(p, data?.claimers ?? []);
+    const pickMode = !typed || !!other[p.id];
     const choice = picked[p.id] ?? expiredOrderOf(p)?.id ?? "";
     const order = orders.find((o) => o.id === choice);
     // A held Cash Out receipt can only pay a deposit that asked for Cash Out (the database refuses the rest).
@@ -157,6 +178,40 @@ export function Review() {
           ) : null}
         </div>
 
+        {typed && !pickMode ? (
+          <div className="mt-auto space-y-2 border-t border-border pt-3 text-sm">
+            <p>
+              The customer typed this TrxID on order <span className="font-mono font-medium">{typed.order_no}</span>
+              {siteName(typed.api_key_id) ? ` (${siteName(typed.api_key_id)})` : ""}, asking {tk(typed.expected_amount)}
+              {typed.status === "expired" ? ", which has since run out of time" : ""}.
+            </p>
+            {amountNote(typed.expected_amount, p.amount, tk) ? <p className="text-status-warn">{amountNote(typed.expected_amount, p.amount, tk)}</p> : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <Confirm
+                title={`Credit this payment to ${typed.order_no}?`}
+                description={`${tk(p.amount)} (receipt ${p.trx_id}) will be credited to ${typed.order_no} and the order will turn Paid. ${amountNote(typed.expected_amount, p.amount, tk)} This cannot be undone.`}
+                confirmLabel="Credit it"
+                onConfirm={() => act(p.id, () => sb.rpc("manual_match", { p_payment_id: p.id, p_order_id: typed.id }))}
+              >
+                <Button size="sm" title="Credit this money to the order the customer typed its TrxID on">Credit to {typed.order_no}</Button>
+              </Confirm>
+              {p.status === "review" ? (
+                <Confirm
+                  title="Ignore this payment?"
+                  description="It will never be credited to any order and will not count in the totals. The SMS stays on the Transactions page, marked Ignored, and Admin Hub shows it as UNVERIFIED."
+                  confirmLabel="Ignore it"
+                  onConfirm={() => act(p.id, () => sb.rpc("ignore_payment", { p_payment_id: p.id }))}
+                >
+                  <Button size="sm" variant="outline" title="This money belongs to no order">Ignore</Button>
+                </Confirm>
+              ) : null}
+              <Button size="sm" variant="ghost" onClick={() => setOther((s) => ({ ...s, [p.id]: true }))}>Choose a different order</Button>
+            </div>
+            {failed[p.id] ? <span className="text-xs text-destructive">{failed[p.id]}</span> : null}
+          </div>
+        ) : null}
+
+        {pickMode ? (
         <div className="mt-auto flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:flex-wrap sm:items-center">
           <Select value={choice} onValueChange={(v) => setPicked((s) => ({ ...s, [p.id]: v }))}>
             <SelectTrigger className="w-full sm:w-64" aria-label={`Order for ${p.trx_id}`}>
@@ -206,7 +261,9 @@ export function Review() {
             ) : null}
           </div>
           {failed[p.id] ? <span className="text-xs text-destructive">{failed[p.id]}</span> : null}
+          {typed ? <Button size="sm" variant="ghost" onClick={() => setOther((s) => ({ ...s, [p.id]: false }))}>Back to {typed.order_no}</Button> : null}
         </div>
+        ) : null}
       </Card>
     );
   };

@@ -132,9 +132,17 @@ export function payoutRefusal(p: PayablePayment, taken: Set<string>): string | n
   if (!["cash_out", "send_money_received", "payment_received"].includes(p.txn_type)) return "Not money received";
   const counted = ["unmatched", "matched", "tracked_only"].includes(p.status) ||
     (p.status === "review" && p.chain_status === "ok" && ORDER_ONLY_HOLDS.some((h) => (p.review_reason ?? "").startsWith(h)));
-  if (!counted) return "Held for review";
+  if (!counted) return p.status === "review" ? HELD_REFUSAL : "Not counted";
   if (taken.has(p.id)) return "Already paid out";
   return null;
+}
+
+export const HELD_REFUSAL = "Held for review";
+
+/** A held transaction can still be ticked, but only to be marked paid BY HAND (owner 2026-11-11, migration 092): it stays held
+ *  on Review, and no phone ever sends money for it. Ignored, not-ours and other refusals are never tickable. */
+export function tickableRefusal(why: string | null): boolean {
+  return why === null || why === HELD_REFUSAL;
 }
 
 /** The payout a transaction belongs to now (the live one), from the item rows. */
