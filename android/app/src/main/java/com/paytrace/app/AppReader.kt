@@ -84,6 +84,12 @@ object AppReader {
     private const val SEARCH_WAIT_MS = 12_000L
     /** How long to look for the Statement search box (the page may need swiping back up to show it). */
     private const val BOX_WAIT_MS = 25_000L
+    /** After pressing Search, wait this long for the list to change before pressing it another way. */
+    private const val RESUBMIT_MS = 5_000L
+    /** How many different ways of pressing Search are tried (see submitTry). */
+    private const val SUBMIT_WAYS = 3
+    /** Time between touching the search box and the first letter (the keyboard opening). */
+    private const val BOX_TOUCH_MS = 900L
     /** At most this many swipes toward the newest end before reading the list (the app keeps its scroll position). */
     private const val TOP_SWIPES = 8
     private val TIME = Regex("^\\s*(\\d{1,2}):(\\d{2})\\s*([ap]m)\\s+(\\d{2})/(\\d{2})/(\\d{2,4})\\s*$", RegexOption.IGNORE_CASE)
@@ -211,6 +217,8 @@ object AppReader {
         var sOpened = false
         var sTabs = 0
         var sSwipes = 0
+        var sTries = 0          // how many ways of pressing Search were tried for this target
+        var sTypeTries = 0      // typing is tried twice before the target is skipped
         val searchedRows = LinkedHashSet<String>()
         val trace = ArrayList<String>()
         fun note(s: String) { if (trace.size < 40) trace.add(String.format(Locale.US, "%5.1fs %s", (SystemClock.elapsedRealtime() - started) / 1000.0, s)) }
@@ -373,10 +381,24 @@ object AppReader {
                             if (sTarget == null) {
                                 if (searchQueue.isEmpty()) return finish(true, null, "$searchWhy, Statement searched")
                                 if (now - started > RUN_MS - 15_000) return finish(true, null, "$searchWhy, no time left to search")
-                                sTarget = searchQueue.removeAt(0); sStartedAt = now; sTypedAt = 0L; sSubmittedAt = 0L; sOpened = false; sTabs = 0; sSwipes = 0
+                                sTarget = searchQueue.removeAt(0); sStartedAt = now; sTypedAt = 0L; sSubmittedAt = 0L; sOpened = false; sTabs = 0; sSwipes = 0; sTries = 0; sTypeTries = 0
                             }
                             val t = sTarget!!
                             val label = "${t.trx.take(4)}…"
+                            // Did bKash really run the search? A searched list shows FULL numbers (01320352256) where the plain
+                            // list hides them (0132XXXX256), or says "No transaction was found". Owner 2026-11-11: the first
+                            // searches typed the TrxID and pressed Search but the list never changed.
+                            val applied = AppLook.searchShown(nodes.filter { idEnds(it, "tag_transaction_reference") }.map { it.text?.toString() ?: "" }, texts)
+                            if (sSubmittedAt > 0 && !applied && sTries < SUBMIT_WAYS && now - sSubmittedAt > RESUBMIT_MS) {
+                                val box = searchBox(svc)
+                                val shown = box?.text?.toString()?.trim()?.uppercase(Locale.ROOT)
+                                if (shown == t.trx) {
+                                    val how = submitTry(svc, box, nodes, sTries); sTries++
+                                    note("Statement: the list did not change, pressing Search again ($how)")
+                                    sSubmittedAt = now; progressAt = now; nextActAt = now + pace.settle()
+                                    main.postDelayed(this, TICK_MS); return
+                                }
+                            }
                             // Its own row on screen (the search result, or the plain Statement list): open it and read its TrxID.
                             // The owner's own search: a TrxID brings ONE row (opened for its TrxID); a phone number brings
                             // that customer's rows (only rows showing that number are taken; the plain list may still show).
@@ -393,7 +415,7 @@ object AppReader {
                                         else { phoneSwipes++; swipe(svc, up = true); progressAt = now; nextActAt = now + pace.readPause() }
                                         main.postDelayed(this, TICK_MS); return
                                     }
-                                } else if (on.size == 1) {
+                                } else if (on.size == 1 && (applied || sTries >= SUBMIT_WAYS)) {
                                     val (parts, at, node) = on[0]
                                     searchedRows.add(AppLook.maskedRow(parts))
                                     fullRows.add(parts.joinToString(" · ") { it.trim() })
@@ -428,9 +450,14 @@ object AppReader {
                                 if (now >= sTypedAt) {
                                     val box = searchBox(svc)
                                     val shown = box?.text?.toString()?.trim()?.uppercase(Locale.ROOT)
-                                    if (shown != t.trx) { note("Statement: the search box does not show $label, skipping it"); sTarget = null; if (outcome.isEmpty()) outcome = "could not type it" }
+                                    if (shown != t.trx && sTypeTries < 1) {
+                                        // The box lost some letters (the keyboard was still opening): clear it and type again.
+                                        sTypeTries++
+                                        note("Statement: the search box shows ${shown?.take(4) ?: "nothing"}…, typing $label again")
+                                        sTypedAt = typeInto(svc, t.trx, now, main, clearFirst = true); progressAt = now
+                                    } else if (shown != t.trx) { note("Statement: the search box does not show $label, skipping it"); sTarget = null; if (outcome.isEmpty()) outcome = "could not type it" }
                                     else {
-                                        val how = submit(svc, box, nodes)
+                                        val how = submitTry(svc, box, nodes, 0); sTries = 1
                                         note("Statement: searching $label ($how)")
                                         sSubmittedAt = now; progressAt = now; nextActAt = now + pace.settle()
                                     }
@@ -660,9 +687,19 @@ object AppReader {
     }
 
     /** Types [text] into the search box one character at a time, like fingers. Returns when it will be done. */
-    private fun typeInto(svc: AccessibilityService, text: String, now: Long, main: Handler): Long {
-        searchBox(svc)?.let { b -> try { b.performAction(AccessibilityNodeInfo.ACTION_FOCUS) } catch (e: Exception) { } }
-        var at = 0L
+    private fun typeInto(svc: AccessibilityService, text: String, now: Long, main: Handler, clearFirst: Boolean = false): Long {
+        // Like a finger: touch the box first so it takes the focus and the keyboard opens, then type into it.
+        searchBox(svc)?.let { b ->
+            if (!tap(svc, b)) try { b.performAction(AccessibilityNodeInfo.ACTION_CLICK) } catch (e: Exception) { }
+            try { b.performAction(AccessibilityNodeInfo.ACTION_FOCUS) } catch (e: Exception) { }
+        }
+        var at = BOX_TOUCH_MS
+        if (clearFirst) main.postDelayed({
+            searchBox(svc)?.let { b ->
+                val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "") }
+                try { b.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args) } catch (e: Exception) { }
+            }
+        }, at / 2)
         for (i in 1..text.length) {
             at += pace.charGap()
             val part = text.substring(0, i)
@@ -676,15 +713,26 @@ object AppReader {
         return now + at + pace.afterKeys()
     }
 
-    /** Starts the search the way the owner does, with the keyboard's Search key (Android 11+), else a search button. */
-    private fun submit(svc: AccessibilityService, box: AccessibilityNodeInfo?, nodes: List<AccessibilityNodeInfo>): String {
-        // The page's own "সার্চ করুন" button (tag_search_button): grey until something is typed, then it starts the search.
-        if (buttonEnabled(nodes, SEARCH) == true && pressAny(svc, SEARCH)) return "search button"
-        if (box != null && Build.VERSION.SDK_INT >= 30) {
-            try { if (box.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)) return "keyboard Search key" } catch (e: Exception) { }
+    /** Presses Search, a different way on each try ([n] = 0, 1, 2), because one way may do nothing on this phone:
+     *  0 = the keyboard's Search key (the owner's own way; Android 11+), else the page's Search button;
+     *  1 = the page's Search button (tag_search_button) pressed the invisible way; 2 = a finger tap on that button. */
+    private fun submitTry(svc: AccessibilityService, box: AccessibilityNodeInfo?, nodes: List<AccessibilityNodeInfo>, n: Int): String {
+        val button = nodes.firstOrNull { idEnds(it, "tag_search_button") }
+        if (n == 0) {
+            if (box != null && Build.VERSION.SDK_INT >= 30) {
+                try { if (box.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)) return "keyboard Search key" } catch (e: Exception) { }
+            }
+            if (button != null && tap(svc, button)) return "Search button"
+            return if (pressAny(svc, SEARCH)) "Search button (by its word)" else "no way to press Search found"
         }
-        return if (pressAny(svc, SEARCH)) "search button (it looked grey)" else "no way to press Search found"
+        if (n == 1 && button != null) {
+            try { if (button.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return "Search button, pressed directly" } catch (e: Exception) { }
+        }
+        if (button != null && tap(svc, button)) return "Search button, tapped"
+        return if (pressAny(svc, SEARCH)) "Search button (by its word)" else "no way to press Search found"
     }
+
+    private fun idEnds(n: AccessibilityNodeInfo, id: String) = (n.viewIdResourceName ?: "").endsWith(id)
 
     /** Whether the app has lit the button with these words (the tappable thing around them), or null when it is not on
      *  screen. bKash keeps Log in and Search grey until their box is filled. */
