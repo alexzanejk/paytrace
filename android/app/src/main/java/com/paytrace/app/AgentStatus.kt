@@ -68,7 +68,7 @@ internal class AgentOpener(private val note: (String) -> Unit) {
                     proceeded = true
                     val b = nodes.firstOrNull { idEnds(it, "tag_proceed_button") }
                     if (b != null && press(svc, b)) note("bKash says the agent status is CLOSE: pressing পরিবর্তন করুন to open it")
-                    else if (AppReader.pressAny(svc, setOf("পরিবর্তন করুন"))) note("bKash says the agent status is CLOSE: pressing পরিবর্তন করুন")
+                    else if (AppReader.pressAny(svc, setOf("পরিবর্তন করুন", "change now"))) note("bKash says the agent status is CLOSE: pressing পরিবর্তন করুন")
                     else { note("the পরিবর্তন করুন button was not found, closing the sheet and using the side menu"); closeSheet(svc, nodes) }
                 } else {
                     if (++sheetCloses > 2) { note("bKash keeps showing the status sheet"); active = false; return Result.FAILED }
@@ -86,7 +86,7 @@ internal class AgentOpener(private val note: (String) -> Unit) {
             }
             status == false -> {
                 if (switchTaps < 2 && (tappedAt == 0L || now - tappedAt > 5_000)) {
-                    val title = nodes.firstOrNull { it.text?.toString()?.trim() == AgentStatusRead.TITLE }
+                    val title = nodes.firstOrNull { it.text?.toString()?.trim()?.let { x -> x == AgentStatusRead.TITLE || x.equals("agent status", ignoreCase = true) } == true }
                     val switches = nodes.filter { idEnds(it, "tag_labeled_switch") }
                     val i = if (title == null) null else AgentStatusRead.pickSwitch(midY(title), switches.map { midY(it) })
                     if (i == null) { note("the agent status switch was not found"); active = false; return Result.FAILED }

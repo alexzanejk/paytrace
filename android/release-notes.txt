@@ -1,1 +1,1 @@
-bKash app: when bKash says the agent status is CLOSE, app Cash In and B2B switch it to OPEN first (checked in bKash's side menu) and then go on; automatic reads just close that question.
+bKash app: works with the bKash app in Bangla or English. When bKash says the agent status is CLOSE, app Cash In and B2B switch it to OPEN first; automatic reads just close that question.
