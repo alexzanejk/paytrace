@@ -1,1 +1,1 @@
-Fix: the bKash app search now makes sure bKash really runs the search. It touches the search box first, checks that the list changed, and presses Search another way if it did not.
+Fix: the bKash app search now types the TrxID in a way bKash keeps, puts whatever is on the screen aside before opening bKash, and finds its way back to the Statements page from any bKash screen.
