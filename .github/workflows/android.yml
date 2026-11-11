@@ -43,6 +43,12 @@ jobs:
         working-directory: android
         run: gradle testDebugUnitTest --no-daemon --stacktrace
 
+      # Any call to an Android feature newer than the oldest supported phone (minSdk) without a version check fails here,
+      # instead of crashing that phone on start (a Realme on Android 11, 2026-11-11).
+      - name: Check for features older phones lack
+        working-directory: android
+        run: gradle :app:lintDebug --no-daemon
+
       # Firebase wake-up pushes: the project's google-services.json (from Firebase, stored as a GitHub secret so it
       # is not committed). Without the secret the app still builds; it just cannot be woken by a push.
       - name: Add Firebase config (optional)
