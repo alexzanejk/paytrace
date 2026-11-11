@@ -1,1 +1,1 @@
-bKash app in English: app Cash In now presses Proceed on the number page (English shows no number row), and the agent status "On"/"Off" in the side menu is understood.
+bKash app: reads now start from the newest transaction (the app remembered where it was scrolled), the Statement search scrolls back up to its search box, the agent status "On"/"Off" is understood, and app Cash In presses Proceed on the number page.

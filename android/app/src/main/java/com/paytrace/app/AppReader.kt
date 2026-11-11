@@ -76,6 +76,10 @@ object AppReader {
     private const val SEARCH_AT_MS = 95_000L
     /** One search: no result and no "nothing found" after this long = give up on that TrxID for this run. */
     private const val SEARCH_WAIT_MS = 12_000L
+    /** How long to look for the Statement search box (the page may need swiping back up to show it). */
+    private const val BOX_WAIT_MS = 25_000L
+    /** At most this many swipes toward the newest end before reading the list (the app keeps its scroll position). */
+    private const val TOP_SWIPES = 8
     private val TIME = Regex("^\\s*(\\d{1,2}):(\\d{2})\\s*([ap]m)\\s+(\\d{2})/(\\d{2})/(\\d{2,4})\\s*$", RegexOption.IGNORE_CASE)
     private val AMOUNT = Regex("^\\s*[+-]\\s*৳\\s*[\\d,]+(\\.\\d+)?\\s*$")
 
@@ -191,6 +195,8 @@ object AppReader {
         var sTypedAt = 0L       // when typing will be done
         var sSubmittedAt = 0L
         var sOpened = false
+        var sTabs = 0
+        var sSwipes = 0
         val searchedRows = LinkedHashSet<String>()
         val trace = ArrayList<String>()
         fun note(s: String) { if (trace.size < 40) trace.add(String.format(Locale.US, "%5.1fs %s", (SystemClock.elapsedRealtime() - started) / 1000.0, s)) }
@@ -215,6 +221,11 @@ object AppReader {
         var scrolls = 0
         var idleScrolls = 0
         var prevFound: Set<String> = emptySet()
+        // The list must be read from its newest end: bKash keeps the scroll position between visits, and a read that starts
+        // halfway down never sees anything newer (2026-11-11: the 13:33 / 13:34 reads began at 13:15 / 11:38).
+        var topped = false
+        var topKey: String? = null
+        var topSwipes = 0
         var gapFrom: Set<String>? = null
         var backSteps = 0
         var totalBacks = 0
@@ -329,7 +340,7 @@ object AppReader {
                             if (sTarget == null) {
                                 if (searchQueue.isEmpty()) return finish(true, null, "$searchWhy, Statement searched")
                                 if (now - started > RUN_MS - 15_000) return finish(true, null, "$searchWhy, no time left to search")
-                                sTarget = searchQueue.removeAt(0); sStartedAt = now; sTypedAt = 0L; sSubmittedAt = 0L; sOpened = false
+                                sTarget = searchQueue.removeAt(0); sStartedAt = now; sTypedAt = 0L; sSubmittedAt = 0L; sOpened = false; sTabs = 0; sSwipes = 0
                             }
                             val t = sTarget!!
                             val label = "${t.trx.take(4)}…"
@@ -365,8 +376,13 @@ object AppReader {
                                 when {
                                     box != null -> { sTypedAt = typeInto(svc, t.trx, now, main); progressAt = now }
                                     pressAny(svc, SEARCH, root) -> { nextActAt = now + pace.settle(); progressAt = now }
-                                    pressAny(svc, STATEMENT, root) -> { nextActAt = now + pace.settle(); progressAt = now }
-                                    now - sStartedAt > SEARCH_WAIT_MS -> { note("Statement: the search box was not found"); return finish(true, null, "$searchWhy, Statement search not reached") }
+                                    // On the Statement page already but no box: it scrolled away with the list. Swipe back up.
+                                    sTabs >= 1 && sSwipes < 5 -> {
+                                        if (sSwipes == 0) note("Statement: the search box is scrolled away, swiping back up")
+                                        sSwipes++; progressAt = now; nextActAt = now + pace.readPause(); swipe(svc, up = false)
+                                    }
+                                    pressAny(svc, STATEMENT, root) -> { sTabs++; nextActAt = now + pace.settle(); progressAt = now }
+                                    now - sStartedAt > BOX_WAIT_MS -> { note("Statement: the search box was not found"); return finish(true, null, "$searchWhy, Statement search not reached") }
                                 }
                             }
                             main.postDelayed(this, TICK_MS); return
@@ -426,6 +442,18 @@ object AppReader {
                                         PinTyping.Step.STOP -> return finish(false, "pin_not_entered",
                                             "the PIN box showed ${shown} digit(s) after digit ${pinTyped + (if (keyPressed) 1 else 0)} of ${keys.size}; Log in NOT pressed")
                                     }
+                                }
+                            }
+                            found.isNotEmpty() && !topped -> {
+                                for ((key, at) in found) if (!rows.containsKey(key) && rows.size < MAX_ROWS) rows[key] = at
+                                if (canAct) {
+                                    val first = found.first().first
+                                    when {
+                                        topSwipes > 0 && first == topKey -> topped = true
+                                        topSwipes >= TOP_SWIPES -> topped = true
+                                        else -> { topKey = first; topSwipes++; progressAt = now; nextActAt = now + pace.readPause(); swipe(svc, up = false) }
+                                    }
+                                    if (topped) { note("at the newest end of the list (${topSwipes} swipe(s) up)"); prevFound = found.map { it.first }.toSet() }
                                 }
                             }
                             found.isNotEmpty() -> {
