@@ -59,8 +59,8 @@ class AppReaderTest {
     @Test fun pacedLikeAPerson() {
         val p = HumanPace(java.util.Random(7))
         repeat(200) {
-            assertTrue(p.keyGap() in 800L..1_400L)
-            assertTrue(p.afterKeys() in 1_000L..1_600L)
+            assertTrue(p.keyGap() in 450L..800L)
+            assertTrue(p.afterKeys() in 700L..1_100L)
             assertTrue(p.settle() in 1_800L..3_200L)
             assertTrue(p.readPause() in 1_300L..2_600L)
             assertTrue(p.swipeMs() in 600L..1_000L)

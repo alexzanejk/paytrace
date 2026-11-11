@@ -1,1 +1,1 @@
-bKash app: reads the Statement list first (it showed a Cash Out the Inbox missed), the Inbox only as a backup, and always from the newest transaction; the Statement search scrolls back up to its search box; the agent status "On"/"Off" is understood; app Cash In presses Proceed on the number page. New: the dashboard can ask for the bKash balance through the bKash app (Tap for Balance) as well as by *247#.
+bKash app: the PIN is typed a little faster (about 7-8 seconds instead of 13), still digit by digit; Log in is still pressed only when bKash lights the button.
