@@ -123,4 +123,16 @@ class AppCashInTest {
         assertTrue(AppBanners.pinHint(enLogin))
         assertFalse(AppBanners.pinHint(enLogin - "Agent PIN"))
     }
+
+    @Test fun aSavedContactShownInsteadOfTheNumberIsTapped() {
+        // rubel's Xiaomi, 2026-11-11: the typed number belongs to a saved contact, so bKash lists the contact instead of
+        // "ক্যাশ ইন করুন 01…" and Proceed did nothing four times.
+        val screen = listOf("01757177858", "কাস্টমারের QR স্ক্যান করতে ট্যাপ করুন", "সব কন্ট্যাক্টস", "Rubel", "সব নাম্বার দেখুন", "পরবর্তী ধাপে এগিয়ে যান", "ক্যাশ ইন")
+        assertEquals("Rubel", AppCashInRead.contactToTap(screen, "01757177858", "01757177858"))
+        // A line with the number itself wins over the name, and the typing box is never it.
+        assertEquals("01757 177858", AppCashInRead.contactToTap(screen.take(4) + "01757 177858" + screen.drop(4), "01757177858", "01757177858"))
+        // No contact listed: nothing to tap.
+        assertNull(AppCashInRead.contactToTap(listOf("01757177858", "All Contacts", "No matching contact", "Proceed to the next step"), "01757177858", "01757177858"))
+        assertNull(AppCashInRead.contactToTap(listOf("", "All Contacts", "You have no saved contact", "Add new contact"), "01757177858", ""))
+    }
 }

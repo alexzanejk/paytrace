@@ -1,1 +1,1 @@
-Fix: a bKash transaction left open no longer stops the app jobs; PayTrace closes it (its own Close button, then the phone Back key) and closes what it opened before finishing.
+Fix: a Cash In through the bKash app no longer stops when the number belongs to a saved contact. bKash then shows the contact's name instead of the number, and PayTrace taps it (or the exact number in the contact's list). The amount screen still has to show exactly this number before anything is sent.
