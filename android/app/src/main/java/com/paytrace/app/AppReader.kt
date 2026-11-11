@@ -250,6 +250,7 @@ object AppReader {
         var netHits = 0
         var statusHits = 0
         var backs = 0
+        var leftOpen = 0
         var scrolls = 0
         var idleScrolls = 0
         var prevFound: Set<String> = emptySet()
@@ -276,7 +277,10 @@ object AppReader {
             finished = true
             running = false
             note("end: $why, ${rows.size} rows")
-            main.postDelayed({ try { svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME) } catch (e: Exception) { } }, 300)
+            // A details sheet this run opened is closed before leaving, so the next run never finds the app covered by it.
+            val left = try { bkashRoot(svc)?.let { r -> ArrayList<AccessibilityNodeInfo>().also { collect(r, it, 0) } } } catch (e: Exception) { null }
+            val closing = left != null && detailsOpen(left) && closeSheet(svc, left)
+            main.postDelayed({ try { svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME) } catch (e: Exception) { } }, if (closing) 900L else 300L)
             if (!ok) return done(UssdOutcome(false, null, error, trace = (trace + "screen: $lastScreen").joinToString("\n").take(1900)))
             if (query != null) {
                 // The first screen is never read as rows by the server, so the full numbers can go here for the owner.
@@ -353,6 +357,19 @@ object AppReader {
                                 note("bKash asks to change the agent status (it says CLOSE): closing the question with its X, the status is left as it is")
                                 if (!closeAgentStatus(svc, nodes)) svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
                                 progressAt = now; nextActAt = now + pace.settle()
+                            }
+                            main.postDelayed(this, TICK_MS); return
+                        }
+                        // A transaction's details left open (by an earlier run or by a person) covers the app: close it at once,
+                        // the sheet's own Close button and the phone's Back key in turn (owner 2026-11-11: "a transaction was open
+                        // and it did nothing until I closed it").
+                        if (opening == null && detailsOpen(nodes)) {
+                            if (canAct) {
+                                leftOpen++
+                                if (leftOpen > 6) return finish(rows.isNotEmpty() || fullRows.isNotEmpty(), "unexpected_screen", "a transaction's details would not close")
+                                val how = if (leftOpen % 2 == 1 && closeSheet(svc, nodes)) "pressed its Close" else { svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK); "pressed Back" }
+                                note("a transaction's details were left open: $how")
+                                progressAt = now; nextActAt = now + 1_500
                             }
                             main.postDelayed(this, TICK_MS); return
                         }
@@ -492,7 +509,7 @@ object AppReader {
                                     // Not on a page with the Statements tab (a result page, a sheet, a sub-page): find the way back.
                                     now - progressAt > 3_000 && backs < MAX_WAY_BACK -> {
                                         backs++
-                                        note("on a page without the Statements tab (${lastScreen.take(60)}): ${wayBack(svc, nodes)}")
+                                        note("on a page without the Statements tab (${lastScreen.take(60)}): ${wayBack(svc, nodes, backs)}")
                                         progressAt = now; nextActAt = now + pace.settle()
                                     }
                                 }
@@ -633,7 +650,7 @@ object AppReader {
                                 // confirms anything. Never on a screen with no words (the logo, the loading bird).
                                 if (canAct && texts.isNotEmpty() && backs < MAX_WAY_BACK && now - progressAt > 3_000 + backs * 2_000L) {
                                     backs++
-                                    note("a screen PayTrace does not know (${lastScreen.take(70)}): ${wayBack(svc, nodes)}")
+                                    note("a screen PayTrace does not know (${lastScreen.take(70)}): ${wayBack(svc, nodes, backs)}")
                                     nextActAt = now + pace.settle()
                                 } else if (now - progressAt > STUCK_MS + backs * 3_000L) return finish(rows.isNotEmpty(), "unexpected_screen", "a screen PayTrace does not know")
                             }
@@ -761,7 +778,8 @@ object AppReader {
 
     /** One step back toward a page with the bottom tabs, from wherever the bKash app was left: the app's own Close / "Back
      *  to Home" / back arrow first, the phone's Back key last. None of these ever confirms anything. Says what it did. */
-    private fun wayBack(svc: AccessibilityService, nodes: List<AccessibilityNodeInfo>): String {
+    private fun wayBack(svc: AccessibilityService, nodes: List<AccessibilityNodeInfo>, step: Int = 1): String {
+        if (step % 2 == 0) { svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK); return "pressed Back" }
         if (closeSheet(svc, nodes)) return "closed it"
         val home = nodes.firstOrNull { (it.text?.toString() ?: "").trim().lowercase(Locale.ROOT).let { t -> t in HOME_BACK } }
         if (home != null && pressNode(svc, home)) return "pressed its \"back to Home\" button"
@@ -871,17 +889,32 @@ object AppReader {
     }
 
     /** Closes a detail sheet by its close button ("শিট বন্ধ করুন" icon or the "বন্ধ করুন" text). */
+    /** Closes an open bKash sheet (a transaction's details, a confirm sheet). The sheet's own Close button first, pressed
+     *  directly and then by a finger: on 2026-11-11 a details sheet left open ignored taps on the dimmed area above it
+     *  (the scrim), which is what used to be pressed first, and the run sat there until the owner closed it by hand. */
     private fun closeSheet(svc: AccessibilityService, nodes: List<AccessibilityNodeInfo>): Boolean {
-        val c = nodes.firstOrNull { n ->
+        fun clickable(n: AccessibilityNodeInfo): AccessibilityNodeInfo {
+            var p: AccessibilityNodeInfo? = n
+            var hops = 0
+            while (p != null && hops < 4) { if (p.isClickable) return p; p = p.parent; hops++ }
+            return n
+        }
+        val button = nodes.firstOrNull { idEnds(it, "transaction_details_close_button") }
+            ?: nodes.firstOrNull { (it.text?.toString() ?: "").trim().lowercase(Locale.ROOT) in setOf("বন্ধ করুন", "close") }?.let { clickable(it) }
+        if (button != null) {
+            val pressed = try { button.performAction(AccessibilityNodeInfo.ACTION_CLICK) } catch (e: Exception) { false }
+            if (pressed || tap(svc, button)) return true
+        }
+        val scrim = nodes.firstOrNull { n ->
             val d = (n.contentDescription?.toString() ?: "").lowercase(Locale.ROOT)
             "শিট বন্ধ" in d || d == "close" || "close sheet" in d
-        } ?: nodes.firstOrNull { (it.text?.toString() ?: "").trim().lowercase(Locale.ROOT) in setOf("বন্ধ করুন", "close") } ?: return false
-        var target: AccessibilityNodeInfo = c
-        var p: AccessibilityNodeInfo? = c
-        var hops = 0
-        while (p != null && hops < 4) { if (p.isClickable) { target = p; break }; p = p.parent; hops++ }
-        return tap(svc, target) || target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        } ?: return false
+        val target = clickable(scrim)
+        return (try { target.performAction(AccessibilityNodeInfo.ACTION_CLICK) } catch (e: Exception) { false }) || tap(svc, target)
     }
+
+    /** A transaction's details sheet is open (opened by a read or a search, or left by a person). */
+    private fun detailsOpen(nodes: List<AccessibilityNodeInfo>): Boolean = nodes.any { idEnds(it, "transaction_details_title") || idEnds(it, "transaction_details_close_button") }
 
     internal fun words(n: AccessibilityNodeInfo?, out: MutableList<String>, depth: Int) {
         if (n == null || depth > 8 || n.isPassword || n.isEditable) return

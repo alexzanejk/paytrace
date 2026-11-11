@@ -1,1 +1,1 @@
-Fix: the bKash app search now types the TrxID in a way bKash keeps, puts whatever is on the screen aside before opening bKash, and finds its way back to the Statements page from any bKash screen.
+Fix: a bKash transaction left open no longer stops the app jobs; PayTrace closes it (its own Close button, then the phone Back key) and closes what it opened before finishing.
