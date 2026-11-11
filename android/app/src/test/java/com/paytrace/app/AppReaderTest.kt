@@ -108,8 +108,8 @@ class AppReaderTest {
         assertEquals(S["LOGIN"], PinTyping.next(5, 5, 5, pressed = false, waitedMs = 0, retries = 0))
         assertEquals(S["STOP"], PinTyping.next(5, 5, 4, pressed = false, waitedMs = 0, retries = 0))
         // A box that cannot be read: slow timing alone.
-        assertEquals(S["WAIT"], PinTyping.next(1, 5, null, pressed = true, waitedMs = 900, retries = 0))
-        assertEquals(S["CONFIRMED"], PinTyping.next(1, 5, null, pressed = true, waitedMs = 1_700, retries = 0))
+        assertEquals(S["WAIT"], PinTyping.next(1, 5, null, pressed = true, waitedMs = PinTyping.BLIND_MS - 100, retries = 0))
+        assertEquals(S["CONFIRMED"], PinTyping.next(1, 5, null, pressed = true, waitedMs = PinTyping.BLIND_MS, retries = 0))
         assertEquals(S["LOGIN"], PinTyping.next(5, 5, null, pressed = false, waitedMs = 0, retries = 0))
     }
 
