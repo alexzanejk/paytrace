@@ -77,6 +77,36 @@ object AppCashInRead {
     fun typedRow(texts: List<String>): String? =
         texts.firstOrNull { x -> TYPED_PREFIX.any { lc(x).startsWith(it) } && NUMBER.containsMatchIn(x.replace(" ", "").replace("-", "")) }
 
+    /** Words on the number page that are never a saved contact. */
+    private val NOT_CONTACT = setOf(
+        "সব কন্ট্যাক্টস", "all contacts", "সব নাম্বার দেখুন", "see all numbers", "view all numbers",
+        "কাস্টমারের qr স্ক্যান করতে ট্যাপ করুন", "tap to scan customer's qr", "no matching contact", "you have no saved contact",
+        "add new contact", "enter customer name or number", "ক্যাশ ইন", "cash in", "cashin",
+    )
+
+    /** The number page when the typed number belongs to a SAVED CONTACT (rubel's Xiaomi, 2026-11-11): bKash lists the contact
+     *  ("Rubel", "সব নাম্বার দেখুন") instead of the line "ক্যাশ ইন করুন 01…", and Proceed did not move on. Which text to tap:
+     *  a line that is exactly this number (never the typing box itself), else the first contact name under "All Contacts".
+     *  Null when no contact is listed. Tapping it is safe: the amount page must then show exactly this number, or nothing is sent. */
+    fun contactToTap(texts: List<String>, number: String, boxText: String?): String? {
+        val digits = { x: String -> x.replace(" ", "").replace("-", "") }
+        var skipBox = boxDigits(boxText) == number
+        for (x in texts) {
+            if (digits(x) != number) continue
+            if (skipBox) { skipBox = false; continue }
+            return x
+        }
+        val head = texts.indexOfFirst { lc(it) == "সব কন্ট্যাক্টস" || lc(it) == "all contacts" }
+        if (head < 0) return null
+        for (x in texts.drop(head + 1)) {
+            val l = lc(x)
+            if (l in NEXT) return null
+            if (l in NOT_CONTACT || x.isBlank() || x.all { it.isDigit() }) continue
+            return x
+        }
+        return null
+    }
+
     /** True when every number on screen (but the agent's own) is exactly [number], and there is at least one. */
     fun numberOk(texts: List<String>, number: String, own: String?): Boolean {
         val n = numbersIn(texts, own)
@@ -184,6 +214,7 @@ object AppCashIn {
         val cashPin = Pin()
         var tilePresses = 0
         var nextPresses = 0
+        var pickTaps = 0
         var numberTyped = 0
         var amountTyped = 0
         var pinBoxTaps = 0
@@ -238,6 +269,19 @@ object AppCashIn {
                 }, at)
             }
             return now + at + pace.settle()
+        }
+
+        /** Taps the text [label] (a saved contact's name or number line), never the typing box. */
+        fun tapText(root: AccessibilityNodeInfo, label: String): Boolean {
+            val nodes = ArrayList<AccessibilityNodeInfo>()
+            AppReader.collect(root, nodes, 0)
+            val n = nodes.firstOrNull { !it.isEditable && it.text?.toString()?.trim() == label.trim() } ?: return false
+            var target: AccessibilityNodeInfo = n
+            var p: AccessibilityNodeInfo? = n
+            var hops = 0
+            while (p != null && hops < 4) { if (p.isClickable) { target = p; break }; p = p.parent; hops++ }
+            if (AppReader.tap(svc, target)) return true
+            return target.isClickable && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
         }
 
         /** The "ক্যাশ ইন" tile on Home, never the last-transaction row under it (that row also says "ক্যাশ ইন", beside a ৳ amount). */
@@ -413,10 +457,20 @@ object AppCashIn {
                                     // The English page shows no "Cash In <number>" row (recorder run 573a9296): the box
                                     // itself holds exactly this number, so Proceed is pressed (it stays grey until it is whole).
                                     shown == null && inBox == order.number -> {
-                                        if (nextPresses >= 4) return stop("app_stopped_before_send", "the number screen did not move on")
-                                        nextPresses++
-                                        note("the box shows exactly the number, going on")
-                                        if (!AppReader.pressAny(svc, AppCashInRead.NEXT, root)) note("next not found")
+                                        if (nextPresses >= 6) return stop("app_stopped_before_send", "the number screen did not move on")
+                                        // A saved contact shown instead of the number: tap it when Proceed is grey, and every
+                                        // other time Proceed did nothing. The amount page checks the number again.
+                                        val contact = AppCashInRead.contactToTap(texts, order.number, box()?.text?.toString())
+                                        val nextLit = AppReader.buttonEnabled(nodes, AppCashInRead.NEXT)
+                                        if (contact != null && (nextLit == false || nextPresses % 2 == 1)) {
+                                            nextPresses++
+                                            note("bKash shows a saved contact for this number: tapping it")
+                                            if (!tapText(root, contact)) note("the contact could not be tapped")
+                                        } else {
+                                            nextPresses++
+                                            note("the box shows exactly the number, going on")
+                                            if (!AppReader.pressAny(svc, AppCashInRead.NEXT, root)) note("next not found")
+                                        }
                                         nextActAt = now + pace.settle()
                                     }
                                     else -> { nextActAt = now + 1_500 }
@@ -486,7 +540,14 @@ object AppCashIn {
                                 return finish(UssdOutcome(true, r.newBalance, null, trx = r.trx, screens = listOf(summary)), "done")
                             }
                             AppCashInRead.Screen.UNKNOWN -> {
-                                if (cashPin.submittedAt == 0L && canAct && now - progressAt > 8_000 && backs < 4) {
+                                // The contact's own list of numbers ("সব নাম্বার দেখুন"): tap exactly this number, nothing else.
+                                val numberLine = if (cashPin.submittedAt == 0L) texts.firstOrNull { it.replace(" ", "").replace("-", "") == order.number } else null
+                                if (numberLine != null && canAct && pickTaps < 2) {
+                                    pickTaps++
+                                    note("a list of the contact's numbers: tapping this number")
+                                    if (!tapText(root, numberLine)) note("the number could not be tapped")
+                                    progressAt = now; nextActAt = now + pace.settle()
+                                } else if (cashPin.submittedAt == 0L && canAct && now - progressAt > 8_000 && backs < 4) {
                                     backs++
                                     note("a screen PayTrace does not know: going back")
                                     svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
