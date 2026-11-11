@@ -27,7 +27,7 @@ const dayLabel = (day: string) => new Date(day + "T00:00:00Z").toLocaleDateStrin
 const errText = (e: unknown) => String((e as { message?: string })?.message ?? e).replace(/^send_money_not_ready: /, "");
 
 /** Daily payouts (owner 2026-11-08): each partner's commission for one day is due after 11:59 PM and is paid by Cash In from
- *  the partner's own agent wallet, by Send Money from a personal bKash (the bKash fee comes off the commission), or marked
+ *  any of our agent wallets (the partner's own first; migration 091), by Send Money from a personal bKash (the bKash fee comes off the commission), or marked
  *  paid by hand. A day can be in only one live payment (the database enforces it). */
 export function DailyPayouts({ devices, nameOf }: { devices: Device[]; nameOf: (id: string | null | undefined) => string }) {
   const from = addDays(dhakaDay(), -62);

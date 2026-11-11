@@ -91,4 +91,28 @@ class AppLookTest {
         assertFalse(out[out.size - 2].contains(" | "))
         assertTrue(out.last().startsWith(AppReader.TRACE_MARK))
     }
+
+    // The owner's own search from the dashboard (kind "appsearch", 2026-11-11).
+    @Test fun aDashboardSearchIsATrxIdOrAPhoneNumber() {
+        assertEquals("DKB6CCN518", AppLook.searchQuery(" dkb6ccn518 "))
+        assertEquals("01322784471", AppLook.searchQuery("01322784471"))
+        assertEquals("01322784471", AppLook.searchQuery("+8801322784471"))
+        assertEquals("01322784471", AppLook.searchQuery("8801322784471"))
+        assertEquals("01322784471", AppLook.searchQuery("0132-278 4471"))
+        assertNull(AppLook.searchQuery("12345678"))      // digits only, not a number, not a TrxID
+        assertNull(AppLook.searchQuery("DK*1;--"))
+        assertNull(AppLook.searchQuery(""))
+        assertNull(AppLook.searchQuery(null))
+        assertTrue(AppLook.isPhone("01322784471"))
+        assertFalse(AppLook.isPhone("DKB6CCN518"))
+    }
+
+    @Test fun aSearchLookCarriesOnlyTheQuery() {
+        val l = AppLook.parse(org.json.JSONObject("""{"query":"DKB6CCN518"}"""))!!
+        assertEquals("DKB6CCN518", l.query)
+        assertTrue(l.finds.isEmpty())
+        assertNull(AppLook.parse(org.json.JSONObject("""{"query":"bad"}""")))
+        // An ordinary read's look still works and carries no query.
+        assertNull(AppLook.parse(org.json.JSONObject("""{"back_to": 1700000000000}"""))!!.query)
+    }
 }

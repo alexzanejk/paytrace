@@ -42,6 +42,8 @@ import java.util.TimeZone
  *  others but never move "oldest", which the server's "not in the app" rule depends on. */
 object AppReader {
     const val KIND = "appread"
+    /** The owner's own search from the dashboard (owner 2026-11-11): a TrxID or a phone number, Statement search only. */
+    const val SEARCH_KIND = "appsearch"
     /** The server fails a command running for 3 minutes. */
     const val RUN_MS = 150_000L
     private const val TICK_MS = 700L
@@ -174,6 +176,14 @@ object AppReader {
             ScreenGate.State.READY -> false
         }
         running = true
+        // A search the owner typed (AppLook.query): log in, search the Statement for it, report what came up. No list read.
+        val query = look?.query
+        val byPhone = query != null && AppLook.isPhone(query)
+        var outcome = ""             // what the search came to, for the dashboard
+        val fullRows = LinkedHashSet<String>()   // result rows with the full number, for the dashboard only (no " | ")
+        var sheetLine = ""           // the opened row's detail sheet, for the dashboard
+        var phoneIdle = 0
+        var phoneSwipes = 0
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val started = SystemClock.elapsedRealtime()
         val nowWall = System.currentTimeMillis()
@@ -250,6 +260,14 @@ object AppReader {
             note("end: $why, ${rows.size} rows")
             main.postDelayed({ try { svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME) } catch (e: Exception) { } }, 300)
             if (!ok) return done(UssdOutcome(false, null, error, trace = (trace + "screen: $lastScreen").joinToString("\n").take(1900)))
+            if (query != null) {
+                // The first screen is never read as rows by the server, so the full numbers can go here for the owner.
+                val summary = listOf("bKash app search", "query: $query", "outcome: ${outcome.ifBlank { why }}",
+                    "found: ${fullRows.size}") + fullRows.take(20).map { "row: $it" } +
+                    (if (sheetLine.isNotBlank()) listOf("sheet: $sheetLine") else emptyList())
+                return done(UssdOutcome(true, null, null, screens = pack(summary.joinToString("\n").replace(" | ", " · ").take(1800),
+                    searchedRows.toList(), (trace + "end screen: $lastScreen").joinToString("\n"), opened)))
+            }
             val newest = rows.values.maxOrNull()
             if (newest != null) prefs.edit().putLong(NEWEST, newest).apply()
             val oldest = rows.values.minOrNull()
@@ -327,6 +345,10 @@ object AppReader {
                                 val read = if (AppLook.sheetIs(texts, o)) AppLook.trxOn(texts) else null
                                 if (read != null || now - openingAt > 8_000) {
                                     opened.add(AppLook.line(openingRowAt, openingAmount, openingParty, read))
+                                    if (query != null && read != null) {
+                                        sheetLine = AppRecorder.safeLines(texts).joinToString(" · ").take(500)
+                                        outcome = if (read == query) "found" else "a different TrxID: $read"
+                                    } else if (query != null) outcome = "a row came up, but its TrxID could not be read"
                                     if (read != null) { pending.remove(o); note("row ${o.trx.take(2)}… opened: TrxID ${if (read == o.trx) "matches" else "is a different one"}") }
                                     else note("an opened row showed no TrxID")
                                     if (read == o.trx) confirmed.add(o.trx)
@@ -340,6 +362,11 @@ object AppReader {
                             }
                             main.postDelayed(this, TICK_MS); return
                         }
+                        if (query != null && !searching && texts.any { it.trim().lowercase(Locale.ROOT) in STATEMENT }) {
+                            searching = true; searchWhy = "search"
+                            searchQueue.clear(); searchQueue.add(AppLook.Target(query, 0L, 0.0, null))
+                            note("logged in; searching the Statement for ${if (byPhone) "a phone number" else "a TrxID"}")
+                        }
                         if (!searching && look != null && now - started > SEARCH_AT_MS && look.finds.any { it.trx !in confirmed }) wrapUp("time to search")
                         if (searching) {
                             if (!canAct) { main.postDelayed(this, TICK_MS); return }
@@ -351,7 +378,36 @@ object AppReader {
                             val t = sTarget!!
                             val label = "${t.trx.take(4)}…"
                             // Its own row on screen (the search result, or the plain Statement list): open it and read its TrxID.
-                            val hit = if (sOpened) null else rowNodesOn(nodes).firstOrNull { (parts, _, _) -> AppLook.matches(parts, t) }
+                            // The owner's own search: a TrxID brings ONE row (opened for its TrxID); a phone number brings
+                            // that customer's rows (only rows showing that number are taken; the plain list may still show).
+                            if (query != null && sSubmittedAt > 0 && now - sSubmittedAt > 1_500 && !sOpened) {
+                                val on = rowNodesOn(nodes)
+                                if (byPhone) {
+                                    val mine = on.filter { (parts, _, _) -> AppLook.partyOf(parts) == AppLook.mask(query) }
+                                    if (mine.isNotEmpty()) {
+                                        val before = fullRows.size
+                                        mine.forEach { (parts, _, _) -> searchedRows.add(AppLook.maskedRow(parts)); fullRows.add(parts.joinToString(" · ") { it.trim() }) }
+                                        outcome = "found"
+                                        if (fullRows.size == before) phoneIdle++ else phoneIdle = 0
+                                        if (phoneIdle >= 2 || phoneSwipes >= 6) { note("search: ${fullRows.size} row(s) for this number"); sTarget = null }
+                                        else { phoneSwipes++; swipe(svc, up = true); progressAt = now; nextActAt = now + pace.readPause() }
+                                        main.postDelayed(this, TICK_MS); return
+                                    }
+                                } else if (on.size == 1) {
+                                    val (parts, at, node) = on[0]
+                                    searchedRows.add(AppLook.maskedRow(parts))
+                                    fullRows.add(parts.joinToString(" · ") { it.trim() })
+                                    sOpened = true
+                                    val amount = AppLook.amountOf(parts) ?: 0.0
+                                    opening = AppLook.Target(query, at, amount, AppLook.partyOf(parts)); openingAt = now; openingRowAt = at
+                                    openingAmount = amount; openingParty = AppLook.partyOf(parts)
+                                    note("search: one row came up, opening it for its TrxID")
+                                    if (!tap(svc, node)) node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                                    progressAt = now; nextActAt = now + pace.settle()
+                                    main.postDelayed(this, TICK_MS); return
+                                }
+                            }
+                            val hit = if (sOpened || query != null) null else rowNodesOn(nodes).firstOrNull { (parts, _, _) -> AppLook.matches(parts, t) }
                             if (hit != null) {
                                 val (parts, at, node) = hit
                                 searchedRows.add(AppLook.maskedRow(parts))
@@ -364,13 +420,15 @@ object AppReader {
                                 progressAt = now; nextActAt = now + pace.settle()
                             } else if (sSubmittedAt > 0 && AppLook.nothingFound(texts)) {
                                 note("Statement: $label no transaction found (decides nothing)"); sTarget = null; nextActAt = now + pace.readPause()
+                                if (outcome.isEmpty()) outcome = "nothing found"
                             } else if (sSubmittedAt > 0 && now - sSubmittedAt > SEARCH_WAIT_MS) {
                                 note("Statement: $label " + if (AppBanners.emptyList(texts)) "the list came up empty (bKash did not load it; decides nothing)" else "nothing came up"); sTarget = null
+                                if (outcome.isEmpty()) outcome = if (AppBanners.emptyList(texts)) "list did not load" else "nothing came up"
                             } else if (sTypedAt > 0 && sSubmittedAt == 0L) {
                                 if (now >= sTypedAt) {
                                     val box = searchBox(svc)
                                     val shown = box?.text?.toString()?.trim()?.uppercase(Locale.ROOT)
-                                    if (shown != t.trx) { note("Statement: the search box does not show $label, skipping it"); sTarget = null }
+                                    if (shown != t.trx) { note("Statement: the search box does not show $label, skipping it"); sTarget = null; if (outcome.isEmpty()) outcome = "could not type it" }
                                     else {
                                         val how = submit(svc, box, nodes)
                                         note("Statement: searching $label ($how)")
@@ -388,7 +446,7 @@ object AppReader {
                                         sSwipes++; progressAt = now; nextActAt = now + pace.readPause(); swipe(svc, up = false)
                                     }
                                     pressAny(svc, STATEMENT, root) -> { sTabs++; nextActAt = now + pace.settle(); progressAt = now }
-                                    now - sStartedAt > BOX_WAIT_MS -> { note("Statement: the search box was not found"); return finish(true, null, "$searchWhy, Statement search not reached") }
+                                    now - sStartedAt > BOX_WAIT_MS -> { note("Statement: the search box was not found"); if (outcome.isEmpty()) outcome = "search box not found"; return finish(true, null, "$searchWhy, Statement search not reached") }
                                 }
                             }
                             main.postDelayed(this, TICK_MS); return

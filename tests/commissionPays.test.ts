@@ -41,9 +41,11 @@ const phones = [
   { id: "A", name: "rubel", status: "approved", allow_cashin: true, info: { wallets: [{ provider: "bkash", number: "01704241450" }, { provider: "rocket", number: "019" }] } },
   { id: "V", name: "Vivo", status: "approved", allow_cashin: true, allow_personal: true, info: { wallets: [{ provider: "bkash", number: "01800000000", kind: "personal" }] } },
   { id: "S", name: "SADIKUR", status: "approved", allow_cashin: false, allow_personal: true, info: { wallets: [{ provider: "bkash", number: "01900000000", kind: "personal" }] } },
+  { id: "N", name: "Nagad agent", status: "approved", allow_cashin: true, info: { wallets: [{ provider: "nagad", number: "01600000000", kind: "agent" }] } },
 ];
 const o = sendOptions("A", phones);
-check("options: the partner's own bKash and Rocket agent wallets and every personal bKash", o.length === 4 && o[0]!.method === "cash_in" && o[0]!.fromDevice === "A" && o.filter((x) => x.method === "send_money").length === 2, o);
+check("options: the partner's own bKash and Rocket agent wallets first, then other agents, and every personal bKash", o.length === 5 && o[0]!.method === "cash_in" && o[0]!.fromDevice === "A" && o[0]!.label.includes("own") && o.filter((x) => x.method === "send_money").length === 2, o);
+check("another phone's agent wallet can pay (owner 2026-11-11)", o.some((x) => x.method === "cash_in" && x.fromDevice === "N" && x.provider === "nagad" && !x.label.includes("own") && x.why === ""));
 check("a phone with sending switched off says so", o.some((x) => x.fromDevice === "S" && x.why.includes("switched off")));
 check("a Rocket agent wallet is offered by Cash In (owner 2026-11-09)", o.some((x) => x.provider === "rocket" && x.method === "cash_in" && x.label.includes("Rocket agent wallet")));
 

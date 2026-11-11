@@ -913,6 +913,13 @@ object UssdCommands {
         // Phone controls (restart, inbox, resend, screen, ring) name no wallet, so they are routed BEFORE the wallet
         // check below, which would otherwise answer "unsupported" to every one of them.
         val kind = cmd.optString("kind")
+        // The owner's own search of the bKash app (owner 2026-11-11): a TrxID or a phone number, read only.
+        if (kind == AppReader.SEARCH_KIND) {
+            val look = AppLook.parse(cmd.optJSONObject("look"))
+            if (look?.query == null) { report(ctx, id, UssdOutcome(false, null, "bad_search"), kind); return }
+            Handler(Looper.getMainLooper()).post { AppReader.start(ctx.applicationContext, look) { outcome -> report(ctx, id, outcome, kind) } }
+            return
+        }
         if (PhoneActions.isAction(kind)) {
             // An app read may carry what the server wants found (AppLook: how far back, which rows to open).
             PhoneActions.run(ctx, kind, AppLook.parse(cmd.optJSONObject("look")), id) { outcome -> report(ctx, id, outcome, kind) }

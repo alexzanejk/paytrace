@@ -1,1 +1,1 @@
-Fixed: PayTrace closed at once on phones with Android 11 or older (Realme, Oppo). Those phones can now run it.
+New: the dashboard can ask this phone to search its bKash app for a TrxID or a customer's number.

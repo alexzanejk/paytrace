@@ -10,7 +10,7 @@ import java.util.Locale
  *  Why: the bKash app's list shows no TrxID; only a row's detail sheet does. A held SMS is released only when the row
  *  that is its own (same minute, amount and masked number) opens to the SMS's own TrxID, so a fake SMS that copies a
  *  real payment's minute, amount and number can never take that payment's row. Pure, unit tested. */
-data class AppLook(val backTo: Long?, val finds: List<Target>) {
+data class AppLook(val backTo: Long?, val finds: List<Target>, val query: String? = null) {
     data class Target(val trx: String, val at: Long, val amount: Double, val party: String?)
 
     companion object {
@@ -26,6 +26,8 @@ data class AppLook(val backTo: Long?, val finds: List<Target>) {
 
         fun parse(o: JSONObject?): AppLook? {
             if (o == null) return null
+            // A search the owner typed on the dashboard (kind "appsearch", owner 2026-11-11): one TrxID or one phone number.
+            searchQuery(o.optString("query"))?.let { return AppLook(null, emptyList(), it) }
             val back = if (o.has("back_to")) o.optLong("back_to", 0L).takeIf { it > 0 } else null
             val finds = ArrayList<Target>()
             val arr = o.optJSONArray("find")
@@ -105,5 +107,23 @@ data class AppLook(val backTo: Long?, val finds: List<Target>) {
             String.format(Locale.US, "opened %d %.2f %s %s", rowAt, amount, party ?: "-", read ?: "-")
 
         const val OPENED_MARK = "Opened rows:"
+
+        private val QUERY_TRX = Regex("^[A-Z0-9]{8,12}$")
+        private val QUERY_PHONE = Regex("^01[0-9]{9}$")
+        /** A dashboard search: a TrxID (upper case) or an 11-digit Bangladesh number (+880 / 880 folded to 0); else null. */
+        fun searchQuery(raw: String?): String? {
+            val s = (raw ?: "").trim().replace(" ", "").replace("-", "").uppercase(Locale.ROOT)
+            val phone = when {
+                s.startsWith("+880") -> "0" + s.drop(4)
+                s.startsWith("880") && s.length == 13 -> "0" + s.drop(3)
+                else -> s
+            }
+            return when {
+                QUERY_PHONE.matches(phone) -> phone
+                QUERY_TRX.matches(s) && s.any(Char::isLetter) -> s
+                else -> null
+            }
+        }
+        fun isPhone(query: String): Boolean = QUERY_PHONE.matches(query)
     }
 }
