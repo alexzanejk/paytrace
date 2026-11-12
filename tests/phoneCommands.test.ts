@@ -1,5 +1,8 @@
 import { commandLine, errorText, isLive, type PhoneCommand, cashInSummary, looksLikeANumber, CASH_IN_AMOUNTS, MOST_PER_CASH_IN, LEAST_PER_CASH_IN, parseCashInAmount, numberLabel, PHONE_ACTIONS, PHONE_ACTION_KINDS, isPhoneAction, actionLine, traceOf, walletScreens, recordingLine } from "../dashboard/src/lib/phoneCommands.ts";
 
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, extra?: unknown) {
   if (cond) { pass++; console.log("  ok  ", name); }
@@ -37,8 +40,6 @@ check("the failed line names the wallet too", commandLine({ ...base, status: "fa
 check("the phone's step log is told apart from the wallet's screens", traceOf(["Statement List:\n1 02/11/26 Cash In -Tk -200.00", "What the phone saw:\n 0.1s dialer opened\n 3.0s stopped: unexpected_screen [...]"]) === "0.1s dialer opened\n 3.0s stopped: unexpected_screen [...]" && JSON.stringify(walletScreens(["a", "What the phone saw:\nx"])) === JSON.stringify(["a"]));
 check("no step log = nothing", traceOf(null) === null && traceOf(["Statement List:"]) === null && walletScreens(null).length === 0);
 
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
 
 test("a cash-in is described in full, so nothing is sent on a glance", () => {
   const money = (n: number) => `Tk ${n.toLocaleString("en-US")}`;
@@ -96,6 +97,7 @@ test("a cash-in is described in full, so nothing is sent on a glance", () => {
   check("the nine phone controls, in this order", JSON.stringify(PHONE_ACTION_KINDS) === JSON.stringify(["restart", "inbox", "resend", "screen", "ring", "apprecord", "appread", "nagadrecord", "nagadread"]));
   check("a Nagad control's failure speaks of the Nagad app", actionLine({ ...ctl, kind: "nagadread", status: "failed", error: "login_failed", finished_at: "2026-11-11T10:00:00Z" }, when).includes("Nagad app") &&
     !actionLine({ ...ctl, kind: "nagadread", status: "failed", error: "login_failed", finished_at: "2026-11-11T10:00:00Z" }, when).includes("bKash"));
+  check("the wallet's own error is not called a wrong PIN", errorText("app_error").includes("not the problem") && !errorText("app_error").includes("did not accept"));
   check("the Nagad recorder says Nagad", recordingLine("2026-11-11T08:02:14Z", (x) => x, Date.parse("2026-11-11T08:03:00Z"), "Nagad").includes("Nagad app"));
   check("every control has a button, a busy line, a done line and a why", PHONE_ACTIONS.every((a) => a.label && a.busy && a.done && a.help));
   check("wallet commands are not controls", !isPhoneAction("balance") && !isPhoneAction("cashin") && !isPhoneAction("statement") && !isPhoneAction(null));
@@ -107,3 +109,7 @@ test("a cash-in is described in full, so nothing is sent on a glance", () => {
   check("expired control is explained", actionLine({ ...ctl, status: "cancelled", error: "expired", finished_at: "x" }, when).includes("offline"));
   check("a wallet command gives no control line", actionLine(base, when) === "");
 }
+
+// The total and the exit come LAST: they used to sit in the middle of this file, so nothing written below them ever ran.
+console.log(`\n${pass} passed, ${fail} failed`);
+if (fail) process.exitCode = 1;

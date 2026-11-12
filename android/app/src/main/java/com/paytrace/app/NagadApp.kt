@@ -404,6 +404,7 @@ object NagadApp {
         var progressAt = started
         var screenText = ""
         var backs = 0
+        var sawWalletError = false
         // sign in
         var pinTypes = 0; var loginAt = 0L
         // menu / statement
@@ -553,13 +554,14 @@ object NagadApp {
                     }
 
                     if (NagadRead.wrongPin(texts)) return stop("login_failed", "Nagad says the PIN is wrong; never typed again")
+                    if (AppBanners.appError(texts) || AppBanners.network(texts)) sawWalletError = true
 
                     when (screen) {
                         NagadRead.Screen.BUSY -> { progressAt = now }
                         NagadRead.Screen.LOGIN -> {
                             progressAt = now
                             if (loginAt > 0) {
-                                if (now - loginAt > LOGIN_WAIT_MS) return stop("login_failed", "still on the sign-in screen after the PIN")
+                                if (now - loginAt > LOGIN_WAIT_MS) return stop(LoginTrouble.stuck(sawWalletError), "still on the sign-in screen after the PIN" + if (sawWalletError) " (Nagad showed its own error: not a wrong PIN)" else "")
                             } else if (canAct) {
                                 val box = boxes.firstOrNull { it.isPassword }
                                     ?: boxes.firstOrNull { b -> NagadRead.lc(if (Build.VERSION.SDK_INT >= 26) b.hintText?.toString() else "").let { "পিন" in it || "pin" in it } }

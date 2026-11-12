@@ -1,1 +1,1 @@
-New: PayTrace can now drive the Nagad agent app (Uddokta) like the bKash app: read the Nagad balance, read the statement list (every 30 minutes and on the dashboard's button), search it for a TrxID or number, record it for mapping, and Cash In. A Cash In presses হ্যাঁ only when Nagad's confirmation shows exactly this number and amount. Not yet tried on a phone.
+Fix: when bKash (or Nagad) shows its own "An error occurred" after the PIN and goes back to the sign-in screen, PayTrace no longer treats it as a wrong PIN; automatic reads carry on at the next half hour.

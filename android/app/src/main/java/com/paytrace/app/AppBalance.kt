@@ -97,6 +97,7 @@ object AppBalance {
         var statusHits = 0
         var backs = 0
         var banners = 0
+        var sawWalletError = false
 
         fun finish(o: UssdOutcome, why: String) {
             if (finished) return
@@ -132,6 +133,7 @@ object AppBalance {
                         val keypad = (0..9).all { d -> texts.any { it == d.toString() } }
 
                         if (AppBanners.wrongPin(texts)) return stop("login_failed", "bKash says the PIN is not correct; never typed again")
+                        if (AppBanners.appError(texts) || AppBanners.network(texts)) sawWalletError = true
                         if (AppBanners.network(texts)) {
                             if (canAct) {
                                 if (++banners > 3) return stop("no_network", "bKash keeps saying: check your network")
@@ -179,7 +181,7 @@ object AppBalance {
                         } else if (keypad && AppCashInRead.screenOf(texts, keypad) == AppCashInRead.Screen.LOGIN) {
                             progressAt = now
                             if (submittedAt > 0) {
-                                if (now - submittedAt > LOGIN_WAIT_MS) return stop("login_failed", "still on the login screen after the PIN")
+                                if (now - submittedAt > LOGIN_WAIT_MS) return stop(LoginTrouble.stuck(sawWalletError), "still on the login screen after the PIN" + if (sawWalletError) " (bKash showed its own error: not a wrong PIN)" else "")
                             } else {
                                 val shown = AppReader.pinShown(root)
                                 if (typed == 0 && !pressed && shown != null && shown > 0) return stop("pin_not_entered", "the PIN box already had digits in it; nothing typed")

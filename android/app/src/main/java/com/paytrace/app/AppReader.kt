@@ -239,6 +239,7 @@ object AppReader {
         var nextActAt = 0L
         var progressAt = SystemClock.elapsedRealtime()
         var pinTypedAt = 0L      // when Log in was pressed
+        var sawWalletError = false // bKash showed its own error or a network message during this run
         var pinTyped = 0         // digits the PIN box has confirmed
         var keyPressed = false   // a digit was pressed and the box has not shown it yet
         var keyPressedAt = 0L
@@ -340,6 +341,7 @@ object AppReader {
                         // bKash's own messages over the app (recorder run a1460479): a wrong PIN is final, never typed again;
                         // "check your network" is closed and waited out, three times at most.
                         if (AppBanners.wrongPin(texts)) return finish(false, "login_failed", "bKash says the PIN is not correct")
+                        if (AppBanners.appError(texts) || AppBanners.network(texts)) sawWalletError = true
                         if (AppBanners.network(texts)) {
                             if (canAct) {
                                 netHits++
@@ -522,7 +524,8 @@ object AppReader {
                         when {
                             loginKey != null && digits -> {
                                 if (pinTypedAt > 0) {
-                                    if (now - pinTypedAt > LOGIN_WAIT_MS) return finish(false, "login_failed", "still on the login screen after the PIN")
+                                    if (now - pinTypedAt > LOGIN_WAIT_MS) return finish(false, LoginTrouble.stuck(sawWalletError),
+                                        if (sawWalletError) "bKash showed its own error and the sign-in screen again: not a wrong PIN, tried again later" else "still on the login screen after the PIN")
                                 } else {
                                     // One digit at a time, slowly: press it, wait until the PIN box shows one more digit,
                                     // and only then the next. Log in only when the box shows exactly the whole PIN
@@ -1034,6 +1037,11 @@ object AppBanners {
 
     /** "পিন নাম্বারটি সঠিক নয়": the PIN was refused. */
     fun wrongPin(texts: List<String>): Boolean = has(texts, "পিন", "সঠিক নয়") || has(texts, "pin", "incorrect") || has(texts, "wrong pin")
+    /** "An error occurred. Please try again later" (the Vivo, 2026-11-11 20:33, right after Log in, then back to the
+     *  sign-in screen): the wallet's own trouble, NOT a wrong PIN. Checked after [wrongPin], which always wins. */
+    fun appError(texts: List<String>): Boolean =
+        has(texts, "error occurred") || has(texts, "try again later") || has(texts, "something went wrong") ||
+            has(texts, "আবার চেষ্টা করুন") || has(texts, "সমস্যা হয়েছে") || has(texts, "ত্রুটি")
     /** "অনুগ্রহ করে আপনার নেটওয়ার্ক চেক করুন": the app could not reach bKash. */
     fun network(texts: List<String>): Boolean = has(texts, "নেটওয়ার্ক চেক") || has(texts, "check", "network")
     /** The login screen's PIN box shows "এজেন্ট পিন নাম্বার দিন" only while it is empty. */
@@ -1045,6 +1053,15 @@ object AppBanners {
      *  owner's business and is never changed by PayTrace (its "পরিবর্তন করুন" button is never pressed). */
     fun agentStatus(texts: List<String>): Boolean =
         has(texts, "স্ট্যাটাস পরিবর্তন করুন") || has(texts, "এজেন্ট অ্যাপের", "স্ট্যাটাস") || has(texts, "change", "agent", "status")
+}
+
+/** What a run that is still on the sign-in screen after the PIN reports. Only when the wallet said nothing but showed the
+ *  sign-in screen again is it called a refused PIN (`login_failed`, which stops automatic reads until the owner asks again,
+ *  so a wrong PIN is never typed twice). When the wallet showed its own error or a network message on the way, the PIN was
+ *  not the problem: `app_error`, tried again at the next half hour. A real "PIN not correct" message is caught earlier and
+ *  is always `login_failed`. Pure, unit tested. */
+object LoginTrouble {
+    fun stuck(sawWalletError: Boolean): String = if (sawWalletError) "app_error" else "login_failed"
 }
 
 /** Pressing Log in only when bKash has lit the button: it stays grey until the whole PIN is in, so a grey button after

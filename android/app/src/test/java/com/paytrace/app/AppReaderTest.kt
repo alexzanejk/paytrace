@@ -176,4 +176,17 @@ class AppReaderTest {
         // The hint came back after digits were in: the box was cleared, stop.
         assertEquals(PinTyping.Step.STOP, PinTyping.next(3, 5, 0, false, 0, 0))
     }
+
+    @Test fun bKashsOwnErrorAfterThePinIsNotAWrongPin() {
+        // The Vivo, 2026-11-11 20:33: "An error occurred. Please try again later" right after Log in, then the sign-in
+        // screen again. That stopped every automatic read as if the PIN were wrong.
+        assertTrue(AppBanners.appError(listOf("An error occurred. Please try again later")))
+        assertTrue(AppBanners.appError(listOf("অনুগ্রহ করে আবার চেষ্টা করুন")))
+        assertFalse(AppBanners.appError(listOf("Login to your bKash account", "Agent PIN", "Forgot your PIN?", "Log in")))
+        assertEquals("app_error", LoginTrouble.stuck(true))
+        // With no wallet message on the way it is still treated as a refused PIN: never typed twice.
+        assertEquals("login_failed", LoginTrouble.stuck(false))
+        // A real "PIN not correct" is caught first, whatever else is on screen.
+        assertTrue(AppBanners.wrongPin(listOf("পিন নাম্বারটি সঠিক নয়")))
+    }
 }
