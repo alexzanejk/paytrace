@@ -1123,3 +1123,11 @@ object PinTyping {
         return if (shown == null || shown == total) Step.LOGIN else Step.STOP
     }
 }
+
+/** A finger tap at a point on the screen (for a keypad PayTrace cannot read, only locate). */
+internal fun AppReader.tapAt(svc: AccessibilityService, x: Int, y: Int): Boolean {
+    val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
+    return try {
+        svc.dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, pace.tapMs())).build(), null, null)
+    } catch (e: Exception) { false }
+}
