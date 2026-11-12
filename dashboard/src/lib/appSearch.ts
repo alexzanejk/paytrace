@@ -68,17 +68,66 @@ const SEARCH_FLAG: Record<SearchApp, string> = { bkash: "app_search", nagad: "ap
 /** The server's queue function for that app. */
 export const SEARCH_RPC: Record<SearchApp, string> = { bkash: "queue_app_search", nagad: "queue_nagad_search" };
 
-/** Phones that can search: approved, and their app build says so (heartbeat `app_search`, or `app_nagad` for the Nagad
- *  app). Online ones first. */
-export function searchPhones(devices: DeviceLike[], now = Date.now(), app: SearchApp = "bkash"): SearchPhone[] {
+/** Every approved phone, each marked whether its app build can search that wallet app (heartbeat `app_search`, or
+ *  `app_nagad` for the Nagad app). Online ones first. The owner may pick any of them; one that cannot search is shown
+ *  but cannot be chosen (owner 2026-11-12: "let me select any phone I want"). */
+export function phoneChoices(devices: DeviceLike[], now = Date.now(), app: SearchApp = "bkash"): (SearchPhone & { canSearch: boolean })[] {
   return devices
-    .filter((d) => d.status === "approved" && (d.info as Record<string, unknown> | null | undefined)?.[SEARCH_FLAG[app]] === true)
+    .filter((d) => d.status === "approved")
     .map((d) => ({
       id: d.id,
       name: d.name || d.pair_code || "Phone",
       online: !!d.last_seen_at && now - new Date(d.last_seen_at).getTime() < 90_000,
+      canSearch: (d.info as Record<string, unknown> | null | undefined)?.[SEARCH_FLAG[app]] === true,
     }))
-    .sort((a, b) => Number(b.online) - Number(a.online));
+    .sort((a, b) => Number(b.canSearch) - Number(a.canSearch) || Number(b.online) - Number(a.online));
+}
+
+/** Phones that can search that wallet app, online ones first. */
+export function searchPhones(devices: DeviceLike[], now = Date.now(), app: SearchApp = "bkash"): SearchPhone[] {
+  return phoneChoices(devices, now, app).filter((p) => p.canSearch).map(({ canSearch: _c, ...p }) => p);
+}
+
+/** Where PayTrace saw this TrxID or number: an SMS (payments) or a customer typing it on a deposit order. */
+export interface Seen { device_id: string | null; provider: string | null }
+export type BestWhy = "sms" | "order" | "none";
+export interface Best { deviceId: string | null; app: SearchApp | null; why: BestWhy }
+
+const walletApp = (p: string | null): SearchApp | null => (p === "bkash" || p === "nagad" ? p : null);
+
+/** The right phone and wallet app for a search (owner 2026-11-12: "on best phone it chooses the wrong phone sometimes
+ *  instead of the phone where the message arrived"). First the phone the SMS arrived on, with ITS wallet (a Nagad TrxID
+ *  is never in the bKash app, which is how a Nagad ID was once searched in three bKash apps); else the phone whose number
+ *  the customer was shown on the order where they typed it; else nobody is known. */
+export function bestPhone(sms: Seen[], orders: Seen[]): Best {
+  for (const list of [sms, orders] as const) {
+    const hit = list.find((r) => r.device_id && walletApp(r.provider));
+    if (hit) return { deviceId: hit.device_id, app: walletApp(hit.provider), why: list === sms ? "sms" : "order" };
+  }
+  const anyApp = [...sms, ...orders].map((r) => walletApp(r.provider)).find(Boolean) ?? null;
+  return { deviceId: null, app: anyApp, why: "none" };
+}
+
+export interface Plan { targets: string[]; note: string; problem: string }
+
+/** Which phones to ask, in order, with a line saying why. "auto" asks ONLY the best phone; it never quietly asks other
+ *  phones instead when the best one cannot search (that is how the wrong phones were asked). "all" asks every phone that
+ *  can search; a chosen phone is asked alone. */
+export function planSearch(choice: string, phones: SearchPhone[], best: Best, nameOf: (id: string) => string): Plan {
+  const ids = phones.map((p) => p.id);
+  if (choice === "all") return { targets: ids, note: ids.length ? "Asking every phone that can search, one after another." : "", problem: ids.length ? "" : "No phone can search yet: each needs the newest PayTrace app." };
+  if (choice !== "auto") {
+    return ids.includes(choice)
+      ? { targets: [choice], note: `Asking ${nameOf(choice)}, as you chose.`, problem: "" }
+      : { targets: [], note: "", problem: `${nameOf(choice)} cannot search this app yet: update its PayTrace app, or choose another phone.` };
+  }
+  if (best.deviceId) {
+    const why = best.why === "sms" ? "the SMS arrived there" : "the customer was shown its number on the order";
+    return ids.includes(best.deviceId)
+      ? { targets: [best.deviceId], note: `Asking ${nameOf(best.deviceId)}: ${why}.`, problem: "" }
+      : { targets: [], note: "", problem: `The right phone is ${nameOf(best.deviceId)} (${why}), but it cannot search yet: update its PayTrace app, or choose a phone in the list.` };
+  }
+  return { targets: ids, note: ids.length ? "PayTrace has never seen this, so every phone that can search is asked, one after another." : "", problem: ids.length ? "" : "No phone can search yet: each needs the newest PayTrace app." };
 }
 
 /** Which phones to ask, in order. "auto": the phone whose SMS carried this TrxID, else every searching phone. */

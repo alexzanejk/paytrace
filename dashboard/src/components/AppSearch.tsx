@@ -3,7 +3,7 @@ import { Search } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { errorText, isLive, POLL_MS, type PhoneCommand } from "@/lib/phoneCommands";
-import { maskNumber, nagadMask, outcomeWords, queueErrorText, readSearch, SEARCH_APP_LABEL, SEARCH_RPC, searchPhones, searchQuery, searchTargets, type SearchApp, type SearchKind } from "@/lib/appSearch";
+import { bestPhone, maskNumber, nagadMask, outcomeWords, phoneChoices, planSearch, queueErrorText, readSearch, SEARCH_APP_LABEL, SEARCH_RPC, searchPhones, searchQuery, type SearchApp, type SearchKind, type Seen } from "@/lib/appSearch";
 import { nudgePhone } from "@/lib/wake";
 import { reviewReasonText } from "@/lib/reasons";
 import { useDevices } from "@/hooks/useDevices";
@@ -26,12 +26,14 @@ const TONE: Record<string, string> = { ok: "text-emerald-700 dark:text-emerald-4
 export function AppSearch() {
   const devices = useDevices(30000);
   const [app, setApp] = useState<SearchApp>("bkash");
-  const phones = searchPhones(devices.list, Date.now(), app);
+  const choices = phoneChoices(devices.list, Date.now(), app);
+  const phones = choices.filter((p) => p.canSearch);
   const appName = SEARCH_APP_LABEL[app];
   const wallet = app === "nagad" ? "Nagad" : "bKash";
   const [text, setText] = useState("");
   const [choice, setChoice] = useState("auto");
   const [problem, setProblem] = useState("");
+  const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [kind, setKind] = useState<SearchKind>("trx");
   const [known, setKnown] = useState<Known[] | null>(null);
@@ -42,8 +44,8 @@ export function AppSearch() {
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   /** Queues one search, wakes the phone, and waits for its answer (about a minute). */
-  async function askPhone(deviceId: string, query: string): Promise<Answer> {
-    const { data, error } = await sb.rpc(SEARCH_RPC[app], { p_device: deviceId, p_query: query });
+  async function askPhone(deviceId: string, query: string, inApp: SearchApp): Promise<Answer> {
+    const { data, error } = await sb.rpc(SEARCH_RPC[inApp], { p_device: deviceId, p_query: query });
     if (error) return { deviceId, cmd: null, problem: queueErrorText(error.message) };
     nudgePhone(deviceId);
     const id = data as string;
@@ -60,6 +62,7 @@ export function AppSearch() {
 
   async function run() {
     setProblem("");
+    setNote("");
     const q = searchQuery(text);
     if (!q) return setProblem("Type a TrxID (like DKB6CCN518) or an 11-digit number (01…).");
     setKind(q.kind);
@@ -71,12 +74,22 @@ export function AppSearch() {
       : await sb.from("payments").select("trx_id,status,review_reason,amount,provider,device_id,received_at").in("counterparty", [q.query, maskNumber(q.query), nagadMask(q.query)]).order("received_at", { ascending: false }).limit(5);
     const rows = (k.data ?? []) as Known[];
     setKnown(rows);
-    const targets = searchTargets(choice, phones, q.kind === "trx" ? rows.find((r) => r.provider === app)?.device_id ?? null : null);
-    if (targets.length === 0) { setBusy(false); return setProblem("No phone can search yet: each needs the newest PayTrace app."); }
-    for (const deviceId of targets) {
+    // A deposit order where a customer typed this TrxID names the phone whose number they were shown.
+    const typed = q.kind === "trx"
+      ? ((await sb.from("orders").select("device_id,provider").ilike("claimed_trx_id", q.query).order("created_at", { ascending: false }).limit(5)).data ?? []) as Seen[]
+      : [];
+    const best = bestPhone(rows.map((r) => ({ device_id: r.device_id, provider: r.provider })), typed);
+    // The TrxID's own wallet decides which app is searched.
+    const inApp: SearchApp = best.app ?? app;
+    const switched = inApp !== app;
+    if (switched) setApp(inApp);
+    const plan = planSearch(choice, searchPhones(devices.list, Date.now(), inApp), best, nameOf);
+    setNote([switched ? `This is a ${inApp === "nagad" ? "Nagad" : "bKash"} transaction, so the ${SEARCH_APP_LABEL[inApp]} is searched.` : "", plan.note].filter(Boolean).join(" "));
+    if (plan.targets.length === 0) { setBusy(false); return setProblem(plan.problem); }
+    for (const deviceId of plan.targets) {
       if (!alive.current) return;
       setAnswers((a) => [...a, { deviceId, cmd: null }]);
-      const ans = await askPhone(deviceId, q.query);
+      const ans = await askPhone(deviceId, q.query, inApp);
       setAnswers((a) => a.map((x) => (x.deviceId === deviceId ? ans : x)));
       // A TrxID is in one wallet only: stop at the first phone that finds it.
       if (q.kind === "trx" && readSearch(ans.cmd?.screens)?.found) break;
@@ -84,7 +97,7 @@ export function AppSearch() {
     if (alive.current) setBusy(false);
   }
 
-  const nameOf = (id: string) => phones.find((p) => p.id === id)?.name ?? devices.nameOf(id);
+  function nameOf(id: string) { return choices.find((p) => p.id === id)?.name ?? devices.nameOf(id); }
 
   return (
     <Card className="mb-4 p-4">
@@ -98,7 +111,7 @@ export function AppSearch() {
               role="radio"
               aria-checked={app === a}
               disabled={busy}
-              onClick={() => { setApp(a); setChoice("auto"); setAnswers([]); }}
+              onClick={() => { setApp(a); setAnswers([]); }}
               className={`rounded-md border px-2 py-0.5 text-sm ${app === a ? "border-primary bg-primary text-primary-foreground" : "bg-card"}`}
             >
               {SEARCH_APP_LABEL[a]}
@@ -127,14 +140,19 @@ export function AppSearch() {
           aria-label="Which phone"
           className="h-10 w-[calc(50%-0.25rem)] rounded-lg border border-input bg-card px-3 text-sm sm:w-56"
         >
-          <option value="auto">Best phone (the one that got the SMS)</option>
-          <option value="all">All {wallet} phones</option>
-          {phones.map((p) => <option key={p.id} value={p.id}>{p.name}{p.online ? "" : " (offline)"}</option>)}
+          <option value="auto">Best phone (where the SMS arrived)</option>
+          <option value="all">All phones, one after another</option>
+          {choices.map((p) => (
+            <option key={p.id} value={p.id} disabled={!p.canSearch}>
+              {p.name}{!p.canSearch ? " (update app to search)" : p.online ? "" : " (offline)"}
+            </option>
+          ))}
         </select>
         <Button size="sm" onClick={() => void run()} disabled={busy || !text.trim()}>
           <Search aria-hidden /> {busy ? "Searching…" : "Search"}
         </Button>
       </div>
+      {note ? <p className="mt-2 text-sm text-muted-foreground">{note}</p> : null}
       {problem ? <p className="mt-2 text-sm text-destructive">{problem}</p> : null}
       {phones.length === 0 && !devices.loading ? (
         <p className="mt-2 text-xs text-muted-foreground">No phone can search yet: each needs the newest PayTrace app.</p>
