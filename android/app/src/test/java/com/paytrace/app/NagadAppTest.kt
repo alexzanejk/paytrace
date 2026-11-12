@@ -128,8 +128,10 @@ class NagadAppTest {
         assertEquals(Screen.DRAWER, NagadRead.screenOf(drawer + home, emptyList()))
         val statement = listOf("বিবরণী", "লিমিট", "লেনদেন", "লেনদেন সারসংক্ষেপ", "সর্বমোট নিবন্ধন")
         assertEquals(Screen.STATEMENT, NagadRead.screenOf(statement, emptyList()))
-        assertFalse(NagadRead.onTransactions(emptyList()))
-        assertTrue(NagadRead.onTransactions(listOf("মোবাইল নম্বর / ট্রানজ্যাকশন আইডি দিয়ে খুঁজুন")))
+        // The Transactions tab is told by its own view names (the search box's label is its TEXT while empty, not a hint).
+        assertFalse(NagadRead.onTransactions(setOf("history_tab", "history_vp", "limit_content_ll")))
+        assertTrue(NagadRead.onTransactions(setOf("history_vp", "search_bar_fl", "filter_chip_tv")))
+        assertTrue(NagadRead.onTransactions(setOf("search_edit_text")))
         assertEquals(Screen.DETAILS, NagadRead.screenOf(statement + listOf("ক্যাশ ইন", "একাউন্ট নং", "017****5537", "পরিমাণ", "400 টাকা", "ট্রানজেকশন আইডি", "76AOTUC5", "দিন ও সময়", "আজ, 02:33 AM", "বিবরণ"), emptyList()))
         assertEquals("76AOTUC5", NagadRead.after(listOf("একাউন্ট নং", "017****5537", "ট্রানজেকশন আইডি", "76AOTUC5"), NagadRead.TRX_L))
         assertEquals(Screen.PICKER, NagadRead.screenOf(statement + listOf("সব লেনদেন", "ক্যাশ ইন", "ক্যাশ আউট"), emptyList()))
@@ -148,5 +150,85 @@ class NagadAppTest {
     @Test fun numberSearchMatchesTheHiddenNumber() {
         assertTrue(NagadRead.samePhone("017XXXX5537", "01712345537"))
         assertFalse(NagadRead.samePhone("017XXXX5537", "01712345538"))
+    }
+
+    // ---- From the owner's recording of the Vivo's Nagad app, 2026-11-12 (run 43debd6f) ----
+
+    @Test fun theListShowsPlainAmountsWithThePictureOfTaka() {
+        assertEquals(5000.0, NagadRead.plainAmount("5,000")!!, 0.001)
+        assertEquals(2.05, NagadRead.plainAmount("2.05")!!, 0.001)
+        assertEquals(500.0, NagadRead.plainAmount("500")!!, 0.001)
+        assertEquals(400.0, NagadRead.plainAmount("৳ 400")!!, 0.001)
+        assertNull(NagadRead.plainAmount("500 টাকা"))
+        assertNull(NagadRead.plainAmount("ক্যাশ আউট"))
+        assertNull(NagadRead.plainAmount("013****7088"))
+    }
+
+    @Test fun rowsAreReadFromTheirFourNamedBoxes() {
+        val t = LocalDate.of(2026, 11, 12)
+        val out = NagadRead.rowFromFields("ক্যাশ আউট", "500", "017****4121", "আজ, 06:49 AM", t)!!
+        assertEquals(500.0, out.amount, 0.001)
+        assertEquals("017XXXX4121", out.party)
+        assertEquals(at(2026, 11, 12, 6, 49), out.at)
+        assertEquals(true, out.kind.incoming)
+        val comm = NagadRead.rowFromFields("ক্যাশ আউট কমিশন", "2.05", "#76AWL8GA", "আজ, 06:49 AM", t)!!
+        assertEquals("76AWL8GA", comm.trx)
+        assertTrue(comm.kind.commission)
+        val folded = NagadRead.fold(listOf(out, comm))
+        assertEquals(1, folded.size)
+        assertEquals("76AWL8GA", folded[0].trx)
+        assertEquals(2.05, folded[0].commission!!, 0.001)
+        assertEquals("ক্যাশ আউট | 017XXXX4121 | 06:49am 12/11/26 | + ৳500 | কমিশন: + ৳2.05", NagadRead.serverLine(folded[0]))
+        // B2B rows with the full month name.
+        val b2b = NagadRead.rowFromFields("বিটুবি প্রেরিত", "10,000", "013****7088", "নভেম্বর 10, 03:00 PM", t)!!
+        assertEquals(at(2026, 11, 10, 15, 0), b2b.at)
+        assertEquals(false, b2b.kind.incoming)
+        assertEquals(true, NagadRead.rowFromFields("বিটুবি প্রাপ্ত", "5,000", "013****7088", "গতকাল, 07:03 PM", t)!!.kind.incoming)
+        // Without a time or an amount there is no row.
+        assertNull(NagadRead.rowFromFields("ক্যাশ আউট", "500", "017****4121", null, t))
+        assertNull(NagadRead.rowFromFields("ক্যাশ আউট", null, "017****4121", "আজ, 06:49 AM", t))
+    }
+
+    @Test fun theRateLimitPopupIsSeenAndItsWaitRead() {
+        val popup = listOf("লেনদেন", "Rate limit exceeded. Too many requests. Please try again after 60 seconds.", "ঠিক আছে")
+        assertEquals(60, NagadRead.rateLimit(popup))
+        assertEquals(30, NagadRead.rateLimit(listOf("Too many requests. Please try again after 30 seconds.")))
+        assertEquals(60, NagadRead.rateLimit(listOf("Rate limit exceeded.")))
+        assertNull(NagadRead.rateLimit(listOf("লেনদেন", "ঠিক আছে")))
+        assertEquals(Screen.LIMITED, NagadRead.screenOf(popup, emptyList()))
+    }
+
+    @Test fun anEmptyListIsSeenButProvesNothing() {
+        assertTrue(NagadRead.noRows(listOf("আপনার কোন লেনদেনের তথ্য নেই", "আবার চেষ্টা করুন")))
+        assertFalse(NagadRead.noRows(listOf("ক্যাশ আউট", "500")))
+    }
+
+    @Test fun theEmptyPinBoxShowsItsLabelNotDigits() {
+        assertEquals(0, NagadRead.pinCount("নগদ পিন"))
+        assertEquals(0, NagadRead.pinCount("পিন"))
+        assertEquals(0, NagadRead.pinCount(""))
+        assertEquals(4, NagadRead.pinCount("••••"))
+        assertEquals(2, NagadRead.pinCount("12"))
+    }
+
+    @Test fun theRecordedSignInAndCashInFormsAreKnown() {
+        // Texts PayTrace reads (typing boxes left out), from the recording.
+        assertEquals(Screen.LOGIN, NagadRead.screenOf(listOf("সাইন ইন", "পিন নাম্বার ভুলে গিয়েছেন?"), emptyList()))
+        assertFalse(NagadRead.wrongPin(listOf("সাইন ইন", "পিন নাম্বার ভুলে গিয়েছেন?")))
+        assertEquals(Screen.CASHIN, NagadRead.screenOf(listOf("ক্যাশ ইন", "১১ ডিজিটের মোবাইল নাম্বার লিখুন", "সাবমিট"), listOf("একাউন্ট নং")))
+        val receipt = listOf("নগদ", "ক্যাশ ইন সফল", "প্রাপক:", "01618-749601", "12 নভেম্বর 2026, 10:03 AM", "ট্রানজেকশন আইডি", "76AX5C70",
+            "পরিমাণ", "100 টাকা", "ফি", "0 টাকা", "কমিশন", "0.41 টাকা", "বর্তমান ব্যালেন্স", "971.42 টাকা", "কল", "এসএমএস", "পরবর্তী")
+        assertEquals(Screen.RESULT, NagadRead.screenOf(receipt, emptyList()))
+        val r = NagadRead.resultOf(receipt)
+        assertEquals("01618749601", r.number)
+        assertEquals("76AX5C70", r.trx)
+        assertEquals(0.41, r.commission!!, 0.001)
+        assertEquals(971.42, r.balance!!, 0.001)
+        // The details box of an opened row.
+        val box = listOf("ক্যাশ আউট", "একাউন্ট নং", "018****8710", "পরিমাণ", "500 টাকা", "ট্রানজেকশন আইডি", "76AUQR5I", "দিন ও সময়", "গতকাল, 09:43 PM", "বিবরণ")
+        assertEquals(Screen.DETAILS, NagadRead.screenOf(box, emptyList()))
+        assertEquals("76AUQR5I", NagadRead.after(box, NagadRead.TRX_L))
+        // The type chooser.
+        assertEquals(Screen.PICKER, NagadRead.screenOf(listOf("লেনদেন", "সব লেনদেন", "ক্যাশ ইন", "ক্যাশ আউট", "বিটুবি", "ফি", "কমিশন"), emptyList()))
     }
 }
