@@ -602,17 +602,22 @@ object NagadApp {
         var panelOk = true
         fun typeOnPanel(box: AccessibilityNodeInfo, minTop: Int): Long {
             val want = idOf(box)
-            try { box.performAction(AccessibilityNodeInfo.ACTION_FOCUS) } catch (e: Exception) { }
-            press(svc, box)
+            // The keypad is sometimes already up (owner 2026-11-12); a tap on the box is only needed when it is not.
+            if (keypad(svc, minTop).box == null) {
+                try { box.performAction(AccessibilityNodeInfo.ACTION_FOCUS) } catch (e: Exception) { }
+                press(svc, box)
+            } else note("Nagad's keypad is already up: the PIN box is not tapped")
             fun focusHere(): Boolean = focusIs(svc, want, box)
             var panel: NagadKeypad.Box? = null
             panelOk = true
             val jit = java.util.Random()
             fun tapKey(k: Char): Boolean {
                 val p = panel ?: return false
-                val now = keypad(svc, minTop).first
-                if (now == null || NagadKeypad.moved(p, now)) { panelOk = false; note("Nagad's keypad moved or went away: no more taps"); return false }
+                val now = keypad(svc, minTop)
+                if (now.box == null || NagadKeypad.moved(p, now.box)) { panelOk = false; note("Nagad's keypad moved or went away: no more taps (${now.info})"); return false }
                 val pt = NagadKeypad.keyPoint(p, k, jit.nextDouble() * 2 - 1, jit.nextDouble() * 2 - 1) ?: return false
+                // never a tap on the navigation bar or another system window (a Back press there closed the keypad)
+                if (NagadKeypad.blocked(pt.first, pt.second, now.system)) { panelOk = false; note("a key would land on the phone's own bar: no more taps"); return false }
                 return AppReader.tapAt(svc, pt.first, pt.second)
             }
             // Nagad shows its keypad only once the PIN box itself is tapped (owner 2026-11-12), and it slides up, so it
@@ -638,7 +643,9 @@ object NagadApp {
             }
             fun look(waited: Long) {
                 if (finished) return
-                val (b, info) = keypad(svc, minTop)
+                val pad = keypad(svc, minTop)
+                val b = pad.box
+                val info = pad.info
                 lastInfo = info
                 if (b != null) {
                     panel = b
@@ -654,15 +661,17 @@ object NagadApp {
                 if (waited >= 6_000L) { panelOk = false; note("Nagad's keypad could not be located, nothing tapped ($lastInfo)"); return }
                 main.postDelayed({ look(waited + 500L) }, 500L)
             }
-            main.postDelayed({ look(1_000L) }, 1_000L)
+            main.postDelayed({ look(700L) }, 700L)
             // worst case: 6 s of looking, then the DELs and the digits
             return 6_000L + 400L + 5 * 260L + 600L + pin.length * (800L + 250L) + 300L
         }
 
-        val pinWays = listOf("on the keyboard, key by key", "by tapping Nagad's own keypad", "through Android's typing channel (no keyboard needed)")
+        // Nagad's own keypad first: it is the one Nagad shows (owner's photos); a phone keyboard and the typing channel
+        // are the fall-backs for a phone or app version that shows none.
+        val pinWays = listOf("by tapping Nagad's own keypad", "on the keyboard, key by key", "through Android's typing channel (no keyboard needed)")
         fun typePin(box: AccessibilityNodeInfo, way: Int, minTop: Int): Long {
             keysMissing = false
-            return when (way) { 0 -> typeKeys(box, pin, 6); 1 -> typeOnPanel(box, minTop); else -> typeByChannel(box) }
+            return when (way) { 0 -> typeOnPanel(box, minTop); 1 -> typeKeys(box, pin, 6); else -> typeByChannel(box) }
         }
 
         fun rowsOn(nodes: List<AccessibilityNodeInfo>): List<Pair<String, NagadRead.Row>> {
@@ -1238,17 +1247,21 @@ object NagadApp {
 
     /** Where Nagad's PIN keypad panel is ([NagadKeypad.find]), and a one-line list of the windows Android reported (for
      *  the run's log). [minTop] = the lowest thing on the page that must stay above the panel. */
-    private fun keypad(svc: AccessibilityService, minTop: Int): Pair<NagadKeypad.Box?, String> {
+    private class Pad(val box: NagadKeypad.Box?, val info: String, val system: List<NagadKeypad.Box>)
+
+    private fun keypad(svc: AccessibilityService, minTop: Int): Pad {
         val (w, h) = screenSize(svc)
         val wins = try { svc.windows } catch (e: Exception) { emptyList<AccessibilityWindowInfo>() }
         var page: NagadKeypad.Box? = null
         var navTop: Int? = null
         val others = ArrayList<NagadKeypad.Box>()
+        val system = ArrayList<NagadKeypad.Box>()
         val seen = ArrayList<String>()
         for (win in wins) {
             val r = Rect().also { win.getBoundsInScreen(it) }
             val b = NagadKeypad.Box(r.left, r.top, r.right, r.bottom)
             val pkg = try { win.root?.packageName?.toString() } catch (e: Exception) { null }
+            if (win.type == AccessibilityWindowInfo.TYPE_SYSTEM) system.add(b)
             seen.add("${win.type}:${pkg?.substringAfterLast('.') ?: "?"}@${r.left},${r.top},${r.right},${r.bottom}")
             when {
                 win.type == AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY || pkg == svc.packageName -> { }
@@ -1258,7 +1271,7 @@ object NagadApp {
                 else -> others.add(b)
             }
         }
-        return NagadKeypad.find(others, page, navTop, w, h, minTop) to "screen ${w}x$h, windows ${seen.joinToString(" ")}"
+        return Pad(NagadKeypad.find(others, page, navTop, w, h, minTop), "screen ${w}x$h, windows ${seen.joinToString(" ")}", system)
     }
 
     /** Is the typing focus on this very box (by its view id, else the same node)? */
@@ -1355,6 +1368,14 @@ object NagadKeypad {
         return x.toInt() to y.toInt()
     }
 
+    /** The keypad's own window can reach under the navigation bar (Vivo, 2026-11-12: window 1073..1600, bar from 1521).
+     *  The keys stop where the bar starts; tapping the bottom row by the window's size hit the bar's Back button and
+     *  closed the keypad. So the panel ends at the bar. */
+    fun clip(b: Box, navTop: Int?): Box = if (navTop != null && navTop > b.top && navTop < b.bottom) b.copy(bottom = navTop) else b
+
+    /** Is this point on a system window (navigation bar, a floating button)? Such a point is never tapped. */
+    fun blocked(x: Int, y: Int, system: List<Box>): Boolean = system.any { x >= it.left && x < it.right && y >= it.top && y < it.bottom }
+
     /** Has the panel moved since typing began? Then nothing more is tapped. */
     fun moved(a: Box, b: Box): Boolean =
         kotlin.math.abs(a.left - b.left) > 12 || kotlin.math.abs(a.top - b.top) > 12 ||
@@ -1364,7 +1385,7 @@ object NagadKeypad {
      *  and PayTrace's own), else the space between the bottom of the Nagad page's window ([page]) and the top of the
      *  navigation bar ([navTop], or the screen's bottom). */
     fun find(others: List<Box>, page: Box?, navTop: Int?, screenW: Int, screenH: Int, minTop: Int): Box? {
-        others.filter { plausible(it, screenW, screenH, minTop) }.maxByOrNull { it.height }?.let { return it }
+        others.map { clip(it, navTop) }.filter { plausible(it, screenW, screenH, minTop) }.maxByOrNull { it.height }?.let { return it }
         if (page == null) return null
         val bottom = navTop?.takeIf { it > page.bottom } ?: screenH
         val gap = Box(0, page.bottom, screenW, bottom)
