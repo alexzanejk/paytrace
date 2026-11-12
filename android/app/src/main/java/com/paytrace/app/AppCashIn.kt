@@ -220,6 +220,8 @@ object AppCashIn {
         var pinBoxTaps = 0
         var backs = 0
         var held = false
+        var sawWalletError = false // bKash showed its own error during this run (not a wrong PIN)
+        var reopens = 0
         var statusHits = 0
         val opener = AgentOpener { note(it) }
         var heldAt = 0L
@@ -363,7 +365,8 @@ object AppCashIn {
                 try {
                     val root = AppReader.bkashRoot(svc)
                     if (root == null) {
-                        if (seenApp == 0L && now - started > 20_000) return stop("app_not_opened", "the app did not open")
+                        if (seenApp == 0L && OpenRetry.due(false, now - started, reopens)) { reopens++; note("the app is not on screen yet: opening it again ($reopens)"); launch() }
+                        if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) return stop("app_not_opened", "the app did not open")
                         if (seenApp > 0 && now - seenApp > 20_000) return stop("app_stopped_before_send", "the app left the screen")
                     } else {
                         if (seenApp == 0L) nextActAt = now + pace.settle()
@@ -385,6 +388,7 @@ object AppCashIn {
                         // bKash's own messages (recorder run a1460479). Before the hold nothing has been sent, so both stop safely.
                         if (!held) {
                             if (AppBanners.wrongPin(texts)) return stop(if (cashPin.submittedAt > 0) "pin_refused" else "login_failed", "bKash says the PIN is not correct; never typed again")
+                            if (AppBanners.appError(texts)) sawWalletError = true
                             if (AppBanners.network(texts)) return stop("app_stopped_before_send", "bKash says: check your network (nothing was sent)")
                             // "Change the agent status" after login: while the status is CLOSE bKash will not do Cash In or
                             // B2B (owner 2026-11-11), so it is switched to OPEN and checked in the side menu first.
@@ -413,7 +417,7 @@ object AppCashIn {
                             AppCashInRead.Screen.LOGIN -> {
                                 if (cashPin.submittedAt > 0) return stop("app_stopped_before_send", "the app asked to log in again after the Cash In PIN")
                                 if (loginPin.submittedAt > 0) {
-                                    if (now - loginPin.submittedAt > LOGIN_WAIT_MS) return stop("login_failed", "still on the login screen after the PIN")
+                                    if (now - loginPin.submittedAt > LOGIN_WAIT_MS) return stop(LoginTrouble.stuck(sawWalletError), "still on the login screen after the PIN" + if (sawWalletError) " (bKash showed its own error: not a wrong PIN)" else "")
                                 } else {
                                     // bKash keeps Log in grey until the whole PIN is in: grey after the last digit = a digit was lost.
                                     if (loginPin.typed == keys.size && !loginPin.pressed) {

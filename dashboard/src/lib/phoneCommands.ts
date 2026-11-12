@@ -226,6 +226,7 @@ ERROR_TEXT.login_failed = "The bKash app did not accept the PIN PayTrace typed (
 ERROR_TEXT.app_not_opened = "The bKash app did not open on the phone.";
 ERROR_TEXT.balance_not_shown = "The bKash app opened and logged in, but the balance did not show after three taps on \"Tap for Balance\". Nothing was sent. Try again, or check by USSD.";
 ERROR_TEXT.app_closed = "The bKash app left the screen while it was being read.";
+ERROR_TEXT.app_error = "The bKash app showed its own error (\"An error occurred. Please try again later\") and went back to the sign-in screen. The PIN was not the problem; nothing was sent, and the next read tries again by itself.";
 ERROR_TEXT.no_nagad_app = "The Nagad agent app (Uddokta) was not found on this phone. Install it, or check that the customer Nagad app is not the only one.";
 ERROR_TEXT.no_answer_after_confirm = "The Nagad app was told to send (\"হ্যাঁ\" pressed) but no receipt came back. The money may have gone: check the Nagad app or its statement before sending again.";
 ERROR_TEXT.no_network = "The bKash app said \"check your network\" three times, so nothing was read. Check the phone's internet; the next read tries again by itself.";

@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import java.text.Normalizer
 import java.time.Instant
 import java.time.LocalDate
@@ -61,6 +62,12 @@ object NagadRead {
 
     /** "৳ 400", "৳1,900" → 400.0 / 1900.0; anything else null. */
     fun rowAmount(s: String?): Double? = ROW_AMOUNT.matchEntire(latin(s ?: "").trim())?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
+
+    private val PLAIN = Regex("^(?:৳\\s*)?([0-9][0-9,]*(?:\\.[0-9]{1,2})?)$")
+
+    /** The list's amount_tv as the app really shows it (recording 2026-11-12): "5,000", "2.05", "500" with the ৳ drawn as
+     *  a picture beside it; "৳ 400" is accepted too. */
+    fun plainAmount(s: String?): Double? = PLAIN.matchEntire(latin(s ?: "").trim())?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
 
     /** "10,019.75 টাকা", "100 টাকা" → the number; anything else null. */
     fun takaAmount(s: String?): Double? = TAKA.matchEntire(latin(s ?: "").trim())?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
@@ -156,6 +163,34 @@ object NagadRead {
         return Row(title.trim(), parts.firstNotNullOfOrNull { party(it) }, parts.firstNotNullOfOrNull { trxOf(it) }, amount, at, kindOf(title))
     }
 
+    /** One list row from its four named boxes (tx_type_tv, amount_tv, mobile_no_tv, time_tv); null unless the title,
+     *  amount and time are all there. [sub] is a hidden number ("017****4121") or, on a commission row, "#76AWL8GA". */
+    fun rowFromFields(title: String?, amount: String?, sub: String?, time: String?, today: LocalDate): Row? {
+        val t = title?.trim()?.takeIf { it.isNotEmpty() && it.any { c -> c.isLetter() } } ?: return null
+        val a = plainAmount(amount) ?: return null
+        val at = timeOf(time, today) ?: return null
+        return Row(t, party(sub), trxOf(sub), a, at, kindOf(t))
+    }
+
+    /** Nagad's own popup "Rate limit exceeded. Too many requests. Please try again after 60 seconds.": how many seconds
+     *  it asks for (60 when it names none); null when this is not that popup. */
+    fun rateLimit(texts: List<String>): Int? {
+        val t = texts.map { latin(it) }.firstOrNull { lc(it).let { l -> "rate limit" in l || "too many request" in l } } ?: return null
+        return Regex("(\\d{1,4})\\s*(?:second|sec|সেকেন্ড)", RegexOption.IGNORE_CASE).find(t)?.groupValues?.get(1)?.toIntOrNull()?.coerceIn(5, 600) ?: 60
+    }
+
+    /** The list says it has nothing ("আপনার কোন লেনদেনের তথ্য নেই"). NOT proof of anything: the same words show after a
+     *  rate-limit refusal. */
+    fun noRows(texts: List<String>): Boolean = texts.any { lc(it).let { l -> "লেনদেনের তথ্য নেই" in l || "no transaction" in l } }
+
+    /** How many PIN digits a PIN box holds. The empty box shows its own label as text ("নগদ পিন", "পিন"), so anything
+     *  with a letter in it counts as empty; dots or digits are counted. */
+    fun pinCount(text: String?): Int {
+        val t = latin(text ?: "").replace(" ", "")
+        if (t.isEmpty() || t.any { it.isLetter() }) return 0
+        return t.count { it.isDigit() || it == '•' || it == '*' || it == '●' || it == '·' }
+    }
+
     /** Commission rows folded into their transaction: the nearest earlier row in the list (newest first) of the same
      *  minute whose title is the commission row's without "কমিশন". It gives that transaction its commission AND its TrxID.
      *  A commission row with no such neighbour is left out. */
@@ -240,7 +275,7 @@ object NagadRead {
         ("পিন" in t && (("ভুল" in t && "ভুলে" !in t) || "সঠিক নয়" in t)) || ("pin" in t && ("wrong" in t || "incorrect" in t || "invalid" in t))
     }
 
-    enum class Screen { CONFIRM, RESULT, BUSY, DETAILS, PICKER, LOGIN, CASHIN, DRAWER, STATEMENT, HOME, UNKNOWN }
+    enum class Screen { LIMITED, CONFIRM, RESULT, BUSY, DETAILS, PICKER, LOGIN, CASHIN, DRAWER, STATEMENT, HOME, UNKNOWN }
 
     /** Which screen this is, from its words ([texts]) and the hints of its typing boxes ([hints]). Order matters: a sheet or
      *  a box drawn over a page wins, and the menu (drawn over Home) is checked before the pages behind it. */
@@ -249,6 +284,7 @@ object NagadRead {
         fun has(w: String) = all.any { lc(w) in it }
         fun exact(w: String) = all.any { it == lc(w) }
         return when {
+            rateLimit(texts) != null -> Screen.LIMITED
             has("আপনি কি") && (exact("হ্যাঁ") || exact("yes")) -> Screen.CONFIRM
             has("সফল") && all.any { it in TRX_L } && (exact("পরবর্তী") || exact("next")) -> Screen.RESULT
             all.any { it.endsWith("হচ্ছে") } || exact("সাইন ইন সফল") || has("সম্পন্ন") -> Screen.BUSY
@@ -263,8 +299,10 @@ object NagadRead {
         }
     }
 
-    /** The statement's Transactions tab is showing: its search box is there. */
-    fun onTransactions(hints: List<String>): Boolean = hints.any { lc(it).let { h -> "খুঁজুন" in h || "search" in h } }
+    /** The statement's Transactions tab is showing: its search bar (search_bar_fl: the search box, or the filter chip that
+     *  takes its place) or its list is on screen. [ids] are the screen's view ids without the package part. */
+    fun onTransactions(ids: Set<String>): Boolean =
+        "search_bar_fl" in ids || "search_edit_text" in ids || "transaction_log_rv" in ids || "tx_history_srl" in ids
 
     /** For a number search: the row's hidden number is that number (first three and last four digits). */
     fun samePhone(masked: String?, number: String): Boolean =
@@ -323,11 +361,49 @@ object NagadApp {
         return try { svc.windows.mapNotNull { it.root }.firstOrNull { NagadRead.isNagad(it.packageName?.toString()) } } catch (e: Exception) { null }
     }
 
-    /** Every node, typing boxes included (the Cash In form is three of them), in screen order. */
-    private fun all(n: AccessibilityNodeInfo?, out: MutableList<AccessibilityNodeInfo>, depth: Int) {
+    /** Every node, typing boxes included (the Cash In form is three of them), in screen order. A node lying wholly left or
+     *  right of the screen is skipped with everything inside it: the statement's ViewPager keeps its other tabs in the
+     *  tree off screen (recording 2026-11-12: the লিমিট tab's "ক্যাশ ইন" and "৳ 1,071.01" at negative x), and they must
+     *  never be read as this page. */
+    private fun all(n: AccessibilityNodeInfo?, out: MutableList<AccessibilityNodeInfo>, depth: Int, width: Int = Int.MAX_VALUE) {
         if (n == null || depth > 40 || out.size > 1500) return
+        if (depth > 0) {
+            val r = Rect().also { n.getBoundsInScreen(it) }
+            if (r.right <= 0 || r.left >= width) return
+        }
         out.add(n)
-        for (i in 0 until n.childCount) all(n.getChild(i), out, depth + 1)
+        for (i in 0 until n.childCount) all(n.getChild(i), out, depth + 1, width)
+    }
+
+    /** A node's view id without the package part ("pin_input_view"). */
+    private fun idOf(n: AccessibilityNodeInfo): String? = n.viewIdResourceName?.substringAfter(":id/")
+    private fun byId(nodes: List<AccessibilityNodeInfo>, id: String): AccessibilityNodeInfo? = nodes.firstOrNull { idOf(it) == id }
+
+    /** The on-screen keyboard (another app's window, reachable because the service retrieves interactive windows). */
+    private fun imeNodes(svc: AccessibilityService): List<AccessibilityNodeInfo> {
+        val r = try { svc.windows.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }?.root } catch (e: Exception) { null } ?: return emptyList()
+        return ArrayList<AccessibilityNodeInfo>().also { all(r, it, 0) }
+    }
+
+    /** The keyboard key that is exactly this digit (by its label or its spoken name; Bangla digits count), never a guess
+     *  by position. */
+    private fun imeKey(keys: List<AccessibilityNodeInfo>, ch: Char): AccessibilityNodeInfo? = keys.firstOrNull { n ->
+        val r = Rect().also { n.getBoundsInScreen(it) }
+        !r.isEmpty && (NagadRead.latin(n.text?.toString()?.trim() ?: "") == ch.toString() || NagadRead.latin(n.contentDescription?.toString()?.trim() ?: "") == ch.toString())
+    }
+
+    private val DELETE_KEY = setOf("delete", "backspace", "ডিলিট", "মুছুন", "⌫")
+    private fun imeDelete(keys: List<AccessibilityNodeInfo>): AccessibilityNodeInfo? = keys.firstOrNull { n ->
+        val r = Rect().also { n.getBoundsInScreen(it) }
+        !r.isEmpty && (NagadRead.lc(n.contentDescription?.toString()) in DELETE_KEY || NagadRead.lc(n.text?.toString()) in DELETE_KEY)
+    }
+
+    /** Is this button lit (enabled)? Nagad greys out সাইন ইন and সাবমিট until the boxes are complete. */
+    private fun enabled(n: AccessibilityNodeInfo?): Boolean? {
+        var p = n
+        var hops = 0
+        while (p != null && hops < 4) { if (p.isClickable) return p.isEnabled; p = p.parent; hops++ }
+        return n?.isEnabled
     }
 
     private fun top(n: AccessibilityNodeInfo): Int = Rect().also { n.getBoundsInScreen(it) }.top
@@ -352,14 +428,6 @@ object NagadApp {
         return press(svc, hit)
     }
 
-    private fun lit(nodes: List<AccessibilityNodeInfo>, words: Set<String>): Boolean? {
-        val hit = nodes.firstOrNull { !it.isEditable && NagadRead.lc(it.text?.toString()) in words } ?: return null
-        var p: AccessibilityNodeInfo? = hit
-        var hops = 0
-        while (p != null && hops < 4) { if (p.isClickable) return p.isEnabled; p = p.parent; hops++ }
-        return null
-    }
-
     private val SIGN_IN = setOf("সাইন ইন", "sign in")
     private val YES = setOf("হ্যাঁ", "yes")
     private val NO = setOf("না", "no")
@@ -368,6 +436,8 @@ object NagadApp {
     private val CASH_IN = setOf("ক্যাশ ইন", "cash in")
     private val STATEMENT = setOf("বিবরণী", "statement")
     private val TX_TAB = setOf("লেনদেন", "transaction", "transactions")
+    private val ALL_TYPES = setOf("সব লেনদেন", "all transactions")
+    private val OK = setOf("ঠিক আছে", "ok")
 
     fun start(ctx: Context, task: NagadTask, done: (UssdOutcome) -> Unit) {
         val app = ctx.applicationContext
@@ -404,8 +474,17 @@ object NagadApp {
         var progressAt = started
         var screenText = ""
         var backs = 0
-        // sign in
-        var pinTypes = 0; var loginAt = 0L
+        var sawWalletError = false
+        var reopens = 0
+        // sign in: Nagad's PIN box is its own drawing over a plain text box, so the PIN is typed one way after another
+        // until the app itself lights সাইন ইন (it stays grey until it holds the whole PIN), and only then pressed.
+        var pinWay = 0; var pinCheckAt = 0L; var loginAt = 0L
+        var keysMissing = false
+        val width = svc.resources.displayMetrics.widthPixels
+        // Nagad's "too many requests" popup
+        var limitHits = 0; var limitSeen = false
+        // a filter or a search left on the list by someone
+        var chipRemovals = 0; var searchCleared = false; var retryTaps = 0; var emptyAt = 0L
         // menu / statement
         var drawerTries = 0; var tabPresses = 0
         // reading
@@ -422,6 +501,7 @@ object NagadApp {
         var outcome = ""
         // cash in
         var cStage = 0; var cTypes = 0; var submits = 0; var submitAt = 0L
+        var cPinWay = 0; var cPinCheckAt = 0L
         var yesAt = 0L
 
         fun finish(o: UssdOutcome, why: String) {
@@ -434,8 +514,78 @@ object NagadApp {
         }
         fun stop(error: String, why: String) = finish(UssdOutcome(false, null, error), why)
 
+        /** Types [text] on the on-screen keyboard, one key at a time, each key found again just before it is pressed
+         *  (after [deletes] presses of its delete key, which empties the box). Every press first checks that the box
+         *  with the keyboard's focus IS this box, so a PIN can never land in the amount or number box. Returns how long
+         *  it takes. */
+        fun typeKeys(box: AccessibilityNodeInfo, text: String, deletes: Int): Long {
+            val want = idOf(box)
+            try { box.performAction(AccessibilityNodeInfo.ACTION_FOCUS) } catch (e: Exception) { }
+            press(svc, box)
+            fun focusHere(): Boolean {
+                val f = try { svc.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) } catch (e: Exception) { null } ?: return false
+                return if (want != null) idOf(f) == want else f == box
+            }
+            var at = 1_300L
+            repeat(deletes) {
+                main.postDelayed({ if (!finished && focusHere()) imeDelete(imeNodes(svc))?.let { AppReader.tap(svc, it) } }, at)
+                at += 160L
+            }
+            at += 400L
+            for (ch in text) {
+                main.postDelayed({
+                    if (finished) return@postDelayed
+                    if (!focusHere()) { keysMissing = true; return@postDelayed }
+                    val key = imeKey(imeNodes(svc), ch)
+                    if (key == null) keysMissing = true else AppReader.tap(svc, key)
+                }, at)
+                at += pace.keyGap() + 200L
+            }
+            return at
+        }
+
+        /** Puts [text] into the box through Android's own "set text", emptying it first; [stepwise] = a growing text,
+         *  as if typed. Returns how long it takes. */
+        fun typeSet(box: AccessibilityNodeInfo, text: String, stepwise: Boolean): Long {
+            press(svc, box)
+            var at = pace.keyGap()
+            main.postDelayed({ setText(box, "") }, at)
+            at += pace.keyGap()
+            if (stepwise) {
+                for (i in 1..text.length) { val part = text.take(i); main.postDelayed({ setText(box, part) }, at); at += pace.charGap() }
+            } else {
+                main.postDelayed({ setText(box, text) }, at); at += pace.keyGap()
+            }
+            return at
+        }
+
+        val pinWays = listOf("on the keyboard, key by key", "all at once", "one digit at a time")
+        /** One way of putting the PIN into a PIN box (the keyboard first: it is what a person does). */
+        fun typePin(box: AccessibilityNodeInfo, way: Int): Long {
+            keysMissing = false
+            return when (way) {
+                0 -> typeKeys(box, pin, 6)
+                1 -> typeSet(box, pin, false)
+                else -> typeSet(box, pin, true)
+            }
+        }
+
         fun rowsOn(nodes: List<AccessibilityNodeInfo>): List<Pair<String, NagadRead.Row>> {
             val out = ArrayList<Pair<String, NagadRead.Row>>()
+            // By the list's own boxes (recording 2026-11-12): each row holds tx_type_tv, amount_tv ("5,000", no ৳),
+            // mobile_no_tv ("013****7088" or "#76AWL8GA") and time_tv ("গতকাল, 07:03 PM").
+            for (t in nodes.filter { idOf(it) == "tx_type_tv" }) {
+                val rowNode = t.parent ?: continue
+                val inner = ArrayList<AccessibilityNodeInfo>().also { all(rowNode, it, 0, width) }
+                fun f(id: String) = inner.firstOrNull { idOf(it) == id }?.text?.toString()?.trim()
+                val title = t.text?.toString()?.trim()
+                val amount = f("amount_tv"); val sub = f("mobile_no_tv"); val time = f("time_tv")
+                val row = NagadRead.rowFromFields(title, amount, sub, time, today) ?: continue
+                val key = listOf(title, sub, time, amount).joinToString(" | ")
+                if (out.none { it.first == key }) { out.add(key to row); nodeOf[key] = rowNode }
+            }
+            if (out.isNotEmpty() || nodes.any { idOf(it) == "transaction_log_rv" }) return out
+            // Fallback for a version of the app without those names: words around a "৳ 400".
             val used = HashSet<AccessibilityNodeInfo>()
             for (n in nodes) {
                 if (n.isEditable || NagadRead.rowAmount(n.text?.toString()) == null) continue
@@ -508,7 +658,8 @@ object NagadApp {
                 try {
                     val r = root(svc)
                     if (r == null) {
-                        if (seenApp == 0L && now - started > 20_000) return stop("app_not_opened", "the Nagad app did not open")
+                        if (seenApp == 0L && OpenRetry.due(false, now - started, reopens)) { reopens++; note("the Nagad app is not on screen yet: opening it again ($reopens)"); AppReader.openBkash(svc, app, pkg, woke) { note(it) } }
+                        if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) return stop("app_not_opened", "the Nagad app did not open")
                         if (seenApp > 0) {
                             if (leftAt == 0L) leftAt = now
                             if (now - leftAt > 3_000 && yesAt == 0L) {
@@ -527,7 +678,8 @@ object NagadApp {
                     if (seenApp == 0L) nextActAt = now + pace.settle()
                     seenApp = now
                     val nodes = ArrayList<AccessibilityNodeInfo>()
-                    all(r, nodes, 0)
+                    all(r, nodes, 0, width)
+                    val ids = nodes.mapNotNull { idOf(it) }.toSet()
                     val texts = nodes.filter { !it.isEditable && !it.isPassword }.mapNotNull { it.text?.toString()?.trim()?.takeIf { t -> t.isNotEmpty() } }
                     val boxes = nodes.filter { it.isEditable || it.isPassword }.sortedBy { top(it) }
                     val hints = boxes.mapNotNull { b -> (if (Build.VERSION.SDK_INT >= 26) b.hintText?.toString() else null) }
@@ -553,36 +705,66 @@ object NagadApp {
                     }
 
                     if (NagadRead.wrongPin(texts)) return stop("login_failed", "Nagad says the PIN is wrong; never typed again")
+                    if (AppBanners.appError(texts) || AppBanners.network(texts)) sawWalletError = true
+
+                    // Nagad's "Rate limit exceeded. Too many requests. Please try again after 60 seconds." (seen in the
+                    // recording after a few searches): press ঠিক আছে and wait what it asks, never hammer it.
+                    NagadRead.rateLimit(texts)?.let { secs ->
+                        limitSeen = true
+                        progressAt = now
+                        if (canAct) {
+                            limitHits++
+                            note("Nagad says too many requests: waiting $secs s ($limitHits)")
+                            val ok = byId(nodes, "button1") ?: nodes.firstOrNull { !it.isEditable && NagadRead.lc(it.text?.toString()) in OK }
+                            if (ok != null) press(svc, ok) else svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                            val left = started + RUN_MS - now
+                            if (limitHits > 3 || secs * 1000L + 15_000L > left) {
+                                return when (task) {
+                                    is NagadTask.Read -> if (seen.isNotEmpty()) finishRead("Nagad: too many requests") else stop("app_error", "Nagad: too many requests, no time left to wait")
+                                    is NagadTask.Search -> { outcome = "the search did not run (Nagad: too many requests)"; finishSearch(task.query, "rate limit") }
+                                    else -> stop("app_error", "Nagad: too many requests; nothing sent")
+                                }
+                            }
+                            nextActAt = now + secs * 1000L + 2_000L
+                            progressAt = nextActAt
+                        }
+                        main.postDelayed(this, TICK_MS); return
+                    }
 
                     when (screen) {
                         NagadRead.Screen.BUSY -> { progressAt = now }
+                        NagadRead.Screen.LIMITED -> { }
                         NagadRead.Screen.LOGIN -> {
                             progressAt = now
                             if (loginAt > 0) {
-                                if (now - loginAt > LOGIN_WAIT_MS) return stop("login_failed", "still on the sign-in screen after the PIN")
+                                if (now - loginAt > LOGIN_WAIT_MS) return stop(LoginTrouble.stuck(sawWalletError), "still on the sign-in screen after the PIN" + if (sawWalletError) " (Nagad showed its own error: not a wrong PIN)" else "")
                             } else if (canAct) {
-                                val box = boxes.firstOrNull { it.isPassword }
+                                // The recording: EditText#pin_input_view shows "নগদ পিন" while empty (it is not a
+                                // password box), four digit_view dots draw the PIN, and Button#progress_btn "সাইন ইন"
+                                // is grey until the app holds the whole PIN. Pressing a grey button does nothing, which is
+                                // exactly how the first three runs "signed in" and stayed on this screen.
+                                val box = byId(nodes, "pin_input_view") ?: boxes.firstOrNull { it.isPassword }
                                     ?: boxes.firstOrNull { b -> NagadRead.lc(if (Build.VERSION.SDK_INT >= 26) b.hintText?.toString() else "").let { "পিন" in it || "pin" in it } }
                                     ?: return stop("pin_not_entered", "no PIN box on the sign-in screen")
-                                val shown = box.text?.length ?: 0
-                                if (pinTypes > 0 && (shown == pin.length || (shown == 0 && lit(nodes, SIGN_IN) == true))) {
-                                    note("the PIN box is full: pressing সাইন ইন")
-                                    loginAt = now
-                                    if (!pressWords(svc, nodes, SIGN_IN, lowest = true)) note("সাইন ইন not found")
-                                    nextActAt = now + pace.settle()
-                                } else if (pinTypes >= 2) {
-                                    return stop("pin_not_entered", "the PIN would not go into the box; সাইন ইন NOT pressed")
-                                } else {
-                                    pinTypes++
-                                    note(if (pinTypes == 1) "typing the PIN, one digit at a time" else "the PIN box was not full: typing it again")
-                                    press(svc, box)
-                                    var at = pace.keyGap()
-                                    for (i in 1..pin.length) {
-                                        val part = pin.take(i)
-                                        main.postDelayed({ setText(box, part) }, at)
-                                        at += pace.keyGap()
+                                val btn = byId(nodes, "progress_btn") ?: nodes.firstOrNull { !it.isEditable && NagadRead.lc(it.text?.toString()) in SIGN_IN }
+                                val lit = enabled(btn) == true
+                                when {
+                                    pinWay > 0 && lit -> {
+                                        note("সাইন ইন is lit (the app has the whole PIN, typed ${pinWays[pinWay - 1]}): pressing it once")
+                                        loginAt = now
+                                        if (!press(svc, btn!!)) note("সাইন ইন could not be pressed")
+                                        nextActAt = now + pace.settle()
                                     }
-                                    nextActAt = now + at + pace.afterKeys()
+                                    pinWay > 0 && now < pinCheckAt -> { }
+                                    pinWay >= pinWays.size -> return stop("pin_not_entered", "Nagad did not take the PIN in any of ${pinWays.size} ways; সাইন ইন NOT pressed (no PIN was sent)")
+                                    else -> {
+                                        if (pinWay > 0) note("সাইন ইন stayed grey" + (if (keysMissing) " (the keyboard could not be used: no digit keys, or the box lost the focus)" else "") + ": trying another way")
+                                        note("typing the PIN ${pinWays[pinWay]}")
+                                        val ms = typePin(box, pinWay)
+                                        pinWay++
+                                        nextActAt = now + ms + pace.afterKeys()
+                                        pinCheckAt = nextActAt + 2_500L
+                                    }
                                 }
                             }
                         }
@@ -590,7 +772,7 @@ object NagadApp {
                             progressAt = now
                             when (task) {
                                 is NagadTask.Balance -> {
-                                    val v = NagadRead.balanceOf(texts)
+                                    val v = byId(nodes, "balance_inquiry_text")?.text?.toString()?.let { NagadRead.takaAmount(it) } ?: NagadRead.balanceOf(texts)
                                     if (v != null && pillTaps > 0) {
                                         note("the balance shows")
                                         return finish(UssdOutcome(true, v, null, screens = listOf("Nagad app balance\nbalance: $v")), "done")
@@ -601,7 +783,8 @@ object NagadApp {
                                         if (now - homeAt >= 10_000) return finish(UssdOutcome(true, v, null, screens = listOf("Nagad app balance\nbalance: $v\nNOTE: it was already showing before PayTrace tapped")), "done")
                                     } else if (canAct && (pillTaps == 0 || now - pillAt > 8_000)) {
                                         if (pillTaps >= 3) return stop("balance_not_shown", "the balance did not show after $pillTaps taps")
-                                        val pill = nodes.firstOrNull { n -> NagadRead.lc(n.text?.toString()).let { "ব্যালেন্স" in it || "balance" in it } }
+                                        val pill = byId(nodes, "balance_inquiry_button") ?: byId(nodes, "balance_inquiry_text")
+                                            ?: nodes.firstOrNull { n -> NagadRead.lc(n.text?.toString()).let { "ব্যালেন্স" in it || "balance" in it } }
                                         if (pill == null) {
                                             nextActAt = now + 1_000
                                         } else {
@@ -636,32 +819,85 @@ object NagadApp {
                             }
                             nextActAt = now + pace.settle()
                         }
-                        NagadRead.Screen.PICKER, NagadRead.Screen.DETAILS -> if (canAct) {
+                        NagadRead.Screen.PICKER -> if (canAct) {
+                            progressAt = now
+                            // The type chooser (সব লেনদেন, ক্যাশ ইন, ক্যাশ আউট, বিটুবি ...): a read wants every type.
+                            if ((task is NagadTask.Read || task is NagadTask.Search) && chipRemovals < 4) {
+                                chipRemovals++
+                                note("the type chooser is open: choosing সব লেনদেন")
+                                if (!pressWords(svc, nodes, ALL_TYPES)) svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                            } else {
+                                note("a chooser PayTrace did not open: closing it")
+                                svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                            }
+                            nextActAt = now + pace.settle()
+                        }
+                        NagadRead.Screen.DETAILS -> if (canAct) {
                             progressAt = now
                             val key = openKey
-                            if (screen == NagadRead.Screen.DETAILS && key != null) {
-                                val trx = NagadRead.after(texts, NagadRead.TRX_L)?.trim()?.uppercase(Locale.ROOT)?.takeIf { Regex("^[A-Z0-9]{6,24}$").matches(it) }
-                                note("opened row: TrxID ${trx ?: "not readable"}")
-                                if (trx != null) sheetTrx[key] = trx
+                            if (key != null) {
+                                val trx = (byId(nodes, "tx_ref_view")?.text?.toString() ?: NagadRead.after(texts, NagadRead.TRX_L))
+                                    ?.trim()?.uppercase(Locale.ROOT)?.takeIf { Regex("^[A-Z0-9]{6,24}$").matches(it) }
+                                // The box must be the row that was opened: same amount ("500 টাকা").
+                                val boxAmount = byId(nodes, "amount_view")?.text?.toString()?.let { NagadRead.takaAmount(it) ?: NagadRead.plainAmount(it) }
+                                val rowAmount = seen[key]?.amount
+                                val same = boxAmount == null || rowAmount == null || Math.abs(boxAmount - rowAmount) < 0.005
+                                note("opened row: TrxID ${trx ?: "not readable"}" + if (!same) " (but the box shows Tk $boxAmount, not Tk $rowAmount: not used)" else "")
+                                if (trx != null && same) sheetTrx[key] = trx
                                 toOpen.remove(key)
                                 openKey = null
                             } else note("a box PayTrace did not open: closing it")
-                            svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                            val close = byId(nodes, "close_action_view")
+                            if (close == null || !press(svc, close)) svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
                             nextActAt = now + pace.settle()
                         }
                         NagadRead.Screen.STATEMENT -> {
                             progressAt = now
+                            val searchBox = byId(nodes, "search_edit_text")
+                            // The search box shows its own label as text while empty; once something is typed the label
+                            // moves to the hint.
+                            fun typed(b: AccessibilityNodeInfo?): String =
+                                if (b == null || b.isShowingHintText || b.hintText == null) "" else (b.text?.toString() ?: "")
+                            val chipX = byId(nodes, "filter_chip_remove_btn")
                             if (task !is NagadTask.Read && task !is NagadTask.Search) {
                                 if (canAct) { svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK); nextActAt = now + pace.settle() }
-                            } else if (!NagadRead.onTransactions(hints)) {
+                            } else if (!NagadRead.onTransactions(ids)) {
                                 if (canAct) {
                                     if (++tabPresses > 4) return stop("unexpected_screen", "the লেনদেন tab would not open")
                                     note("pressing the লেনদেন tab")
                                     if (!pressWords(svc, nodes, TX_TAB)) note("লেনদেন tab not found")
                                     nextActAt = now + pace.settle()
                                 }
+                            } else if (chipX != null) {
+                                // A type filter left on the list (the recording found "বিটুবি" still chosen from an earlier
+                                // visit, so only B2B rows showed): take it off before reading anything.
+                                if (canAct) {
+                                    if (++chipRemovals > 4) return stop("unexpected_screen", "the list's filter would not come off")
+                                    note("a filter (${byId(nodes, "filter_chip_tv")?.text ?: "?"}) was left on the list: removing it")
+                                    press(svc, chipX)
+                                    nextActAt = now + pace.settle()
+                                }
                             } else if (task is NagadTask.Read && canAct) {
+                                if (!searchCleared && typed(searchBox).isNotBlank()) {
+                                    searchCleared = true
+                                    note("a search (${typed(searchBox)}) was left in the box: emptying it")
+                                    setText(searchBox!!, "")
+                                    nextActAt = now + pace.settle()
+                                    main.postDelayed(this, TICK_MS); return
+                                }
                                 val rows = rowsOn(nodes)
+                                if (rows.isEmpty() && NagadRead.noRows(texts)) {
+                                    // "আপনার কোন লেনদেনের তথ্য নেই": the list did not load (or a refusal emptied it). Ask it
+                                    // again once ("আবার চেষ্টা করুন"), then end the read with what it has.
+                                    if (emptyAt == 0L) emptyAt = now
+                                    if (retryTaps < 1 && !limitSeen) {
+                                        retryTaps++
+                                        note("the list says it is empty: pressing আবার চেষ্টা করুন")
+                                        byId(nodes, "tap_tv")?.let { press(svc, it) }
+                                        nextActAt = now + pace.settle()
+                                    } else if (now - emptyAt > 10_000) return finishRead("the list stayed empty")
+                                    main.postDelayed(this, TICK_MS); return
+                                }
                                 var fresh = 0
                                 for ((k, row) in rows) if (seen.putIfAbsent(k, row) == null) fresh++
                                 val keys = rows.map { it.first }.toSet()
@@ -681,22 +917,20 @@ object NagadApp {
                                 nextActAt = now + pace.swipeMs() + pace.readPause()
                             } else if (task is NagadTask.Search && canAct) {
                                 val q = task.query
-                                val box = boxes.firstOrNull { b -> NagadRead.onTransactions(listOfNotNull(if (Build.VERSION.SDK_INT >= 26) b.hintText?.toString() else null)) } ?: boxes.firstOrNull()
                                 when (sStage) {
                                     0 -> {
-                                        if (box == null) return finishSearch(q, "no search box")
-                                        if (++sTypes > 2) { outcome = "could not type it"; return finishSearch(q, "the search box would not take the query") }
-                                        note("typing $q into the search box")
-                                        press(svc, box)
-                                        var at = pace.keyGap()
-                                        for (i in 1..q.length) { val part = q.take(i); main.postDelayed({ setText(box, part) }, at); at += pace.charGap() }
+                                        if (searchBox == null) return finishSearch(q, "no search box")
+                                        if (++sTypes > 3) { outcome = "could not type it"; return finishSearch(q, "the search box would not take the query") }
+                                        note("typing $q into the search box" + if (sTypes == 3) " on the keyboard" else "")
+                                        keysMissing = false
+                                        val ms = if (sTypes < 3) typeSet(searchBox, q, sTypes == 2) else typeKeys(searchBox, q, 16)
                                         sStage = 1
-                                        nextActAt = now + at + pace.afterKeys()
+                                        nextActAt = now + ms + pace.afterKeys()
                                     }
                                     1 -> {
-                                        val shown = (box?.text?.toString() ?: "").replace(" ", "").uppercase(Locale.ROOT)
+                                        val shown = typed(searchBox).replace(" ", "").uppercase(Locale.ROOT)
                                         if (shown != q) { note("the box shows \"$shown\": typing again"); sStage = 0; return run() }
-                                        submit(svc, box!!, nodes, sWays)
+                                        submit(svc, searchBox!!, nodes, sWays)
                                         note("pressing search (way ${sWays + 1})")
                                         sWays++; sAt = now; sStage = 2
                                         nextActAt = now + 3_000
@@ -706,6 +940,7 @@ object NagadApp {
                                         for ((k, row) in rows) seen.putIfAbsent(k, row)
                                         val phone = Regex("^01\\d{9}$").matches(q)
                                         val folded = NagadRead.fold(rows.map { it.second })
+                                        val empty = rows.isEmpty() && NagadRead.noRows(texts)
                                         val applied = when {
                                             rows.isEmpty() -> true
                                             phone -> folded.all { NagadRead.samePhone(it.party, q) }
@@ -715,7 +950,8 @@ object NagadApp {
                                             !applied && sWays < 3 -> { note("the list did not change: pressing search another way"); sStage = 1 }
                                             !applied -> { outcome = "the search did not run"; return finishSearch(q, "search not applied") }
                                             rows.isEmpty() -> {
-                                                if (now - sAt > 8_000) { outcome = "nothing found"; return finishSearch(q, "no rows") }
+                                                if (empty && limitSeen) { outcome = "the search did not run (Nagad: too many requests)"; return finishSearch(q, "rate limit") }
+                                                if (now - sAt > 8_000) { outcome = if (empty) "nothing found" else "nothing came up"; return finishSearch(q, "no rows") }
                                             }
                                             phone || folded.any { it.trx == q } -> return finishSearch(q, "found")
                                             else -> {
@@ -746,58 +982,62 @@ object NagadApp {
                             if (task !is NagadTask.CashIn) {
                                 if (canAct) { svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK); nextActAt = now + pace.settle() }
                             } else if (canAct) {
+                                // The recording's form: EditText#destination_account_input_view (shows "01618-749601"),
+                                // EditText#amount_input_view, EditText#pin_input_view (the same drawn PIN box as the sign-in)
+                                // and Button#progress_btn "সাবমিট", grey until all three are complete.
                                 val o = task.order
-                                val pinBox = boxes.firstOrNull { it.isPassword } ?: boxes.getOrNull(2)
-                                val plain = boxes.filter { it != pinBox }
-                                val acct = plain.getOrNull(0)
-                                val amt = plain.getOrNull(1)
+                                val acct = byId(nodes, "destination_account_input_view") ?: boxes.getOrNull(0)
+                                val amt = byId(nodes, "amount_input_view") ?: boxes.getOrNull(1)
+                                val pinBox = byId(nodes, "pin_input_view") ?: boxes.firstOrNull { it.isPassword } ?: boxes.getOrNull(2)
                                 if (acct == null || amt == null || pinBox == null) return stop("app_stopped_before_send", "the Cash In form did not show its three boxes")
+                                val btn = byId(nodes, "progress_btn") ?: nodes.firstOrNull { !it.isEditable && NagadRead.lc(it.text?.toString()) in SUBMIT }
+                                val lit = enabled(btn) == true
                                 val acctOk = NagadRead.digits(acct.text?.toString()) == o.number
                                 val amtOk = NagadRead.latin(amt.text?.toString() ?: "").replace(",", "").trim().toDoubleOrNull()?.let { Math.abs(it - o.amount) < 0.005 } == true
                                 val want = NagadRead.money(o.amount)
-                                fun pinFull(b: AccessibilityNodeInfo, ns: List<AccessibilityNodeInfo>): Boolean {
-                                    val len = b.text?.length ?: 0
-                                    return len == pin.length || (len == 0 && cStage >= 2 && lit(ns, SUBMIT) == true)
-                                }
-                                fun typeInto(b: AccessibilityNodeInfo, text: String) {
-                                    press(svc, b)
-                                    var at = pace.keyGap()
-                                    for (i in 1..text.length) { val part = text.take(i); main.postDelayed({ setText(b, part) }, at); at += pace.charGap() }
-                                    nextActAt = now + at + pace.afterKeys()
-                                }
                                 when {
                                     submits > 0 -> {
-                                        // The sheet did not come: press সাবমিট once more (it only opens the sheet).
+                                        // The sheet did not come: press সাবমিট once more (it only opens the sheet), and only
+                                        // while the form still shows this number and amount and the button is lit.
                                         if (now - submitAt > 8_000) {
-                                            if (submits >= 2) return stop("app_stopped_before_send", "সাবমিট did not open the confirmation")
+                                            if (submits >= 2 || !acctOk || !amtOk || !lit) return stop("app_stopped_before_send", "সাবমিট did not open the confirmation; nothing sent")
                                             submits++; submitAt = now
                                             note("no confirmation yet: pressing সাবমিট again")
-                                            pressWords(svc, nodes, SUBMIT, lowest = true)
+                                            press(svc, btn!!)
                                             nextActAt = now + pace.settle()
                                         }
                                     }
                                     !acctOk -> {
                                         if (cStage > 0 || ++cTypes > 2) return stop("app_stopped_before_send", "the number would not go into the box")
-                                        note("typing the number"); typeInto(acct, o.number)
+                                        note("typing the number" + if (cTypes == 2) " on the keyboard" else "")
+                                        val ms = if (cTypes == 1) typeSet(acct, o.number, true) else typeKeys(acct, o.number, 16)
+                                        nextActAt = now + ms + pace.afterKeys()
                                     }
                                     !amtOk -> {
                                         if (cStage > 1) return stop("app_stopped_before_send", "the amount changed in the box")
-                                        cStage = 1
-                                        if (++cTypes > 4) return stop("app_stopped_before_send", "the amount would not go into the box")
-                                        note("typing the amount"); typeInto(amt, want)
+                                        if (cStage == 0) { cStage = 1; cTypes = 0 }
+                                        if (++cTypes > 2) return stop("app_stopped_before_send", "the amount would not go into the box")
+                                        note("typing the amount" + if (cTypes == 2) " on the keyboard" else "")
+                                        val ms = if (cTypes == 1) typeSet(amt, want, true) else typeKeys(amt, want, 10)
+                                        nextActAt = now + ms + pace.afterKeys()
                                     }
-                                    !(pinFull(pinBox, nodes) && cStage >= 2) -> {
-                                        // The PIN only on this form, which shows THIS number and THIS amount (checked just above).
-                                        if (cStage >= 3) return stop("pin_not_entered", "the PIN would not go into the box; সাবমিট NOT pressed")
-                                        cStage = if (cStage < 2) 2 else 3
-                                        note("the form shows ${o.number} and Tk $want: typing the PIN")
-                                        typeInto(pinBox, pin)
-                                    }
-                                    else -> {
-                                        note("number, amount and PIN in: pressing সাবমিট")
+                                    cPinWay > 0 && lit -> {
+                                        note("সাবমিট is lit with ${o.number} and Tk $want on the form: pressing it (this only opens the confirmation)")
                                         submits = 1; submitAt = now
-                                        if (!pressWords(svc, nodes, SUBMIT, lowest = true)) note("সাবমিট not found")
+                                        press(svc, btn!!)
                                         nextActAt = now + pace.settle()
+                                    }
+                                    cPinWay > 0 && now < cPinCheckAt -> { }
+                                    cPinWay >= pinWays.size -> return stop("pin_not_entered", "Nagad did not take the PIN in any of ${pinWays.size} ways; সাবমিট NOT pressed, nothing sent")
+                                    else -> {
+                                        // The PIN only on this form, which shows THIS number and THIS amount (checked just above).
+                                        cStage = 2
+                                        if (cPinWay > 0) note("সাবমিট stayed grey" + (if (keysMissing) " (the keyboard could not be used: no digit keys, or the box lost the focus)" else "") + ": trying another way")
+                                        note("the form shows ${o.number} and Tk $want: typing the PIN ${pinWays[cPinWay]}")
+                                        val ms = typePin(pinBox, cPinWay)
+                                        cPinWay++
+                                        nextActAt = now + ms + pace.afterKeys()
+                                        cPinCheckAt = nextActAt + 2_500L
                                     }
                                 }
                             }
@@ -863,7 +1103,7 @@ object NagadApp {
     private fun openDrawer(svc: AccessibilityService, nodes: List<AccessibilityNodeInfo>, attempt: Int) {
         val dm = svc.resources.displayMetrics
         val byDesc = nodes.firstOrNull { n ->
-            NagadRead.lc(n.contentDescription?.toString()).let { "drawer" in it || "navigation" in it || "menu" in it || "মেনু" in it }
+            NagadRead.lc(n.contentDescription?.toString()).let { "drawer" in it || "navigat" in it || "menu" in it || "মেনু" in it || "নেভিগেট" in it }
         }
         val corner = nodes.filter { it.isClickable }.firstOrNull { n ->
             val r = Rect().also { n.getBoundsInScreen(it) }
@@ -877,7 +1117,8 @@ object NagadApp {
     /** Presses search a different way on each try: the magnifier right of the box, the keyboard's search key, a finger tap. */
     private fun submit(svc: AccessibilityService, box: AccessibilityNodeInfo, nodes: List<AccessibilityNodeInfo>, way: Int) {
         val b = Rect().also { box.getBoundsInScreen(it) }
-        val icon = nodes.filter { it.isClickable && it != box && !it.isEditable }.filter { n ->
+        // ImageButton#search_icon_btn [সার্চ] takes the filter icon's place once something is typed (recording).
+        val icon = byId(nodes, "search_icon_btn") ?: nodes.filter { it.isClickable && it != box && !it.isEditable }.filter { n ->
             val r = Rect().also { n.getBoundsInScreen(it) }
             !r.isEmpty && r.left >= b.centerX() && r.centerY() in (b.top - 20)..(b.bottom + 20) && r.width() < b.width() / 2 + 200
         }.minByOrNull { n -> Rect().also { n.getBoundsInScreen(it) }.width() }

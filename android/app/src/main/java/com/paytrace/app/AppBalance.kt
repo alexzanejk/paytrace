@@ -97,6 +97,8 @@ object AppBalance {
         var statusHits = 0
         var backs = 0
         var banners = 0
+        var sawWalletError = false
+        var reopens = 0
 
         fun finish(o: UssdOutcome, why: String) {
             if (finished) return
@@ -118,7 +120,8 @@ object AppBalance {
                 try {
                     val root = AppReader.bkashRoot(svc)
                     if (root == null) {
-                        if (seenApp == 0L && now - started > 20_000) return stop("app_not_opened", "the app did not open")
+                        if (seenApp == 0L && OpenRetry.due(false, now - started, reopens)) { reopens++; note("the app is not on screen yet: opening it again ($reopens)"); AppReader.openBkash(svc, app, pkg, woke) { note(it) } }
+                        if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) return stop("app_not_opened", "the app did not open")
                         if (seenApp > 0 && now - seenApp > 20_000) return stop("app_closed", "the app left the screen")
                     } else {
                         if (seenApp == 0L) nextActAt = now + pace.settle()
@@ -132,6 +135,7 @@ object AppBalance {
                         val keypad = (0..9).all { d -> texts.any { it == d.toString() } }
 
                         if (AppBanners.wrongPin(texts)) return stop("login_failed", "bKash says the PIN is not correct; never typed again")
+                        if (AppBanners.appError(texts) || AppBanners.network(texts)) sawWalletError = true
                         if (AppBanners.network(texts)) {
                             if (canAct) {
                                 if (++banners > 3) return stop("no_network", "bKash keeps saying: check your network")
@@ -179,7 +183,7 @@ object AppBalance {
                         } else if (keypad && AppCashInRead.screenOf(texts, keypad) == AppCashInRead.Screen.LOGIN) {
                             progressAt = now
                             if (submittedAt > 0) {
-                                if (now - submittedAt > LOGIN_WAIT_MS) return stop("login_failed", "still on the login screen after the PIN")
+                                if (now - submittedAt > LOGIN_WAIT_MS) return stop(LoginTrouble.stuck(sawWalletError), "still on the login screen after the PIN" + if (sawWalletError) " (bKash showed its own error: not a wrong PIN)" else "")
                             } else {
                                 val shown = AppReader.pinShown(root)
                                 if (typed == 0 && !pressed && shown != null && shown > 0) return stop("pin_not_entered", "the PIN box already had digits in it; nothing typed")
