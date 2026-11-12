@@ -568,15 +568,12 @@ object NagadApp {
             return at
         }
 
-        val pinWays = listOf("on the keyboard, key by key", "all at once", "one digit at a time")
-        /** One way of putting the PIN into a PIN box (the keyboard first: it is what a person does). */
+        // The PIN goes in ONLY on the keyboard, key by key, like a finger. Setting the box's text lights সাইন ইন but
+        // Nagad did not sign in with it (12 Nov 10:31), so each such press may have counted as a wrong PIN at Nagad.
+        val pinWays = listOf("on the keyboard, key by key")
         fun typePin(box: AccessibilityNodeInfo, way: Int): Long {
             keysMissing = false
-            return when (way) {
-                0 -> typeKeys(box, pin, 6)
-                1 -> typeSet(box, pin, false)
-                else -> typeSet(box, pin, true)
-            }
+            return typeKeys(box, pin, 6)
         }
 
         fun rowsOn(nodes: List<AccessibilityNodeInfo>): List<Pair<String, NagadRead.Row>> {
@@ -785,7 +782,7 @@ object NagadApp {
                                         nextActAt = now + pace.settle()
                                     }
                                     pinWay > 0 && now < pinCheckAt -> { }
-                                    pinWay >= pinWays.size -> return stop("pin_not_entered", "Nagad did not take the PIN in any of ${pinWays.size} ways; সাইন ইন NOT pressed (no PIN was sent)")
+                                    pinWay >= pinWays.size -> return stop("pin_not_entered", "the PIN could not be typed on the keyboard; সাইন ইন NOT pressed (no PIN was sent)")
                                     else -> {
                                         if (pinWay > 0) note("সাইন ইন stayed grey" + (if (keysMissing) " (the keyboard could not be used: no digit keys, or the box lost the focus)" else "") + ": trying another way")
                                         note("typing the PIN ${pinWays[pinWay]}")
@@ -1058,7 +1055,7 @@ object NagadApp {
                                         nextActAt = now + pace.settle()
                                     }
                                     cPinWay > 0 && now < cPinCheckAt -> { }
-                                    cPinWay >= pinWays.size -> return stop("pin_not_entered", "Nagad did not take the PIN in any of ${pinWays.size} ways; সাবমিট NOT pressed, nothing sent")
+                                    cPinWay >= pinWays.size -> return stop("pin_not_entered", "the PIN could not be typed on the keyboard; সাবমিট NOT pressed, nothing sent")
                                     else -> {
                                         // The PIN only on this form, which shows THIS number and THIS amount (checked just above).
                                         cStage = 2
