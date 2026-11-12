@@ -615,29 +615,48 @@ object NagadApp {
                 val pt = NagadKeypad.keyPoint(p, k, jit.nextDouble() * 2 - 1, jit.nextDouble() * 2 - 1) ?: return false
                 return AppReader.tapAt(svc, pt.first, pt.second)
             }
-            var at = 1_500L
-            main.postDelayed({
-                if (finished) return@postDelayed
+            // Nagad shows its keypad only once the PIN box itself is tapped (owner 2026-11-12), and it slides up, so it
+            // is looked for every half second; still not there after 2.5 s = the box is tapped once more, directly.
+            // Typing starts only once the panel is found; the taps are timed from that moment.
+            var retapped = false
+            var lastInfo = ""
+            fun typeNow() {
+                var at = 400L
+                repeat(5) {
+                    main.postDelayed({ if (!finished && panelOk && focusHere()) tapKey('D') }, at)
+                    at += 260L
+                }
+                at += 600L
+                for (ch in pin) {
+                    main.postDelayed({
+                        if (finished || !panelOk) return@postDelayed
+                        if (!focusHere()) { panelOk = false; note("the PIN box lost the typing focus: no more taps"); return@postDelayed }
+                        tapKey(ch)
+                    }, at)
+                    at += pace.keyGap() + 250L
+                }
+            }
+            fun look(waited: Long) {
+                if (finished) return
                 val (b, info) = keypad(svc, minTop)
-                panel = b
-                if (b == null) { panelOk = false; note("Nagad's keypad could not be located, nothing tapped ($info)") }
-                else note("Nagad's keypad found at ${b.left},${b.top},${b.right},${b.bottom} ($info)")
-            }, at)
-            at += 500L
-            repeat(5) {
-                main.postDelayed({ if (!finished && panelOk && focusHere()) tapKey('D') }, at)
-                at += 260L
+                lastInfo = info
+                if (b != null) {
+                    panel = b
+                    note("Nagad's keypad found at ${b.left},${b.top},${b.right},${b.bottom} after ${waited / 100 / 10.0}s ($info)")
+                    typeNow()
+                    return
+                }
+                if (waited >= 2_500L && !retapped) {
+                    retapped = true
+                    note("Nagad's keypad is not up yet: tapping the PIN box again")
+                    AppReader.tap(svc, box)
+                }
+                if (waited >= 6_000L) { panelOk = false; note("Nagad's keypad could not be located, nothing tapped ($lastInfo)"); return }
+                main.postDelayed({ look(waited + 500L) }, 500L)
             }
-            at += 600L
-            for (ch in pin) {
-                main.postDelayed({
-                    if (finished || !panelOk) return@postDelayed
-                    if (!focusHere()) { panelOk = false; note("the PIN box lost the typing focus: no more taps"); return@postDelayed }
-                    tapKey(ch)
-                }, at)
-                at += pace.keyGap() + 250L
-            }
-            return at
+            main.postDelayed({ look(1_000L) }, 1_000L)
+            // worst case: 6 s of looking, then the DELs and the digits
+            return 6_000L + 400L + 5 * 260L + 600L + pin.length * (800L + 250L) + 300L
         }
 
         val pinWays = listOf("on the keyboard, key by key", "by tapping Nagad's own keypad", "through Android's typing channel (no keyboard needed)")
