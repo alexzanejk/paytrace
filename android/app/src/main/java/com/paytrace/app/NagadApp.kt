@@ -392,7 +392,7 @@ object NagadApp {
         !r.isEmpty && (NagadRead.latin(n.text?.toString()?.trim() ?: "") == ch.toString() || NagadRead.latin(n.contentDescription?.toString()?.trim() ?: "") == ch.toString())
     }
 
-    private val DELETE_KEY = setOf("delete", "backspace", "ডিলিট", "মুছুন", "⌫")
+    private val DELETE_KEY = setOf("delete", "del", "backspace", "ডিলিট", "মুছুন", "⌫")
     private fun imeDelete(keys: List<AccessibilityNodeInfo>): AccessibilityNodeInfo? = keys.firstOrNull { n ->
         val r = Rect().also { n.getBoundsInScreen(it) }
         !r.isEmpty && (NagadRead.lc(n.contentDescription?.toString()) in DELETE_KEY || NagadRead.lc(n.text?.toString()) in DELETE_KEY)
@@ -594,10 +594,75 @@ object NagadApp {
             return at
         }
 
-        val pinWays = listOf("on the keyboard, key by key", "through Android's typing channel (no keyboard needed)")
-        fun typePin(box: AccessibilityNodeInfo, way: Int): Long {
+        /** Way 2 (owner's photos 2026-11-12): Nagad's own keypad cannot be read, so PayTrace finds the panel and taps the
+         *  middle of each number's cell (1 2 3 / 4 5 6 / 7 8 9 / DEL 0 DONE). Five DEL first empty the box. Every tap
+         *  first checks the typing focus is on this very box and that the panel has not moved; otherwise it stops
+         *  tapping. DONE is never pressed: the run presses সাইন ইন / সাবমিট itself, and only when Nagad lights it, which
+         *  it does only with the whole PIN in. */
+        var panelOk = true
+        fun typeOnPanel(box: AccessibilityNodeInfo, minTop: Int): Long {
+            val want = idOf(box)
+            try { box.performAction(AccessibilityNodeInfo.ACTION_FOCUS) } catch (e: Exception) { }
+            press(svc, box)
+            fun focusHere(): Boolean = focusIs(svc, want, box)
+            var panel: NagadKeypad.Box? = null
+            panelOk = true
+            val jit = java.util.Random()
+            fun tapKey(k: Char): Boolean {
+                val p = panel ?: return false
+                val now = keypad(svc, minTop).first
+                if (now == null || NagadKeypad.moved(p, now)) { panelOk = false; note("Nagad's keypad moved or went away: no more taps"); return false }
+                val pt = NagadKeypad.keyPoint(p, k, jit.nextDouble() * 2 - 1, jit.nextDouble() * 2 - 1) ?: return false
+                return AppReader.tapAt(svc, pt.first, pt.second)
+            }
+            // Nagad shows its keypad only once the PIN box itself is tapped (owner 2026-11-12), and it slides up, so it
+            // is looked for every half second; still not there after 2.5 s = the box is tapped once more, directly.
+            // Typing starts only once the panel is found; the taps are timed from that moment.
+            var retapped = false
+            var lastInfo = ""
+            fun typeNow() {
+                var at = 400L
+                repeat(5) {
+                    main.postDelayed({ if (!finished && panelOk && focusHere()) tapKey('D') }, at)
+                    at += 260L
+                }
+                at += 600L
+                for (ch in pin) {
+                    main.postDelayed({
+                        if (finished || !panelOk) return@postDelayed
+                        if (!focusHere()) { panelOk = false; note("the PIN box lost the typing focus: no more taps"); return@postDelayed }
+                        tapKey(ch)
+                    }, at)
+                    at += pace.keyGap() + 250L
+                }
+            }
+            fun look(waited: Long) {
+                if (finished) return
+                val (b, info) = keypad(svc, minTop)
+                lastInfo = info
+                if (b != null) {
+                    panel = b
+                    note("Nagad's keypad found at ${b.left},${b.top},${b.right},${b.bottom} after ${waited / 100 / 10.0}s ($info)")
+                    typeNow()
+                    return
+                }
+                if (waited >= 2_500L && !retapped) {
+                    retapped = true
+                    note("Nagad's keypad is not up yet: tapping the PIN box again")
+                    AppReader.tap(svc, box)
+                }
+                if (waited >= 6_000L) { panelOk = false; note("Nagad's keypad could not be located, nothing tapped ($lastInfo)"); return }
+                main.postDelayed({ look(waited + 500L) }, 500L)
+            }
+            main.postDelayed({ look(1_000L) }, 1_000L)
+            // worst case: 6 s of looking, then the DELs and the digits
+            return 6_000L + 400L + 5 * 260L + 600L + pin.length * (800L + 250L) + 300L
+        }
+
+        val pinWays = listOf("on the keyboard, key by key", "by tapping Nagad's own keypad", "through Android's typing channel (no keyboard needed)")
+        fun typePin(box: AccessibilityNodeInfo, way: Int, minTop: Int): Long {
             keysMissing = false
-            return if (way == 0) typeKeys(box, pin, 6) else typeByChannel(box)
+            return when (way) { 0 -> typeKeys(box, pin, 6); 1 -> typeOnPanel(box, minTop); else -> typeByChannel(box) }
         }
 
         fun rowsOn(nodes: List<AccessibilityNodeInfo>): List<Pair<String, NagadRead.Row>> {
@@ -807,13 +872,15 @@ object NagadApp {
                                     }
                                     pinWay > 0 && now < pinCheckAt -> { }
                                     pinWay >= pinWays.size -> return if (noKeyboard)
-                                        stop("secure_keyboard", "no keyboard PayTrace can see (the phone's own secure PIN keyboard is in the way) and the typing channel did not get the PIN in either; সাইন ইন NOT pressed (no PIN was sent)")
+                                        stop("secure_keyboard", "Nagad's own PIN keypad could not be typed on (not by its keys, not by tapping it, not by the typing channel); সাইন ইন NOT pressed (no PIN was sent)")
                                     else stop("pin_not_entered", "the PIN could not be typed on the keyboard; সাইন ইন NOT pressed (no PIN was sent)")
                                     else -> {
-                                        if (pinWay > 0) note("সাইন ইন stayed grey" + (if (keysMissing) " (the keyboard could not be used: no digit keys, or the box lost the focus)" else "") + ": trying another way")
-                                        if (pinWay == 1 && Build.VERSION.SDK_INT < 33) note("this phone is older than Android 13: the typing channel is not available")
+                                        if (pinWay > 0) note("সাইন ইন stayed grey" + (if (keysMissing) " (the keyboard could not be used: no digit keys, or the box lost the focus)" else "") + (if (!panelOk) " (Nagad's keypad could not be tapped)" else "") + ": trying another way")
+                                        if (pinWay == 2 && Build.VERSION.SDK_INT < 33) note("this phone is older than Android 13: the typing channel is not available")
                                         note("typing the PIN ${pinWays[pinWay]}")
-                                        val ms = typePin(box, pinWay)
+                                        // the panel must sit below everything on the sign-in page (সাইন ইন, "পিন নাম্বার ভুলে গিয়েছেন?")
+                                        val minTop = nodes.filter { (it.text?.isNotBlank() == true) }.maxOfOrNull { n -> Rect().also { n.getBoundsInScreen(it) }.bottom } ?: 0
+                                        val ms = typePin(box, pinWay, minTop)
                                         pinWay++
                                         nextActAt = now + ms + pace.afterKeys()
                                         pinCheckAt = nextActAt + 2_500L
@@ -1083,15 +1150,16 @@ object NagadApp {
                                     }
                                     cPinWay > 0 && now < cPinCheckAt -> { }
                                     cPinWay >= pinWays.size -> return if (noKeyboard)
-                                        stop("secure_keyboard", "no keyboard PayTrace can see: the phone's own secure PIN keyboard is in the way; সাবমিট NOT pressed, nothing sent")
+                                        stop("secure_keyboard", "Nagad's own PIN keypad could not be typed on; সাবমিট NOT pressed, nothing sent")
                                     else stop("pin_not_entered", "the PIN could not be typed on the keyboard; সাবমিট NOT pressed, nothing sent")
                                     else -> {
                                         // The PIN only on this form, which shows THIS number and THIS amount (checked just above).
                                         cStage = 2
-                                        if (cPinWay > 0) note("সাবমিট stayed grey" + (if (keysMissing) " (the keyboard could not be used: no digit keys, or the box lost the focus)" else "") + ": trying another way")
-                                        if (cPinWay == 1 && Build.VERSION.SDK_INT < 33) note("this phone is older than Android 13: the typing channel is not available")
+                                        if (cPinWay > 0) note("সাবমিট stayed grey" + (if (keysMissing) " (the keyboard could not be used: no digit keys, or the box lost the focus)" else "") + (if (!panelOk) " (Nagad's keypad could not be tapped)" else "") + ": trying another way")
+                                        if (cPinWay == 2 && Build.VERSION.SDK_INT < 33) note("this phone is older than Android 13: the typing channel is not available")
                                         note("the form shows ${o.number} and Tk $want: typing the PIN ${pinWays[cPinWay]}")
-                                        val ms = typePin(pinBox, cPinWay)
+                                        val minTop = maxOf(Rect().also { pinBox.getBoundsInScreen(it) }.bottom, btn?.let { b -> Rect().also { b.getBoundsInScreen(it) }.bottom } ?: 0)
+                                        val ms = typePin(pinBox, cPinWay, minTop)
                                         cPinWay++
                                         nextActAt = now + ms + pace.afterKeys()
                                         cPinCheckAt = nextActAt + 2_500L
@@ -1155,6 +1223,44 @@ object NagadApp {
         main.postDelayed(tick, pace.settle())
     }
 
+    /** The screen's full size (navigation bar included), in the same pixels as window bounds. */
+    private fun screenSize(svc: AccessibilityService): Pair<Int, Int> {
+        val wm = svc.getSystemService(android.view.WindowManager::class.java)
+        if (wm != null && Build.VERSION.SDK_INT >= 30) {
+            val b = wm.currentWindowMetrics.bounds
+            return b.width() to b.height()
+        }
+        val dm = android.util.DisplayMetrics()
+        @Suppress("DEPRECATION") wm?.defaultDisplay?.getRealMetrics(dm)
+        return if (dm.heightPixels > 0) dm.widthPixels to dm.heightPixels
+        else svc.resources.displayMetrics.let { it.widthPixels to it.heightPixels }
+    }
+
+    /** Where Nagad's PIN keypad panel is ([NagadKeypad.find]), and a one-line list of the windows Android reported (for
+     *  the run's log). [minTop] = the lowest thing on the page that must stay above the panel. */
+    private fun keypad(svc: AccessibilityService, minTop: Int): Pair<NagadKeypad.Box?, String> {
+        val (w, h) = screenSize(svc)
+        val wins = try { svc.windows } catch (e: Exception) { emptyList<AccessibilityWindowInfo>() }
+        var page: NagadKeypad.Box? = null
+        var navTop: Int? = null
+        val others = ArrayList<NagadKeypad.Box>()
+        val seen = ArrayList<String>()
+        for (win in wins) {
+            val r = Rect().also { win.getBoundsInScreen(it) }
+            val b = NagadKeypad.Box(r.left, r.top, r.right, r.bottom)
+            val pkg = try { win.root?.packageName?.toString() } catch (e: Exception) { null }
+            seen.add("${win.type}:${pkg?.substringAfterLast('.') ?: "?"}@${r.left},${r.top},${r.right},${r.bottom}")
+            when {
+                win.type == AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY || pkg == svc.packageName -> { }
+                pkg != null && NagadRead.isNagad(pkg) && win.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
+                    (page == null || b.width * b.height > page!!.width * page!!.height) -> { page?.let { others.add(it) }; page = b }
+                win.type == AccessibilityWindowInfo.TYPE_SYSTEM && r.top > h * 0.85 -> navTop = minOf(navTop ?: r.top, r.top)
+                else -> others.add(b)
+            }
+        }
+        return NagadKeypad.find(others, page, navTop, w, h, minTop) to "screen ${w}x$h, windows ${seen.joinToString(" ")}"
+    }
+
     /** Is the typing focus on this very box (by its view id, else the same node)? */
     private fun focusIs(svc: AccessibilityService, want: String?, box: AccessibilityNodeInfo): Boolean {
         val f = try { svc.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) } catch (e: Exception) { null } ?: return false
@@ -1207,5 +1313,61 @@ object NagadApp {
         }
         if (icon != null) AppReader.tap(svc, icon)
         else if (Build.VERSION.SDK_INT >= 30) try { box.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id) } catch (e: Exception) { }
+    }
+}
+
+/**
+ * Nagad's own PIN keypad (owner's photos 2026-11-12, a Xiaomi and a Vivo, the same keypad on both): a dark blue panel
+ * across the bottom of the screen, three columns and four rows of equal cells, 1 2 3 / 4 5 6 / 7 8 9 / DEL 0 DONE,
+ * the numbers never moved. It is a secure window: black in a screen recording and its keys cannot be read, so PayTrace
+ * finds the PANEL (its window, or the space below the Nagad page that it pushed up) and taps the middle of a cell.
+ * Pure: plain numbers, no Android types, unit tested.
+ */
+object NagadKeypad {
+    data class Box(val left: Int, val top: Int, val right: Int, val bottom: Int) {
+        val width get() = right - left
+        val height get() = bottom - top
+    }
+
+    private const val LAYOUT = "123456789D0K"   // D = DEL, K = DONE (never pressed)
+
+    /** Could this be the keypad panel? Nearly the whole width, in the lower part of the screen, below [minTop] (the
+     *  lowest thing on the Nagad page that must stay above it, e.g. the সাইন ইন button), about as tall as the photos
+     *  show (a quarter to 45% of the screen; 0.4 to 0.9 times its width). Anything else is not tapped. */
+    fun plausible(b: Box, screenW: Int, screenH: Int, minTop: Int): Boolean {
+        if (screenW <= 0 || screenH <= 0) return false
+        if (b.width < screenW * 0.85 || b.left > screenW * 0.08 || b.right < screenW * 0.92) return false
+        if (b.top < minTop || b.top < screenH * 0.4 || b.bottom > screenH + 4) return false
+        if (b.height < screenH * 0.18 || b.height > screenH * 0.45) return false
+        val ratio = b.height.toDouble() / b.width
+        return ratio in 0.4..0.9
+    }
+
+    /** The middle of a key's cell ('0'..'9' or 'D' for DEL); null for anything else (DONE is never pressed). [jx]/[jy]
+     *  move the touch a little inside the middle, as a finger would (-1..1, at most a tenth of the cell). */
+    fun keyPoint(b: Box, key: Char, jx: Double = 0.0, jy: Double = 0.0): Pair<Int, Int>? {
+        val i = LAYOUT.indexOf(key)
+        if (i < 0 || key == 'K') return null
+        val cw = b.width / 3.0
+        val ch = b.height / 4.0
+        val x = b.left + cw * (i % 3 + 0.5) + cw * 0.1 * jx.coerceIn(-1.0, 1.0)
+        val y = b.top + ch * (i / 3 + 0.5) + ch * 0.1 * jy.coerceIn(-1.0, 1.0)
+        return x.toInt() to y.toInt()
+    }
+
+    /** Has the panel moved since typing began? Then nothing more is tapped. */
+    fun moved(a: Box, b: Box): Boolean =
+        kotlin.math.abs(a.left - b.left) > 12 || kotlin.math.abs(a.top - b.top) > 12 ||
+            kotlin.math.abs(a.right - b.right) > 12 || kotlin.math.abs(a.bottom - b.bottom) > 12
+
+    /** The panel from what Android reports: first a window that fits ([others] = every window but the Nagad page's
+     *  and PayTrace's own), else the space between the bottom of the Nagad page's window ([page]) and the top of the
+     *  navigation bar ([navTop], or the screen's bottom). */
+    fun find(others: List<Box>, page: Box?, navTop: Int?, screenW: Int, screenH: Int, minTop: Int): Box? {
+        others.filter { plausible(it, screenW, screenH, minTop) }.maxByOrNull { it.height }?.let { return it }
+        if (page == null) return null
+        val bottom = navTop?.takeIf { it > page.bottom } ?: screenH
+        val gap = Box(0, page.bottom, screenW, bottom)
+        return gap.takeIf { plausible(it, screenW, screenH, minTop) }
     }
 }
