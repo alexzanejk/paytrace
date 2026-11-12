@@ -144,4 +144,12 @@ class StatementTest {
         val done = f.onScreen(pages[7]) as UssdAction.Done
         assertEquals(8, done.screens.size)
     }
+
+    @Test fun nagadsSecondPageGoesForwardNotBack() {
+        // The Vivo's real page 2 (2026-11-12): "Prev page #" sits on the line above "Next Page *".
+        val page2 = "4. 12/11/26 Commission(Cash Out) Tk 2.05\n5. 12/11/26 Cash Out Tk 162\n6. 12/11/26 Commission(Cash Out) Tk 0.66\nPrev page #\nNext Page *"
+        assertEquals("*", StatementRead.nextKey(page2))
+        assertEquals("#", StatementRead.nextKey("4 02/11/26 Cash In -Tk -200.00\n# NEXT\n00 BACK"))
+        assertEquals("*", StatementRead.nextKey("1. 12/11/26 Cash In Tk -100\nNext Page *"))
+    }
 }

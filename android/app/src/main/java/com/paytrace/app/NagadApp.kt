@@ -479,7 +479,7 @@ object NagadApp {
         // sign in: Nagad's PIN box is its own drawing over a plain text box, so the PIN is typed one way after another
         // until the app itself lights সাইন ইন (it stays grey until it holds the whole PIN), and only then pressed.
         var pinWay = 0; var pinCheckAt = 0L; var loginAt = 0L
-        var keysMissing = false; var keyNoted = false
+        var keysMissing = false; var keyNoted = false; var noKeyboard = false
         // what happened after সাইন ইন was pressed: each new screen and any toast, so a failed sign-in explains itself
         var signedIn = false; var lastTrail = ""; var trailNotes = 0; var loginWall = 0L; val toastSeen = HashSet<String>()
         val width = svc.resources.displayMetrics.widthPixels
@@ -524,10 +524,7 @@ object NagadApp {
             val want = idOf(box)
             try { box.performAction(AccessibilityNodeInfo.ACTION_FOCUS) } catch (e: Exception) { }
             press(svc, box)
-            fun focusHere(): Boolean {
-                val f = try { svc.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) } catch (e: Exception) { null } ?: return false
-                return if (want != null) idOf(f) == want else f == box
-            }
+            fun focusHere(): Boolean = focusIs(svc, want, box)
             var at = 1_300L
             repeat(deletes) {
                 main.postDelayed({ if (!finished && focusHere()) imeDelete(imeNodes(svc))?.let { AppReader.tap(svc, it) } }, at)
@@ -540,6 +537,7 @@ object NagadApp {
                     val keys = imeNodes(svc)
                     val key = imeKey(keys, ch)
                     val here = focusHere()
+                    if (keys.isEmpty()) noKeyboard = true
                     if (!keyNoted) {
                         keyNoted = true
                         val f = try { svc.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) } catch (e: Exception) { null }
@@ -570,10 +568,36 @@ object NagadApp {
 
         // The PIN goes in ONLY on the keyboard, key by key, like a finger. Setting the box's text lights সাইন ইন but
         // Nagad did not sign in with it (12 Nov 10:31), so each such press may have counted as a wrong PIN at Nagad.
-        val pinWays = listOf("on the keyboard, key by key")
+        /** Way 2 (owner 2026-11-12: "build option 2"): send the digits through Android's own typing channel, the one
+         *  a keyboard uses, so no keyboard has to be visible (Android 13+; the service has flagInputMethodEditor). Each
+         *  digit first checks the typing focus is on this very box. Never set-text: that lit সাইন ইন but did not sign in. */
+        var channelOk = true
+        fun typeByChannel(box: AccessibilityNodeInfo): Long {
+            channelOk = Build.VERSION.SDK_INT >= 33
+            if (!channelOk) return 0L
+            val want = idOf(box)
+            try { box.performAction(AccessibilityNodeInfo.ACTION_FOCUS) } catch (e: Exception) { }
+            press(svc, box)
+            var at = 1_300L
+            main.postDelayed({
+                if (finished) return@postDelayed
+                channelOk = focusIs(svc, want, box) && Build.VERSION.SDK_INT >= 33 && channelClear(svc)
+            }, at)
+            at += 600L
+            for (ch in pin) {
+                main.postDelayed({
+                    if (finished || !channelOk) return@postDelayed
+                    channelOk = focusIs(svc, want, box) && Build.VERSION.SDK_INT >= 33 && channelType(svc, ch)
+                }, at)
+                at += pace.keyGap() + 200L
+            }
+            return at
+        }
+
+        val pinWays = listOf("on the keyboard, key by key", "through Android's typing channel (no keyboard needed)")
         fun typePin(box: AccessibilityNodeInfo, way: Int): Long {
             keysMissing = false
-            return typeKeys(box, pin, 6)
+            return if (way == 0) typeKeys(box, pin, 6) else typeByChannel(box)
         }
 
         fun rowsOn(nodes: List<AccessibilityNodeInfo>): List<Pair<String, NagadRead.Row>> {
@@ -782,9 +806,12 @@ object NagadApp {
                                         nextActAt = now + pace.settle()
                                     }
                                     pinWay > 0 && now < pinCheckAt -> { }
-                                    pinWay >= pinWays.size -> return stop("pin_not_entered", "the PIN could not be typed on the keyboard; সাইন ইন NOT pressed (no PIN was sent)")
+                                    pinWay >= pinWays.size -> return if (noKeyboard)
+                                        stop("secure_keyboard", "no keyboard PayTrace can see (the phone's own secure PIN keyboard is in the way) and the typing channel did not get the PIN in either; সাইন ইন NOT pressed (no PIN was sent)")
+                                    else stop("pin_not_entered", "the PIN could not be typed on the keyboard; সাইন ইন NOT pressed (no PIN was sent)")
                                     else -> {
                                         if (pinWay > 0) note("সাইন ইন stayed grey" + (if (keysMissing) " (the keyboard could not be used: no digit keys, or the box lost the focus)" else "") + ": trying another way")
+                                        if (pinWay == 1 && Build.VERSION.SDK_INT < 33) note("this phone is older than Android 13: the typing channel is not available")
                                         note("typing the PIN ${pinWays[pinWay]}")
                                         val ms = typePin(box, pinWay)
                                         pinWay++
@@ -1055,11 +1082,14 @@ object NagadApp {
                                         nextActAt = now + pace.settle()
                                     }
                                     cPinWay > 0 && now < cPinCheckAt -> { }
-                                    cPinWay >= pinWays.size -> return stop("pin_not_entered", "the PIN could not be typed on the keyboard; সাবমিট NOT pressed, nothing sent")
+                                    cPinWay >= pinWays.size -> return if (noKeyboard)
+                                        stop("secure_keyboard", "no keyboard PayTrace can see: the phone's own secure PIN keyboard is in the way; সাবমিট NOT pressed, nothing sent")
+                                    else stop("pin_not_entered", "the PIN could not be typed on the keyboard; সাবমিট NOT pressed, nothing sent")
                                     else -> {
                                         // The PIN only on this form, which shows THIS number and THIS amount (checked just above).
                                         cStage = 2
                                         if (cPinWay > 0) note("সাবমিট stayed grey" + (if (keysMissing) " (the keyboard could not be used: no digit keys, or the box lost the focus)" else "") + ": trying another way")
+                                        if (cPinWay == 1 && Build.VERSION.SDK_INT < 33) note("this phone is older than Android 13: the typing channel is not available")
                                         note("the form shows ${o.number} and Tk $want: typing the PIN ${pinWays[cPinWay]}")
                                         val ms = typePin(pinBox, cPinWay)
                                         cPinWay++
@@ -1124,6 +1154,26 @@ object NagadApp {
         AppReader.openBkash(svc, app, pkg, woke) { note(it) }
         main.postDelayed(tick, pace.settle())
     }
+
+    /** Is the typing focus on this very box (by its view id, else the same node)? */
+    private fun focusIs(svc: AccessibilityService, want: String?, box: AccessibilityNodeInfo): Boolean {
+        val f = try { svc.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) } catch (e: Exception) { null } ?: return false
+        return if (want != null) idOf(f) == want else f == box
+    }
+
+    /** Android 13+: the typing channel the accessibility service holds to the focused box (flagInputMethodEditor). */
+    @androidx.annotation.RequiresApi(33)
+    private fun channelClear(svc: AccessibilityService): Boolean = try {
+        val ic = svc.inputMethod?.currentInputConnection
+        if (ic == null) false else { ic.deleteSurroundingText(16, 16); true }
+    } catch (e: Exception) { false }
+
+    /** One digit through the typing channel, as a keyboard sends it. */
+    @androidx.annotation.RequiresApi(33)
+    private fun channelType(svc: AccessibilityService, ch: Char): Boolean = try {
+        val ic = svc.inputMethod?.currentInputConnection
+        if (ic == null) false else { ic.commitText(ch.toString(), 1, null); true }
+    } catch (e: Exception) { false }
 
     /** The ☰ menu button: by its description, else the tappable thing in the top-left corner, else a finger drag in from
      *  the left edge (each try a different way). */
