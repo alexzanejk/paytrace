@@ -71,4 +71,25 @@ class NagadKeypadTest {
         assertFalse(NagadKeypad.moved(a, Box(0, 1560, 1080, 2265)))
         assertTrue(NagadKeypad.moved(a, Box(0, 1300, 1080, 2265)))
     }
+
+    @Test fun theVivosKeypadWindowStopsAtTheNavigationBar() {
+        // Real run 2026-11-12 (Vivo V2120, 720x1600): Nagad's keypad window 0,1073,720,1600 under the system bar from
+        // 1521. Tapping by the window's own size put the bottom row (DEL) on the bar's Back button.
+        val win = Box(0, 1073, 720, 1600)
+        val bar = Box(0, 1521, 720, 1600)
+        val pad = NagadKeypad.find(listOf(win), Box(0, 0, 720, 1600), 1521, 720, 1600, 1000)!!
+        assertEquals(Box(0, 1073, 720, 1521), pad)
+        for (k in "0123456789D") {
+            val (x, y) = NagadKeypad.keyPoint(pad, k, 1.0, 1.0)!!
+            assertFalse("$k lands on the bar", NagadKeypad.blocked(x, y, listOf(bar)))
+        }
+        // the old, unclipped box would have put DEL on the bar: that is what the guard refuses
+        val (x, y) = NagadKeypad.keyPoint(win, 'D')!!
+        assertTrue(NagadKeypad.blocked(x, y, listOf(bar)))
+    }
+
+    @Test fun aWindowAboveTheBarIsLeftAsItIs() {
+        assertEquals(Box(0, 1555, 1080, 2265), NagadKeypad.clip(Box(0, 1555, 1080, 2265), 2265))
+        assertEquals(Box(0, 1555, 1080, 2265), NagadKeypad.clip(Box(0, 1555, 1080, 2265), null))
+    }
 }
