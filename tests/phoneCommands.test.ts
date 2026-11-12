@@ -14,7 +14,7 @@ const money = (n: number) => `Tk ${n.toFixed(2)}`;
 const when = (t: string) => `@${t}`;
 
 check("a balance read in the bKash app says so", commandLine({ ...base, provider: "bkash", via: "app", status: "done", balance: 11923.83, finished_at: "2026-11-11T08:23:00Z" }, money, when, "bKash").includes("read in the bKash app") && !commandLine({ ...base, status: "done", balance: 5 }, money, when).includes("bKash app"));
-check("a running app balance check says where it reads", commandLine({ ...base, via: "app", status: "running" }, money, when).includes("bKash app"));
+check("a running app balance check says where it reads", commandLine({ ...base, via: "app", status: "running" }, money, when, "bKash").includes("bKash app"));
 check("the app balance error is in words", errorText("balance_not_shown", "bKash").includes("Tap for Balance"));
 check("queued and running are live", isLive(base) && isLive({ ...base, status: "running" }));
 check("done, failed and cancelled are not live", !isLive({ ...base, status: "done" }) && !isLive({ ...base, status: "failed" }) && !isLive({ ...base, status: "cancelled" }));
@@ -109,6 +109,11 @@ test("a cash-in is described in full, so nothing is sent on a glance", () => {
   check("expired control is explained", actionLine({ ...ctl, status: "cancelled", error: "expired", finished_at: "x" }, when).includes("offline"));
   check("a wallet command gives no control line", actionLine(base, when) === "");
 }
+
+check("an app error on a Nagad line names Nagad, not bKash", errorText("login_failed", "Nagad").includes("Nagad app") && !errorText("login_failed", "Nagad").includes("bKash"));
+check("a missing PIN on a Rocket line names Rocket", errorText("no_pin", "Rocket") === "No Rocket PIN is saved on that phone." && errorText("no_pin", "Nagad").includes("Nagad"));
+check("a Nagad app balance being read says Nagad", commandLine({ ...base, via: "app", status: "running" }, money, when, "Nagad").includes("Nagad app"));
+check("a failed sign-in does not claim the PIN was wrong for sure", errorText("login_failed").includes("either"));
 
 // The total and the exit come LAST: they used to sit in the middle of this file, so nothing written below them ever ran.
 console.log(`\n${pass} passed, ${fail} failed`);
