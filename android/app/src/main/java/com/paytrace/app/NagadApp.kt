@@ -581,15 +581,13 @@ object NagadApp {
             var at = 1_300L
             main.postDelayed({
                 if (finished) return@postDelayed
-                val ic = if (focusIs(svc, want, box) && Build.VERSION.SDK_INT >= 33) channel(svc) else null
-                if (ic == null) channelOk = false else try { ic.deleteSurroundingText(16, 16) } catch (e: Exception) { channelOk = false }
+                channelOk = focusIs(svc, want, box) && Build.VERSION.SDK_INT >= 33 && channelClear(svc)
             }, at)
             at += 600L
             for (ch in pin) {
                 main.postDelayed({
                     if (finished || !channelOk) return@postDelayed
-                    val ic = if (focusIs(svc, want, box) && Build.VERSION.SDK_INT >= 33) channel(svc) else null
-                    if (ic == null) channelOk = false else try { ic.commitText(ch.toString(), 1, null) } catch (e: Exception) { channelOk = false }
+                    channelOk = focusIs(svc, want, box) && Build.VERSION.SDK_INT >= 33 && channelType(svc, ch)
                 }, at)
                 at += pace.keyGap() + 200L
             }
@@ -1165,8 +1163,17 @@ object NagadApp {
 
     /** Android 13+: the typing channel the accessibility service holds to the focused box (flagInputMethodEditor). */
     @androidx.annotation.RequiresApi(33)
-    private fun channel(svc: AccessibilityService): android.accessibilityservice.InputMethod.AccessibilityInputConnection? =
-        try { svc.inputMethod?.currentInputConnection } catch (e: Exception) { null }
+    private fun channelClear(svc: AccessibilityService): Boolean = try {
+        val ic = svc.inputMethod?.currentInputConnection
+        if (ic == null) false else { ic.deleteSurroundingText(16, 16); true }
+    } catch (e: Exception) { false }
+
+    /** One digit through the typing channel, as a keyboard sends it. */
+    @androidx.annotation.RequiresApi(33)
+    private fun channelType(svc: AccessibilityService, ch: Char): Boolean = try {
+        val ic = svc.inputMethod?.currentInputConnection
+        if (ic == null) false else { ic.commitText(ch.toString(), 1, null); true }
+    } catch (e: Exception) { false }
 
     /** The ☰ menu button: by its description, else the tappable thing in the top-left corner, else a finger drag in from
      *  the left edge (each try a different way). */
