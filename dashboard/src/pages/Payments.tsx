@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight, Download, Search } from "lucide-react";
 import { must, sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
@@ -9,7 +9,8 @@ import { PageIntro } from "@/components/PageIntro";
 import { AppSearch } from "@/components/AppSearch";
 import { ArrowDownLeft, HelpCircle } from "lucide-react";
 import { rangeBounds, rangeLabel, periodRange, summarize, type DayTotal } from "@/lib/period";
-import { takePaymentsPreset } from "@/lib/filters";
+import { takePaymentsPreset, type PaymentsPreset } from "@/lib/filters";
+import { AllMovements } from "@/components/AllMovements";
 import { downloadText, toCsv } from "@/lib/csv";
 import { reviewReasonText } from "@/lib/reasons";
 import { useQuery } from "@/hooks/useQuery";
@@ -37,8 +38,49 @@ const NO_DEVICE = "none";
 /** Only letters, digits and a few safe symbols reach the search filter, so typed text can never change the query. */
 const safeSearch = (q: string) => q.replace(/[^A-Za-z0-9*+\-]/g, "").slice(0, 40);
 
+const VIEW_KEY = "pt-tx-view";
+type View = "all" | "sms";
+function savedView(): View {
+  try { return localStorage.getItem(VIEW_KEY) === "sms" ? "sms" : "all"; } catch { return "all"; }
+}
+
+/** Transactions (owner 2026-11-12: "every transaction that happened in our agent should be on our transaction page").
+ *  Two views: every movement of every wallet (default), and the SMS receipts with their credit status. */
 export function Payments() {
   const preset = useMemo(() => takePaymentsPreset(), []);
+  const [view, setView] = useState<View>(savedView);
+  const choose = (v: View) => {
+    setView(v);
+    try { localStorage.setItem(VIEW_KEY, v); } catch { /* the choice is only a convenience */ }
+  };
+  const switcher = (
+    <div className="mb-4 inline-flex rounded-lg border bg-card p-1 text-sm" role="tablist" aria-label="Which list">
+      {([["all", "Every transaction"], ["sms", "SMS receipts (credit status)"]] as const).map(([v, label]) => (
+        <button
+          key={v}
+          type="button"
+          role="tab"
+          aria-selected={view === v}
+          onClick={() => choose(v)}
+          className={`rounded-md px-3 py-1.5 ${view === v ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+  if (view === "sms") return <SmsList preset={preset} switcher={switcher} />;
+  return (
+    <>
+      <PageHeader title="Transactions" description="Every transaction of every wallet, from SMS, the wallet's own list and PayTrace's own sends." />
+      {switcher}
+      <AppSearch />
+      <AllMovements preset={preset} />
+    </>
+  );
+}
+
+function SmsList({ preset, switcher }: { preset: PaymentsPreset | null; switcher: ReactNode }) {
   const [device, setDevice] = useState(preset?.device ?? ALL);
   const [provider, setProvider] = useState(preset?.provider ?? ALL);
   const [status, setStatus] = useState(ALL);
@@ -131,6 +173,8 @@ export function Payments() {
           </Button>
         }
       />
+
+      {switcher}
 
       <PageIntro id="payments" intro={PAGE_INTRO.payments} onHelp={openHelp} />
 
