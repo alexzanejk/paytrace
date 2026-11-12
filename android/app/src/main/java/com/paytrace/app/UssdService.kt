@@ -626,10 +626,31 @@ class UssdAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Nothing to do per event: the session reads the screen itself, on its own clock.
+        // The sessions read the screen themselves, on their own clock. The one thing they cannot read is a TOAST (a
+        // short message that is not part of any window), which a wallet app may use to say the PIN is wrong: keep those.
+        if (event?.eventType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED && event.parcelableData !is android.app.Notification) {
+            WalletToasts.add(event.packageName?.toString(), event.text?.joinToString(" ") { it.toString() })
+        }
     }
 
     override fun onInterrupt() {}
+}
+
+/** Toasts shown by the wallet apps (bKash, Nagad) while PayTrace drives them: the last few, newest last. */
+object WalletToasts {
+    data class Toast(val at: Long, val pkg: String, val text: String)
+    private val list = ArrayList<Toast>()
+
+    @Synchronized fun add(pkg: String?, text: String?) {
+        val p = pkg ?: return
+        val t = text?.trim()?.takeIf { it.isNotEmpty() } ?: return
+        if (!NagadRead.isNagad(p) && "bkash" !in p.lowercase()) return
+        list.add(Toast(android.os.SystemClock.elapsedRealtime(), p, t.take(200)))
+        while (list.size > 6) list.removeAt(0)
+    }
+
+    /** Toasts shown after [since] (elapsedRealtime). */
+    @Synchronized fun since(since: Long): List<Toast> = list.filter { it.at >= since }
 }
 
 object UssdSetup {

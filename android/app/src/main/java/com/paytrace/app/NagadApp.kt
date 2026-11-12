@@ -479,7 +479,9 @@ object NagadApp {
         // sign in: Nagad's PIN box is its own drawing over a plain text box, so the PIN is typed one way after another
         // until the app itself lights সাইন ইন (it stays grey until it holds the whole PIN), and only then pressed.
         var pinWay = 0; var pinCheckAt = 0L; var loginAt = 0L
-        var keysMissing = false
+        var keysMissing = false; var keyNoted = false
+        // what happened after সাইন ইন was pressed: each new screen and any toast, so a failed sign-in explains itself
+        var signedIn = false; var lastTrail = ""; var trailNotes = 0; var loginWall = 0L; val toastSeen = HashSet<String>()
         val width = svc.resources.displayMetrics.widthPixels
         // Nagad's "too many requests" popup
         var limitHits = 0; var limitSeen = false
@@ -535,8 +537,15 @@ object NagadApp {
             for (ch in text) {
                 main.postDelayed({
                     if (finished) return@postDelayed
-                    if (!focusHere()) { keysMissing = true; return@postDelayed }
-                    val key = imeKey(imeNodes(svc), ch)
+                    val keys = imeNodes(svc)
+                    val key = imeKey(keys, ch)
+                    val here = focusHere()
+                    if (!keyNoted) {
+                        keyNoted = true
+                        val f = try { svc.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) } catch (e: Exception) { null }
+                        note("keyboard: ${if (keys.isEmpty()) "not on screen" else "${keys.size} parts"}, the key ${if (key == null) "NOT found" else "found"}, typing focus on ${f?.let { idOf(it) ?: it.className } ?: "nothing"}")
+                    }
+                    if (!here) { keysMissing = true; return@postDelayed }
                     if (key == null) keysMissing = true else AppReader.tap(svc, key)
                 }, at)
                 at += pace.keyGap() + 200L
@@ -707,6 +716,24 @@ object NagadApp {
                     if (NagadRead.wrongPin(texts)) return stop("login_failed", "Nagad says the PIN is wrong; never typed again")
                     if (AppBanners.appError(texts) || AppBanners.network(texts)) sawWalletError = true
 
+                    // After সাইন ইন: write down each new screen and any toast until Home (or the run ends), so a failed
+                    // sign-in says what Nagad answered. A toast saying the PIN is wrong ends the run at once.
+                    if (loginWall > 0 && !signedIn) {
+                        for (t in WalletToasts.since(loginWall - 500)) {
+                            if (!toastSeen.add(t.text)) continue
+                            note("Nagad's message: ${t.text.take(140)}")
+                            if (NagadRead.wrongPin(listOf(t.text))) return stop("login_failed", "Nagad says the PIN is wrong; never typed again")
+                            if (AppBanners.appError(listOf(t.text)) || AppBanners.network(listOf(t.text))) sawWalletError = true
+                        }
+                        if (screen != NagadRead.Screen.LOGIN && screen != NagadRead.Screen.BUSY && screen != NagadRead.Screen.UNKNOWN && screen != NagadRead.Screen.LIMITED) {
+                            signedIn = true
+                            note("signed in")
+                        } else if (screenText != lastTrail && trailNotes < 8) {
+                            lastTrail = screenText; trailNotes++
+                            note("after সাইন ইন: ${screenText.take(140)}")
+                        }
+                    }
+
                     // Nagad's "Rate limit exceeded. Too many requests. Please try again after 60 seconds." (seen in the
                     // recording after a few searches): press ঠিক আছে and wait what it asks, never hammer it.
                     NagadRead.rateLimit(texts)?.let { secs ->
@@ -751,8 +778,10 @@ object NagadApp {
                                 when {
                                     pinWay > 0 && lit -> {
                                         note("সাইন ইন is lit (the app has the whole PIN, typed ${pinWays[pinWay - 1]}): pressing it once")
-                                        loginAt = now
-                                        if (!press(svc, btn!!)) note("সাইন ইন could not be pressed")
+                                        loginAt = now; loginWall = now
+                                        val clicked = try { btn!!.performAction(AccessibilityNodeInfo.ACTION_CLICK) } catch (e: Exception) { false }
+                                        if (!clicked && !press(svc, btn!!)) note("সাইন ইন could not be pressed")
+                                        else note("pressed সাইন ইন (${if (clicked) "the button's own click" else "a finger tap"})")
                                         nextActAt = now + pace.settle()
                                     }
                                     pinWay > 0 && now < pinCheckAt -> { }
@@ -1024,7 +1053,8 @@ object NagadApp {
                                     cPinWay > 0 && lit -> {
                                         note("সাবমিট is lit with ${o.number} and Tk $want on the form: pressing it (this only opens the confirmation)")
                                         submits = 1; submitAt = now
-                                        press(svc, btn!!)
+                                        val clicked = try { btn!!.performAction(AccessibilityNodeInfo.ACTION_CLICK) } catch (e: Exception) { false }
+                                        if (!clicked) press(svc, btn!!)
                                         nextActAt = now + pace.settle()
                                     }
                                     cPinWay > 0 && now < cPinCheckAt -> { }

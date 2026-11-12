@@ -99,8 +99,14 @@ const ERROR_TEXT: Record<string, string> = {
 
 /** The reason in words. With [wallet] ("bKash") the text names that wallet instead of "the wallet". */
 export const errorText = (code: string | null, wallet?: string): string => {
-  const t = code ? ERROR_TEXT[code] ?? ERROR_TEXT.failed : ERROR_TEXT.failed;
-  return wallet ? t.replace("The wallet's menu", `The ${wallet} menu`) : t;
+  let t = code ? ERROR_TEXT[code] ?? ERROR_TEXT.failed : ERROR_TEXT.failed;
+  if (!wallet) return t;
+  t = t.replace("The wallet's menu", `The ${wallet} menu`);
+  // Several texts were written for one wallet's app or menu; on another wallet's line they must name that wallet
+  // (a Nagad app balance once read "The bKash app did not accept the PIN", a Rocket check "No Nagad PIN").
+  if (wallet !== "bKash") t = t.replace(/bKash/g, wallet);
+  if (code === "no_pin" && wallet !== "Nagad") t = t.replace("Nagad", wallet);
+  return t;
 };
 
 /** The phone's own step log of a failed run rides along as a "screen" that starts with this line (never the PIN). */
@@ -120,7 +126,7 @@ export function commandLine(c: PhoneCommand | null, money: (n: number) => string
     // The dashboard pokes the phone the moment a command is queued, so this is usually a second or two. A phone that
     // the wake-up cannot reach still takes it on its own 30-second beat, so the line promises the slower one.
     case "queued": return "Waking the phone to take it now (within 30 seconds at worst)…";
-    case "running": return cashIn ? "The phone is sending it…" : c.via === "app" ? "The phone is reading the balance in the bKash app…" : "The phone is reading the balance…";
+    case "running": return cashIn ? "The phone is sending it…" : c.via === "app" ? `The phone is reading the balance in the ${label} app…` : "The phone is reading the balance…";
     case "done":
       return cashIn
         ? `Sent ${c.amount == null ? "–" : money(c.amount)} to ${c.to_number ?? "–"}${c.trx_id ? `, receipt ${c.trx_id}` : ""}` +
@@ -222,7 +228,7 @@ ERROR_TEXT.app_stopped_before_send = "The bKash app Cash In stopped before the t
 ERROR_TEXT.insufficient_balance = "The bKash wallet has less than the amount, so nothing was sent.";
 ERROR_TEXT.pin_refused = "The bKash app did not accept the PIN on the Cash In. It was not typed again and nothing was sent. Check the bKash PIN saved in the phone app.";
 ERROR_TEXT.pin_not_entered = "The bKash app's PIN box did not show the right number of digits while PayTrace typed (the app was slow or a tap was lost), so PayTrace did NOT press Log in. No wrong PIN was sent. It tries again at the next half hour.";
-ERROR_TEXT.login_failed = "The bKash app did not accept the PIN PayTrace typed (it said the PIN is not correct, or kept asking for it). PayTrace never types it twice (bKash locks after wrong tries), and stops reading the app on this phone until you press \"Read bKash app now\" again. Check the bKash PIN saved in the phone app.";
+ERROR_TEXT.login_failed = "The bKash app stayed on its sign-in screen after PayTrace typed the PIN and pressed sign in once: either the PIN saved in the phone app is not this app's PIN, or the app did not take it. PayTrace never presses sign in a second time (bKash locks after wrong tries) and the server stops every automatic run of the app on this phone until you press \"Read bKash app now\" yourself. The phone's log below shows what the app answered.";
 ERROR_TEXT.app_not_opened = "The bKash app did not open on the phone.";
 ERROR_TEXT.balance_not_shown = "The bKash app opened and logged in, but the balance did not show after three taps on \"Tap for Balance\". Nothing was sent. Try again, or check by USSD.";
 ERROR_TEXT.app_closed = "The bKash app left the screen while it was being read.";
