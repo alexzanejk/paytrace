@@ -405,6 +405,7 @@ object NagadApp {
         var screenText = ""
         var backs = 0
         var sawWalletError = false
+        var reopens = 0
         // sign in
         var pinTypes = 0; var loginAt = 0L
         // menu / statement
@@ -509,7 +510,8 @@ object NagadApp {
                 try {
                     val r = root(svc)
                     if (r == null) {
-                        if (seenApp == 0L && now - started > 20_000) return stop("app_not_opened", "the Nagad app did not open")
+                        if (seenApp == 0L && OpenRetry.due(false, now - started, reopens)) { reopens++; note("the Nagad app is not on screen yet: opening it again ($reopens)"); AppReader.openBkash(svc, app, pkg, woke) { note(it) } }
+                        if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) return stop("app_not_opened", "the Nagad app did not open")
                         if (seenApp > 0) {
                             if (leftAt == 0L) leftAt = now
                             if (now - leftAt > 3_000 && yesAt == 0L) {

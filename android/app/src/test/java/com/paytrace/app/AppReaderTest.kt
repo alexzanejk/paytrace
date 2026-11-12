@@ -189,4 +189,15 @@ class AppReaderTest {
         // A real "PIN not correct" is caught first, whatever else is on screen.
         assertTrue(AppBanners.wrongPin(listOf("পিন নাম্বারটি সঠিক নয়")))
     }
+
+    @Test fun aWalletAppThatDidNotOpenIsOpenedAgainTwice() {
+        // rubel's Xiaomi, 2026-11-12: the first open from the background was dropped and the balance check gave up.
+        assertFalse(OpenRetry.due(false, 5_000, 0))
+        assertTrue(OpenRetry.due(false, 6_500, 0))
+        assertFalse(OpenRetry.due(false, 9_000, 1))
+        assertTrue(OpenRetry.due(false, 12_500, 1))
+        assertFalse(OpenRetry.due(false, 19_000, 2))
+        assertFalse(OpenRetry.due(true, 30_000, 0))
+        assertTrue(OpenRetry.GIVE_UP_MS > OpenRetry.EVERY_MS * (OpenRetry.EXTRA + 1))
+    }
 }

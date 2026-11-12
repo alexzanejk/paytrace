@@ -1055,6 +1055,18 @@ object AppBanners {
         has(texts, "স্ট্যাটাস পরিবর্তন করুন") || has(texts, "এজেন্ট অ্যাপের", "স্ট্যাটাস") || has(texts, "change", "agent", "status")
 }
 
+/** The wallet app did not come on screen after it was opened: open it again, at 6 s and 12 s (rubel's Xiaomi, 2026-11-12:
+ *  two bKash balance checks gave up after 20 s with "the app did not open", while the half-hourly reads on the same phone,
+ *  which already opened it a second time, worked; on that MIUI the first open from the background is sometimes dropped).
+ *  Nothing has been typed or pressed yet when this applies, so opening again is always safe. Pure, unit tested. */
+object OpenRetry {
+    const val EVERY_MS = 6_000L
+    const val EXTRA = 2
+    const val GIVE_UP_MS = 25_000L
+    fun due(seen: Boolean, sinceStart: Long, opensDone: Int): Boolean =
+        !seen && opensDone < EXTRA && sinceStart > EVERY_MS * (opensDone + 1)
+}
+
 /** What a run that is still on the sign-in screen after the PIN reports. Only when the wallet said nothing but showed the
  *  sign-in screen again is it called a refused PIN (`login_failed`, which stops automatic reads until the owner asks again,
  *  so a wrong PIN is never typed twice). When the wallet showed its own error or a network message on the way, the PIN was

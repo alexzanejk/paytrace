@@ -98,6 +98,7 @@ object AppBalance {
         var backs = 0
         var banners = 0
         var sawWalletError = false
+        var reopens = 0
 
         fun finish(o: UssdOutcome, why: String) {
             if (finished) return
@@ -119,7 +120,8 @@ object AppBalance {
                 try {
                     val root = AppReader.bkashRoot(svc)
                     if (root == null) {
-                        if (seenApp == 0L && now - started > 20_000) return stop("app_not_opened", "the app did not open")
+                        if (seenApp == 0L && OpenRetry.due(false, now - started, reopens)) { reopens++; note("the app is not on screen yet: opening it again ($reopens)"); AppReader.openBkash(svc, app, pkg, woke) { note(it) } }
+                        if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) return stop("app_not_opened", "the app did not open")
                         if (seenApp > 0 && now - seenApp > 20_000) return stop("app_closed", "the app left the screen")
                     } else {
                         if (seenApp == 0L) nextActAt = now + pace.settle()

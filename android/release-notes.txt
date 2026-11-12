@@ -1,1 +1,1 @@
-Fix: when bKash (or Nagad) shows its own "An error occurred" after the PIN and goes back to the sign-in screen, PayTrace no longer treats it as a wrong PIN; automatic reads carry on at the next half hour.
+Fix: when bKash (or Nagad) shows its own "An error occurred" after the PIN, PayTrace no longer treats it as a wrong PIN. Fix: a balance check, Cash In or B2B through the wallet app opens the app again when it did not come on screen (it gave up after one try on rubel's Xiaomi).

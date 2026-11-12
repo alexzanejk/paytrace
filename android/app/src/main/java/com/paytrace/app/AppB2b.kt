@@ -174,6 +174,7 @@ object AppB2b {
         var backs = 0
         var held = false
         var sawWalletError = false // bKash showed its own error during this run (not a wrong PIN)
+        var reopens = 0
         var statusHits = 0
         val opener = AgentOpener { note(it) }
         var heldAt = 0L
@@ -326,7 +327,8 @@ object AppB2b {
                 try {
                     val root = AppReader.bkashRoot(svc)
                     if (root == null) {
-                        if (seenApp == 0L && now - started > 20_000) return stop("app_not_opened", "the app did not open")
+                        if (seenApp == 0L && OpenRetry.due(false, now - started, reopens)) { reopens++; note("the app is not on screen yet: opening it again ($reopens)"); AppReader.openBkash(svc, app, pkg, woke) { note(it) } }
+                        if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) return stop("app_not_opened", "the app did not open")
                         if (seenApp > 0 && now - seenApp > 20_000) return if (result != null) succeed("the app closed after the result") else stop("app_stopped_before_send", "the app left the screen")
                     } else {
                         if (seenApp == 0L) nextActAt = now + pace.settle()
