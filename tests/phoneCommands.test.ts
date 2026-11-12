@@ -115,6 +115,8 @@ check("a missing PIN on a Rocket line names Rocket", errorText("no_pin", "Rocket
 check("a Nagad app balance being read says Nagad", commandLine({ ...base, via: "app", status: "running" }, money, when, "Nagad").includes("Nagad app"));
 check("a failed sign-in does not claim the PIN was wrong for sure", errorText("login_failed").includes("either"));
 
+check("the secure keyboard is explained and says nothing was sent", errorText("secure_keyboard", "Nagad").includes("Secure input") && errorText("secure_keyboard", "Nagad").includes("no PIN was sent"));
+
 // The total and the exit come LAST: they used to sit in the middle of this file, so nothing written below them ever ran.
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exitCode = 1;

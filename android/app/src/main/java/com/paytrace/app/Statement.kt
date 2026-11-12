@@ -27,8 +27,10 @@ object StatementRead {
     /** What the wallet wants typed for its next page, or null when it offers none: bKash writes "# NEXT", Nagad
      *  "Next Page *" (the owner's real Nagad list, 2026-11-04; it was never paged before 069 because only "#" was known). */
     fun nextKey(text: String): String? = when {
-        Regex("""#\s*NEXT""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "#"
-        Regex("""NEXT\s*PAGE\s*\*|\*\s*NEXT""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "*"
+        // Only spaces between the key and the word, never a line break: Nagad's page 2 ends "Prev page #" then
+        // "Next Page *" on the next line, and "#\nNext" once read as "# NEXT", so the run went back to page 1 for ever.
+        Regex("""#[ \t]*NEXT""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "#"
+        Regex("""NEXT[ \t]*PAGE[ \t]*\*|\*[ \t]*NEXT""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "*"
         else -> null
     }
 

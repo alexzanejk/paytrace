@@ -479,7 +479,7 @@ object NagadApp {
         // sign in: Nagad's PIN box is its own drawing over a plain text box, so the PIN is typed one way after another
         // until the app itself lights সাইন ইন (it stays grey until it holds the whole PIN), and only then pressed.
         var pinWay = 0; var pinCheckAt = 0L; var loginAt = 0L
-        var keysMissing = false; var keyNoted = false
+        var keysMissing = false; var keyNoted = false; var noKeyboard = false
         // what happened after সাইন ইন was pressed: each new screen and any toast, so a failed sign-in explains itself
         var signedIn = false; var lastTrail = ""; var trailNotes = 0; var loginWall = 0L; val toastSeen = HashSet<String>()
         val width = svc.resources.displayMetrics.widthPixels
@@ -540,6 +540,7 @@ object NagadApp {
                     val keys = imeNodes(svc)
                     val key = imeKey(keys, ch)
                     val here = focusHere()
+                    if (keys.isEmpty()) noKeyboard = true
                     if (!keyNoted) {
                         keyNoted = true
                         val f = try { svc.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) } catch (e: Exception) { null }
@@ -782,7 +783,9 @@ object NagadApp {
                                         nextActAt = now + pace.settle()
                                     }
                                     pinWay > 0 && now < pinCheckAt -> { }
-                                    pinWay >= pinWays.size -> return stop("pin_not_entered", "the PIN could not be typed on the keyboard; সাইন ইন NOT pressed (no PIN was sent)")
+                                    pinWay >= pinWays.size -> return if (noKeyboard)
+                                        stop("secure_keyboard", "no keyboard PayTrace can see: the phone's own secure PIN keyboard is in the way (on a Vivo: Settings, Security & privacy, Secure input OFF); সাইন ইন NOT pressed (no PIN was sent)")
+                                    else stop("pin_not_entered", "the PIN could not be typed on the keyboard; সাইন ইন NOT pressed (no PIN was sent)")
                                     else -> {
                                         if (pinWay > 0) note("সাইন ইন stayed grey" + (if (keysMissing) " (the keyboard could not be used: no digit keys, or the box lost the focus)" else "") + ": trying another way")
                                         note("typing the PIN ${pinWays[pinWay]}")
@@ -1055,7 +1058,9 @@ object NagadApp {
                                         nextActAt = now + pace.settle()
                                     }
                                     cPinWay > 0 && now < cPinCheckAt -> { }
-                                    cPinWay >= pinWays.size -> return stop("pin_not_entered", "the PIN could not be typed on the keyboard; সাবমিট NOT pressed, nothing sent")
+                                    cPinWay >= pinWays.size -> return if (noKeyboard)
+                                        stop("secure_keyboard", "no keyboard PayTrace can see: the phone's own secure PIN keyboard is in the way; সাবমিট NOT pressed, nothing sent")
+                                    else stop("pin_not_entered", "the PIN could not be typed on the keyboard; সাবমিট NOT pressed, nothing sent")
                                     else -> {
                                         // The PIN only on this form, which shows THIS number and THIS amount (checked just above).
                                         cStage = 2
