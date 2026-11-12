@@ -121,7 +121,7 @@ export function AllMovements({ preset }: { preset?: PaymentsPreset | null }) {
               <TableHead>Type</TableHead>
               <TableHead className="text-right">Amount</TableHead>
               <TableHead>TrxID / number</TableHead>
-              <TableHead>Seen in</TableHead>
+              <TableHead title="SMS = the wallet's SMS; No SMS = only in the wallet's own list (app read or statement); PayTrace = sent by PayTrace itself">Seen in</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -194,8 +194,12 @@ export function AllMovements({ preset }: { preset?: PaymentsPreset | null }) {
 }
 
 function timeText(m: Movement): string {
-  return m.exact_time ? when(m.at) : `${m.day} (time not given)`;
+  if (m.exact_time) return when(m.at);
+  const d = new Date(`${m.day}T12:00:00+06:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Asia/Dhaka" });
+  return `${d} (no time)`;
 }
+
+const SEEN_SHORT: Record<string, string> = { sms: "SMS", both: "SMS + list", wallet: "No SMS", paytrace: "PayTrace" };
 
 function statusWord(m: Movement): string {
   if (m.seen === "wallet") return "In the wallet's list";
@@ -205,7 +209,7 @@ function statusWord(m: Movement): string {
 
 function SeenBadge({ m }: { m: Movement }) {
   const tone = m.seen === "wallet" ? "warn" : m.seen === "paytrace" ? "info" : m.status === "review" ? "warn" : "ok";
-  return <Badge tone={tone}>{SEEN_LABEL[m.seen] ?? m.seen}</Badge>;
+  return <Badge tone={tone} title={SEEN_LABEL[m.seen] ?? m.seen} className="whitespace-nowrap">{SEEN_SHORT[m.seen] ?? m.seen}</Badge>;
 }
 
 /** The rest of one row. SMS text is shown as plain text, never as HTML. */
