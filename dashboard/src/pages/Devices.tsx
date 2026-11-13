@@ -153,7 +153,7 @@ export function Devices() {
         title="Phones"
         description="Each phone that forwards payment messages. Totals run from 12:00 AM to 11:59 PM Bangladesh time."
         actions={
-          <div className="flex items-center gap-1">
+          <div className="flex max-w-full flex-wrap items-center gap-1">
             <Button variant="outline" size="icon" aria-label="Previous day" onClick={() => setDay(addDays(day, -1))}>
               <ChevronLeft />
             </Button>

@@ -87,7 +87,7 @@ export function Jobs() {
         description="Each wallet on each phone has one job. When the wallet's own money reaches its amount, the phone rings and shows it: Taka = send the money to one of our saved bKash / Nagad numbers; Crypto = send it to our crypto wallet. Change any wallet's job or amount below, any time."
       />
       {data ? (
-        <div className="grid gap-6">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
           <MasterSwitch on={data.jobsOn} onChanged={refresh} />
 
           {waitingChecks > 0 ? (
@@ -152,7 +152,7 @@ export function Jobs() {
             </Card>
           </section>
 
-          <div className="grid gap-3">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
             <a
               href="#/jobhistory"
               className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 text-sm transition-colors hover:bg-muted/50"

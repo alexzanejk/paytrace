@@ -9,6 +9,7 @@ import { openPaymentsWith } from "@/lib/filters";
 import { useQuery } from "@/hooks/useQuery";
 import { useDevices } from "@/hooks/useDevices";
 import { Screen } from "@/components/Screen";
+import { NeedsYou } from "@/components/NeedsYou";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard, STAT_GRID } from "@/components/StatCard";
 import { DeviceChip } from "@/components/DeviceChip";
@@ -80,10 +81,15 @@ export function Overview() {
   return (
     <Screen loading={loading || devices.loading} error={error ?? devices.error} hasData={!!data}>
       <PageHeader
-        title="Overview"
-        description={`${rangeLabel(range)}. Days run 12:00 AM to 11:59 PM Bangladesh time. Payments held for review are not counted.`}
-        actions={
-          <>
+        title="Home"
+        description="What needs you now, then the money. Days run 12:00 AM to 11:59 PM Bangladesh time; payments held for review are not counted."
+      />
+
+      <NeedsYou devices={devices.list} />
+
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-base font-semibold">Money · {rangeLabel(range)}</h3>
+        <div className="flex flex-wrap items-center gap-2">
             <PeriodPicker value={period} onChange={setPeriod} />
             <FilterSelect
               label="All phones"
@@ -92,9 +98,8 @@ export function Overview() {
               options={approved.map((d) => ({ value: d.id, label: devices.nameOf(d.id) }))}
               className="w-[calc(55%-0.25rem)] sm:w-48"
             />
-          </>
-        }
-      />
+        </div>
+      </div>
 
       <div className={`mb-6 ${STAT_GRID}`}>
         <StatCard tone="blue" label="Payments received" value={tk(sum.received.amount)} sub={`${sum.received.n} payments · fees ${tk(sum.received.fee)}`} icon={ArrowDownToLine} />
