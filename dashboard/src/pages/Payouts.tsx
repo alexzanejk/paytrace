@@ -26,6 +26,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SendWayChoice } from "@/components/SendWayChoice";
 import { type SendWay, wayWords } from "@/lib/sendWay";
+import { DefaultShare, ExtraPayoutForm, ExtraPayoutList } from "@/components/PayoutExtras";
 
 /** Only money RECEIVED can be paid out (the database's payout_refusal says the same). */
 const PAYABLE_TYPES = ["cash_out", "send_money_received", "payment_received"];
@@ -49,6 +50,7 @@ export function Payouts() {
   const [limit, setLimit] = useState(PAGE);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     const id = setTimeout(() => setTerm(safeSearch(search)), 300);
@@ -85,9 +87,10 @@ export function Payouts() {
       const known = new Set(recent.map((p) => p.id));
       const missing = [...new Set(items.map((i) => i.payout_id))].filter((id) => !known.has(id));
       const older = missing.length ? (must(await sb.from("payouts").select("*").in("id", missing)) as PayoutRow[]) : [];
+      const extras = must(await sb.from("payouts").select("*").eq("extra", true).order("created_at", { ascending: false }).limit(100)) as PayoutRow[];
       const settings = must(await sb.from("payout_settings").select("keep_pct,send_money_fee").limit(1)) as { keep_pct: number | string; send_money_fee?: number | string }[];
       return {
-        rows, total: res.count ?? 0, items, payouts: [...recent, ...older],
+        rows, total: res.count ?? 0, items, payouts: [...recent, ...older], extras,
         keepPct: Number(settings[0]?.keep_pct ?? 20), sendFee: Number(settings[0]?.send_money_fee ?? 10),
       };
     },
@@ -133,6 +136,25 @@ export function Payouts() {
         description={`Pay on received money: keep your share and send the rest. Showing ${rangeLabel(range)} (Bangladesh days).`}
       />
 
+      <Card className="mb-4 flex flex-wrap items-center justify-between gap-3 p-3">
+        <DefaultShare pct={data?.keepPct ?? 20} onSaved={reload} />
+        {!adding ? (
+          <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
+            <HandCoins className="mr-1 h-4 w-4" aria-hidden /> Add a payout paid by hand
+          </Button>
+        ) : null}
+      </Card>
+
+      {adding ? (
+        <ExtraPayoutForm
+          defaultPct={data?.keepPct ?? 20}
+          phones={phoneOptions}
+          onClose={() => setAdding(false)}
+          onDone={() => { setAdding(false); reload(); }}
+          onFind={(trx) => { setAdding(false); setShow("all"); setSearch(trx); }}
+        />
+      ) : null}
+
       <AppSearch />
 
       {sending.length ? (
@@ -168,7 +190,7 @@ export function Payouts() {
         <StatCard label="Not paid out yet" value={tk(openSum)} sub="received money in this list that can be paid on" />
         <StatCard label="Paid out" value={tk(paidSum)} sub="in this list, already in a payout" />
         <StatCard label="Ticked" value={tk(chosen.reduce((s, r) => s + Number(r.amount), 0))} sub={`${chosen.length} transaction${chosen.length === 1 ? "" : "s"}`} />
-        <StatCard label="Your share" value={`${data?.keepPct ?? 20}%`} sub="kept by default; change it per payout below" />
+        <StatCard label="Your share" value={`${data?.keepPct ?? 20}%`} sub="the default; change it above, or per payout" />
       </div>
 
       {chosen.length ? (
@@ -257,6 +279,8 @@ export function Payouts() {
           <Button variant="outline" size="sm" onClick={() => setLimit((l) => l + PAGE)}>Load more</Button>
         ) : null}
       </div>
+
+      <ExtraPayoutList rows={data?.extras ?? []} nameOf={devices.nameOf} onDone={reload} onAdd={() => { setAdding(true); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
     </Screen>
   );
 }

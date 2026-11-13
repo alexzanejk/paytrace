@@ -34,6 +34,11 @@ export interface PayoutRow {
   note: string | null;
   created_at: string;
   paid_at: string | null;
+  /** A payout recorded by hand for money that is not on the Payout list (migration 099); it has no payout_items. */
+  extra?: boolean;
+  for_trx?: string | null;
+  for_device?: string | null;
+  for_provider?: string | null;
 }
 
 export interface PayoutItemRow {
@@ -98,6 +103,34 @@ export function parsePct(text: string): number | null {
   if (!/^\d{1,3}(\.\d{1,2})?$/.test(t)) return null;
   const n = Number(t);
   return n >= 0 && n <= 100 ? n : null;
+}
+
+/** A typed amount of money: commas, "Tk" and Bangla digits allowed, up to two decimals ("১২,৩০০.৫" = 12300.5);
+ *  null when it is not one or is not above 0. */
+export function parseMoney(text: string): number | null {
+  const t = text.replace(/[০-৯]/g, (d) => String(d.charCodeAt(0) - 0x09e6)).replace(/[\s,]/g, "").replace(/^tk/i, "");
+  if (!/^\d{1,7}(\.\d{1,2})?$/.test(t)) return null;
+  const n = Number(t);
+  return n > 0 ? n : null;
+}
+
+/** A payout recorded by hand for money not on the list (migration 099): what came in, what was paid out, what you keep.
+ *  An empty "paid out" box means "the default share": the rest is worked out in whole taka like a normal payout. */
+export function extraSplit(receivedText: string, sentText: string, defaultPct: number):
+  { received: number; sent: number; keep: number; pct: number } | { problem: string } {
+  const received = parseMoney(receivedText);
+  if (received == null) return { problem: "Type the amount that came in." };
+  let sent: number | null;
+  if (!sentText.trim()) {
+    sent = splitPayout(received, defaultPct).send;
+    if (sent <= 0) return { problem: "Type the amount you paid out." };
+  } else {
+    sent = parseMoney(sentText);
+    if (sent == null) return { problem: "Type the amount you paid out (more than 0)." };
+  }
+  if (sent > received) return { problem: "You paid out more than came in. Check the two amounts." };
+  const keep = round2(received - sent);
+  return { received, sent, keep, pct: round2((keep / received) * 100) };
 }
 
 /** "01612667190" -> "0161 266 7190", easy to read back before sending. */
@@ -168,8 +201,8 @@ const taka = (n: number) => "Tk " + n.toLocaleString("en-IN", { minimumFractionD
 /** One sentence for a paid transaction's details: what was sent, where, how, from which phone, and what was kept. */
 export function payoutLine(p: PayoutRow, phoneName: (id: string | null) => string): string {
   const to = p.to_number ? ` to ${groupDigits(p.to_number)}` : "";
-  const from = p.method === "manual" ? "" : ` from ${phoneName(p.device_id)}'s ${WALLET[p.provider ?? ""] ?? p.provider ?? ""}${p.from_account === "personal" ? " (personal)" : ""}`;
-  const how = ` by ${METHOD_WORDS[p.method]}`;
+  const from = p.method === "manual" ? (p.extra && p.for_trx ? ` for TrxID ${p.for_trx}` : "") : ` from ${phoneName(p.device_id)}'s ${WALLET[p.provider ?? ""] ?? p.provider ?? ""}${p.from_account === "personal" ? " (personal)" : ""}`;
+  const how = p.method === "manual" ? " paid by hand" : ` by ${METHOD_WORDS[p.method]}`;
   const trx = p.trx_id ? ` · TrxID ${p.trx_id}` : "";
   const kept = ` · kept ${taka(num(p.keep_amount))} (${num(p.keep_pct)}%) of ${taka(num(p.total_amount))}`;
   const fee = feeLine(num(p.fee_reserved), p.fee_actual == null ? null : num(p.fee_actual));

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import {
-  checkNumbers, feeLine, keepPctFor, parseSendAmount, groupDigits, parseFee, liveItemsByPayment, parsePct, payoutLine, payoutRefusal, tickableRefusal, recentNumbers, sendMethod, sendProblem, senderOptions, splitPayout,
+  checkNumbers, extraSplit, feeLine, parseMoney, keepPctFor, parseSendAmount, groupDigits, parseFee, liveItemsByPayment, parsePct, payoutLine, payoutRefusal, tickableRefusal, recentNumbers, sendMethod, sendProblem, senderOptions, splitPayout,
   type PayoutRow,
 } from "../dashboard/src/lib/payouts.ts";
 import { accountTitle, checkLine, figures, sourceLine, type DayMoneyRow } from "../dashboard/src/lib/dayMoney.ts";
@@ -88,7 +88,7 @@ const po = (o: Partial<PayoutRow>): PayoutRow => ({
 });
 const line = payoutLine(po({}), (id) => (id === "d1" ? "rubel" : "?"));
 check("paid line says amount, number, method, phone, TrxID and what was kept", line === "Tk 640 to 0161 266 7190 by Cash In from rubel's bKash · TrxID DK8ABC · kept Tk 160 (20%) of Tk 800", line);
-check("a payout by hand has no phone", payoutLine(po({ method: "manual", device_id: null, trx_id: null }), () => "?") === "Tk 640 to 0161 266 7190 by paid by hand · kept Tk 160 (20%) of Tk 800");
+check("a payout by hand has no phone", payoutLine(po({ method: "manual", device_id: null, trx_id: null }), () => "?") === "Tk 640 to 0161 266 7190 paid by hand · kept Tk 160 (20%) of Tk 800");
 const rec = recentNumbers([po({ to_number: "01700000001", created_at: "2026-11-08T01:00:00Z" }), po({ to_number: "01700000002", created_at: "2026-11-08T03:00:00Z" }), po({ to_number: "01700000001", created_at: "2026-11-08T04:00:00Z" }), po({ to_number: "01700000003", status: "failed", created_at: "2026-11-08T05:00:00Z" })]);
 check("recent numbers: newest first, once each, failed ones left out", rec.join(",") === "01700000001,01700000002", rec);
 
@@ -124,6 +124,23 @@ check("send amount: whole taka only", parseSendAmount("12.5") === null && parseS
 }
 check("more than the total (less the fee) is refused", keepPctFor(1000, 1001) === null && keepPctFor(1000, 995, 10) === null && keepPctFor(1000, 990, 10) === 0);
 check("sending everything keeps 0%", keepPctFor(1500, 1500) === 0);
+
+// ---- a payout recorded by hand for money not on the list (migration 099, owner 2026-11-13) ----
+check("money: commas, Tk, Bangla digits and decimals", parseMoney("12,300.50") === 12300.5 && parseMoney("১২৩০০") === 12300 && parseMoney("Tk 500") === 500);
+check("money: 0, negative and junk refused", parseMoney("0") === null && parseMoney("-5") === null && parseMoney("abc") === null && parseMoney("") === null);
+{
+  const a = extraSplit("1000", "800", 20);
+  check("received and paid out typed: keep is the difference", "keep" in a && a.keep === 200 && a.pct === 20 && a.sent === 800, a);
+  const b = extraSplit("1000", "", 25);
+  check("paid out left empty: the default share is kept, whole taka sent", "keep" in b && b.sent === 750 && b.keep === 250, b);
+  const c = extraSplit("497", "", 20);
+  check("default share on an odd amount sends whole taka", "keep" in c && c.sent === 397 && c.keep === 100, c);
+  check("paid out more than came in is refused", "problem" in extraSplit("100", "200", 20));
+  check("no amount in is refused", "problem" in extraSplit("", "100", 20));
+  check("paying out all of it keeps 0%", (() => { const d = extraSplit("500", "500", 20); return "keep" in d && d.keep === 0 && d.pct === 0; })());
+}
+check("a hand record names the transaction it paid on",
+  payoutLine({ id: "x", method: "manual", status: "paid", device_id: null, provider: null, from_account: null, to_number: "01712345678", total_amount: 1000, keep_pct: 20, keep_amount: 200, send_amount: 800, command_id: null, trx_id: null, balance_after: null, error: null, note: null, created_at: "", paid_at: null, extra: true, for_trx: "DKB1CVD04L" }, () => "").includes("for TrxID DKB1CVD04L"));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
