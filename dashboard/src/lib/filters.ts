@@ -4,6 +4,8 @@ export interface PaymentsPreset {
   provider?: string;
   from?: string;
   to?: string;
+  /** A TrxID or number to put in the page's own search box (from the search at the top of every page). */
+  search?: string;
 }
 
 let pending: PaymentsPreset | null = null;

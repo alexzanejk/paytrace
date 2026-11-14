@@ -37,7 +37,7 @@ export function AllMovements({ preset }: { preset?: PaymentsPreset | null }) {
   const [group, setGroup] = useState(ALL);
   const [direction, setDirection] = useState(ALL);
   const [seen, setSeen] = useState(ALL);
-  const [term, setTerm] = useState("");
+  const [term, setTerm] = useState(preset?.search ?? "");
   const [limit, setLimit] = useState(PAGE);
   const [open, setOpen] = useState<number | null>(null);
 
