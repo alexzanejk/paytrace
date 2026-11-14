@@ -1,6 +1,6 @@
 import { AppSearch } from "@/components/AppSearch";
-import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ChevronDown, ChevronRight, HandCoins, Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CheckCircle2, ChevronDown, ChevronRight, HandCoins, Search, X } from "lucide-react";
 import { Confirm } from "@/components/Confirm";
 import { MoneyConfirm } from "@/components/MoneyConfirm";
 import { must, sb } from "@/lib/supabase";
@@ -8,7 +8,7 @@ import { tk, when } from "@/lib/format";
 import { PROVIDERS, PROVIDER_LABEL, type Payment } from "@/lib/types";
 import { rangeBounds, rangeLabel, periodRange } from "@/lib/period";
 import {
-  PAYOUT_WORDS, UNSURE_HELP, SENT_WARNING, NOT_SENT_WARNING, checkNumbers, groupDigits, liveItemsByPayment, parsePct, parseSendAmount, keepPctFor, payoutLine, payoutRefusal, recentNumbers, tickableRefusal, HELD_REFUSAL,
+  PAYOUT_WORDS, UNSURE_HELP, SENT_WARNING, NOT_SENT_WARNING, MOST_TICKS, droppedLine, settleTicks, tickedRows, toggleShown, checkNumbers, groupDigits, liveItemsByPayment, parsePct, parseSendAmount, keepPctFor, payoutLine, payoutRefusal, recentNumbers, tickableRefusal, HELD_REFUSAL,
   parseFee, sendMethod, sendProblem, senderOptions, splitPayout, ROCKET_NOTE, METHOD_WORDS, type PayoutItemRow, type PayoutRow,
 } from "@/lib/payouts";
 import { nudgePhone } from "@/lib/wake";
@@ -33,6 +33,12 @@ import { DefaultShare, ExtraPayoutForm, ExtraPayoutList } from "@/components/Pay
 /** Only money RECEIVED can be paid out (the database's payout_refusal says the same). */
 const PAYABLE_TYPES = ["cash_out", "send_money_received", "payment_received"];
 const PAGE = 200;
+/** A long list of ids is asked for in parts, so the request's address never grows past what the server accepts. */
+async function inChunks<T>(ids: string[], ask: (part: string[]) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>, size = 100): Promise<T[]> {
+  const out: T[] = [];
+  for (let i = 0; i < ids.length; i += size) out.push(...(must(await ask(ids.slice(i, i + size))) as T[]));
+  return out;
+}
 const safeSearch = (q: string) => q.replace(/[^A-Za-z0-9*+\-]/g, "").slice(0, 40);
 
 type Show = "open" | "paid" | "all";
@@ -50,7 +56,11 @@ export function Payouts() {
   const [search, setSearch] = useState("");
   const [term, setTerm] = useState("");
   const [limit, setLimit] = useState(PAGE);
+  // Ticks outlive the list: searching, or changing the phone, wallet or dates, keeps what was ticked (owner 2026-11-14).
   const [ticked, setTicked] = useState<Set<string>>(new Set());
+  // Each ticked row as it was when ticked, so it can still be shown and added up once it is off the list.
+  const kept = useRef(new Map<string, Payment>());
+  const [notice, setNotice] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -81,10 +91,12 @@ export function Payouts() {
       const res = await q;
       if (res.error) throw new Error(res.error.message);
       const rows = (res.data ?? []) as Payment[];
-      const ids = rows.map((r) => r.id);
-      const items = ids.length
-        ? (must(await sb.from("payout_items").select("payout_id,payment_id,amount,live").in("payment_id", ids)) as PayoutItemRow[])
-        : [];
+      const onList = new Set(rows.map((r) => r.id));
+      // Ticked rows that are not on this list are read again, so a tick is never paid on stale information.
+      const asked = [...ticked].filter((id) => !onList.has(id));
+      const picked = (await inChunks(asked, (part) => sb.from("payments").select("*").in("id", part))) as Payment[];
+      const ids = [...onList, ...picked.map((r) => r.id)];
+      const items = (await inChunks(ids, (part) => sb.from("payout_items").select("payout_id,payment_id,amount,live").in("payment_id", part))) as PayoutItemRow[];
       const recent = must(await sb.from("payouts").select("*").order("created_at", { ascending: false }).limit(300)) as PayoutRow[];
       const known = new Set(recent.map((p) => p.id));
       const missing = [...new Set(items.map((i) => i.payout_id))].filter((id) => !known.has(id));
@@ -92,11 +104,11 @@ export function Payouts() {
       const extras = must(await sb.from("payouts").select("*").eq("extra", true).order("created_at", { ascending: false }).limit(100)) as PayoutRow[];
       const settings = must(await sb.from("payout_settings").select("keep_pct,send_money_fee").limit(1)) as { keep_pct: number | string; send_money_fee?: number | string }[];
       return {
-        rows, total: res.count ?? 0, items, payouts: [...recent, ...older], extras,
+        rows, picked, asked, total: res.count ?? 0, items, payouts: [...recent, ...older], extras,
         keepPct: Number(settings[0]?.keep_pct ?? 20), sendFee: Number(settings[0]?.send_money_fee ?? 10),
       };
     },
-    [device, provider, startIso, endIso, term, limit],
+    [device, provider, startIso, endIso, term, limit, [...ticked].join(",")],
     { refreshMs: 10000 },
   );
 
@@ -106,25 +118,51 @@ export function Payouts() {
   const taken = useMemo(() => new Set(liveOf.keys()), [liveOf]);
   const shown = rows.filter((p) => (show === "all" ? true : show === "paid" ? taken.has(p.id) : !taken.has(p.id)));
 
-  // Drop ticks on rows that are gone or became unpayable (another tab paid them, a payout started).
+  // Take a tick off only on fresh evidence that it cannot be paid any more (another tab paid it, a payout started).
+  // A row that merely left the list (a search, other dates) keeps its tick.
   useEffect(() => {
-    setTicked((t) => {
-      const ok = new Set([...t].filter((id) => rows.some((r) => r.id === id && tickableRefusal(payoutRefusal(r, taken)))));
-      return ok.size === t.size ? t : ok;
-    });
-  }, [rows, taken]);
+    if (!data) return;
+    const { keep, dropped } = settleTicks([...ticked], data.rows, data.picked, data.asked, taken);
+    if (!dropped.length) return;
+    setNotice(droppedLine(dropped, (id) => kept.current.get(id)?.trx_id));
+    for (const d of dropped) kept.current.delete(d.id);
+    setTicked(new Set(keep));
+    // Only a fresh load decides; a tick made since then is judged by the load it starts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, taken]);
 
-  const chosen = rows.filter((r) => ticked.has(r.id));
+  const chosen = tickedRows([...ticked], rows, data?.picked ?? [], kept.current);
+  const offList = chosen.filter((r) => !rows.some((x) => x.id === r.id)).length;
   const sending = (data?.payouts ?? []).filter((p) => p.status === "sending" || p.status === "unsure");
   const openSum = rows.filter((r) => !taken.has(r.id) && !payoutRefusal(r, taken)).reduce((s, r) => s + Number(r.amount), 0);
   const paidSum = rows.filter((r) => taken.has(r.id)).reduce((s, r) => s + Number(r.amount), 0);
 
   function toggle(id: string) {
+    const row = rows.find((r) => r.id === id);
+    if (ticked.has(id)) {
+      kept.current.delete(id);
+    } else {
+      if (ticked.size >= MOST_TICKS) { setNotice(`One payout takes at most ${MOST_TICKS} transactions. Pay these first.`); return; }
+      if (row) kept.current.set(id, row);
+    }
+    setNotice("");
     setTicked((t) => {
       const n = new Set(t);
       if (n.has(id)) n.delete(id); else n.add(id);
       return n;
     });
+  }
+  function clearTicks() {
+    kept.current.clear();
+    setNotice("");
+    setTicked(new Set());
+  }
+  function toggleAll() {
+    const next = toggleShown([...ticked], tickable.map((r) => r.id));
+    for (const r of tickable) if (next.includes(r.id)) kept.current.set(r.id, r);
+    for (const id of ticked) if (!next.includes(id)) kept.current.delete(id);
+    setNotice("");
+    setTicked(new Set(next));
   }
   const tickable = shown.filter((r) => tickableRefusal(payoutRefusal(r, taken)));
   const allTicked = tickable.length > 0 && tickable.every((r) => ticked.has(r.id));
@@ -205,10 +243,13 @@ export function Payouts() {
           devices={devices.list}
           nameOf={devices.nameOf}
           recent={recentNumbers(data?.payouts ?? [])}
-          onDone={() => { setTicked(new Set()); reload(); }}
-          onClear={() => setTicked(new Set())}
+          offList={offList}
+          onRemove={toggle}
+          onDone={() => { clearTicks(); reload(); }}
+          onClear={clearTicks}
         />
       ) : null}
+      {notice ? <p className="mb-4 rounded-lg border border-status-warn bg-status-warn-bg p-3 text-sm text-status-warn" role="status">{notice}</p> : null}
 
       <Card className="overflow-hidden">
         <div className="flex items-center gap-3 border-b border-border px-4 py-2 text-sm text-muted-foreground">
@@ -218,7 +259,7 @@ export function Payouts() {
             aria-label="Tick every transaction that can be paid out"
             checked={allTicked}
             disabled={!tickable.length}
-            onChange={() => setTicked(allTicked ? new Set() : new Set(tickable.slice(0, 200).map((r) => r.id)))}
+            onChange={toggleAll}
           />
           <span>{shown.length} transaction{shown.length === 1 ? "" : "s"}</span>
         </div>
@@ -292,9 +333,12 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String((e as {
 
 /** The panel that appears once something is ticked: the split, the sender, the number (typed twice), and the confirm. */
 function PayoutPanel({
-  chosen, defaultPct, defaultFee, devices, nameOf, recent, onDone, onClear,
+  chosen, defaultPct, defaultFee, devices, nameOf, recent, offList, onRemove, onDone, onClear,
 }: {
   chosen: Payment[];
+  /** How many of the ticked transactions are not on the list right now (ticked before a search or other dates). */
+  offList: number;
+  onRemove: (id: string) => void;
   defaultPct: number;
   defaultFee: number;
   devices: ReturnType<typeof useDevices>["list"];
@@ -392,6 +436,29 @@ function PayoutPanel({
         <h2 className="text-base font-semibold"><HandCoins className="mr-1 inline h-4 w-4" aria-hidden /> Pay out {chosen.length} transaction{chosen.length === 1 ? "" : "s"}: {tk(total)}</h2>
         <Button variant="ghost" size="sm" onClick={onClear}>Clear ticks</Button>
       </div>
+      {/* Everything this payout covers, whatever the list below is showing now. */}
+      <ul className="max-h-56 divide-y divide-border overflow-auto rounded-lg border border-border text-sm" aria-label="Ticked transactions">
+        {chosen.map((r) => (
+          <li key={r.id} className="flex items-center gap-2 px-3 py-1.5">
+            <ProviderChip provider={r.provider} />
+            <span className="min-w-0 truncate font-mono text-xs">{r.trx_id}</span>
+            <span className="hidden min-w-0 truncate text-xs text-muted-foreground sm:inline">{nameOf(r.device_id)} · {when(r.occurred_at ?? r.received_at)}</span>
+            <span className="ml-auto shrink-0 font-medium tabular">{tk(r.amount)}</span>
+            <button
+              type="button"
+              onClick={() => onRemove(r.id)}
+              aria-label={`Take ${r.trx_id} out of this payout`}
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <X className="h-4 w-4" aria-hidden />
+            </button>
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs text-muted-foreground">
+        To add more, search or change the phone or dates below and tick: these stay ticked.
+        {offList ? ` ${offList} of them ${offList === 1 ? "is" : "are"} not in the list below right now.` : ""}
+      </p>
       {mixed ? <p className="text-xs text-muted-foreground">These came in on more than one wallet; they are paid out together from the one wallet you choose below.</p> : null}
 
       <div className="grid gap-4 md:grid-cols-3">

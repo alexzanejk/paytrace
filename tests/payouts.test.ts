@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import {
-  checkNumbers, extraSplit, feeLine, parseMoney, keepPctFor, parseSendAmount, groupDigits, parseFee, liveItemsByPayment, parsePct, payoutLine, payoutRefusal, tickableRefusal, recentNumbers, sendMethod, sendProblem, senderOptions, splitPayout,
+  checkNumbers, droppedLine, settleTicks, tickedRows, toggleShown, MOST_TICKS, extraSplit, feeLine, parseMoney, keepPctFor, parseSendAmount, groupDigits, parseFee, liveItemsByPayment, parsePct, payoutLine, payoutRefusal, tickableRefusal, recentNumbers, sendMethod, sendProblem, senderOptions, splitPayout,
   type PayoutRow,
 } from "../dashboard/src/lib/payouts.ts";
 import { accountTitle, checkLine, figures, sourceLine, type DayMoneyRow } from "../dashboard/src/lib/dayMoney.ts";
@@ -141,6 +141,45 @@ check("money: 0, negative and junk refused", parseMoney("0") === null && parseMo
 }
 check("a hand record names the transaction it paid on",
   payoutLine({ id: "x", method: "manual", status: "paid", device_id: null, provider: null, from_account: null, to_number: "01712345678", total_amount: 1000, keep_pct: 20, keep_amount: 200, send_amount: 800, command_id: null, trx_id: null, balance_after: null, error: null, note: null, created_at: "", paid_at: null, extra: true, for_trx: "DKB1CVD04L" }, () => "").includes("for TrxID DKB1CVD04L"));
+
+// ---- ticks outlive the list (owner 2026-11-14: "selecting one you can't search another") ----
+{
+  const row = (id: string, over: Record<string, unknown> = {}) => ({ id, txn_type: "cash_out", status: "tracked_only", chain_status: "ok", review_reason: null, ...over });
+  const none = new Set<string>();
+  // Ticked A, then searched for B: the list shows only B, and A was re-read off the list.
+  const a = settleTicks(["A"], [row("B")], [row("A")], ["A"], none);
+  check("a tick survives a search that hides its row", a.keep.join() === "A" && a.dropped.length === 0, a);
+  const b = settleTicks(["A", "B"], [row("B")], [row("A")], ["A"], none);
+  check("ticking the found one keeps both", b.keep.join() === "A,B", b);
+  // The list changed but the load that will re-read A has not come back yet: nothing is known, so nothing is dropped.
+  const c = settleTicks(["A"], [row("B")], [], [], none);
+  check("a tick nobody has re-checked yet is kept", c.keep.join() === "A" && c.dropped.length === 0, c);
+  // Paid in another tab while it was off the list.
+  const d = settleTicks(["A", "B"], [row("B")], [row("A")], ["A"], new Set(["A"]));
+  check("an off-list tick that was paid meanwhile is taken out", d.keep.join() === "B" && d.dropped[0]?.id === "A" && d.dropped[0]?.why === "Already paid out", d);
+  const e = settleTicks(["A"], [], [row("A", { status: "ignored" })], ["A"], none);
+  check("an off-list tick that became unpayable is taken out", e.keep.length === 0 && e.dropped[0]?.why === "Not counted", e);
+  const f = settleTicks(["A"], [], [], ["A"], none);
+  check("a tick whose row is gone from the database is taken out", f.keep.length === 0 && f.dropped.length === 1, f);
+  const g = settleTicks(["A"], [], [row("A", { status: "review", chain_status: "mismatch", review_reason: "balance_chain_mismatch" })], ["A"], none);
+  check("a held tick stays (it can be marked paid by hand)", g.keep.join() === "A", g);
+  const h = settleTicks(["A"], [row("A", { status: "ignored" })], [row("A")], ["A"], none);
+  check("the row on screen is believed over an older re-read", h.keep.length === 0, h);
+
+  const kept = new Map([["A", { id: "A", amount: 1 }], ["B", { id: "B", amount: 2 }]]);
+  const rows = tickedRows(["B", "A"], [{ id: "B", amount: 20 }], [{ id: "A", amount: 10 }], kept);
+  check("ticked rows come in tick order, each the freshest copy", rows.map((r) => `${r.id}:${r.amount}`).join() === "B:20,A:10", rows);
+  check("a tick not re-read yet still shows, as it was when ticked", tickedRows(["A"], [], [], kept)[0]?.amount === 1);
+
+  check("the top tick adds what is shown and keeps off-list ticks", toggleShown(["X"], ["A", "B"]).join() === "X,A,B");
+  check("the top tick, when all shown are ticked, takes only those off", toggleShown(["X", "A", "B"], ["A", "B"]).join() === "X");
+  check("the top tick never passes the limit", toggleShown(["X"], ["A", "B", "C"], 3).join() === "X,A,B" && MOST_TICKS === 200);
+  check("nothing shown changes nothing", toggleShown(["X"], []).join() === "X");
+
+  const line = droppedLine([{ id: "A", why: "Already paid out" }], (id) => (id === "A" ? "DKB6CCN518" : undefined));
+  check("a dropped tick is named with its reason", line === "A ticked transaction was taken out: DKB6CCN518 (already paid out).", line);
+  check("no dropped tick, no line", droppedLine([], () => undefined) === "");
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
