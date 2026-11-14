@@ -260,7 +260,7 @@ export function DocsPage() {
             <Table
               head={["Field", "Required", "What it is"]}
               rows={[
-                ["amount", "yes", "Number from 500 to 50000, up to 2 decimals. In taka (BDT). Anything outside this range is refused with a 400 error. The customer must pay exactly this."],
+                ["amount", "yes", "Number from 500 to 50000, up to 2 decimals. In taka (BDT). The owner may agree a lower minimum for your site (down to 100); the error message always states your site's own range. Anything outside it is refused with a 400 error. The customer must pay exactly this."],
                 ["order_id", "yes", "YOUR own order number (up to 100 characters). Sending the same order_id again returns the same deposit, so retrying is safe."],
                 ["provider", "yes", <><M>bkash</M>, <M>nagad</M>, <M>rocket</M> or <M>upay</M>: the method the customer chose on your page. For crypto use <M>usdt_bep20</M> or <M>usdt_trc20</M> (see the USDT note below).</>],
                 ["method", "no", <><M>send_money</M> or <M>cash_out</M>. Use it when you offer both for one provider (for example Nagad Send Money and Nagad Cash Out). Leave it out to accept either.</>],
@@ -398,7 +398,7 @@ export function DocsPage() {
 
           <Section id="test" title="Testing and going live">
             <ol className="list-decimal space-y-2 pl-5 text-neutral-700">
-              <li>Ask the owner for a key and webhook secret, and for how to test with the smallest allowed amount (500 taka).</li>
+              <li>Ask the owner for a key and webhook secret, and for how to test with the smallest allowed amount (500 taka, or your site's own minimum if the owner lowered it).</li>
               <li>Create a deposit from your server and open the <M>pay_url</M> on your phone.</li>
               <li>Pay the number shown with a real transfer, then enter the TrxID.</li>
               <li>Confirm your server received a verified <M>deposit.paid</M> and credited the test customer exactly once.</li>

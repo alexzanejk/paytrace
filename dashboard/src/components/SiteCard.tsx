@@ -6,6 +6,7 @@ import { sb } from "@/lib/supabase";
 import { when } from "@/lib/format";
 import { depositInstructions } from "@/lib/apiDocs";
 import { RESULT_STYLE_NAMES } from "@/pay/ResultScreens";
+import { DEFAULT_MIN_DEPOSIT, LOWEST_MIN_DEPOSIT, minDepositLine, parseMinDeposit } from "@/lib/minDeposit";
 import { CRYPTO_STYLE_NAMES } from "@/pay/CryptoPanel";
 import { Confirm } from "@/components/Confirm";
 import { CopyButton } from "@/components/CopyButton";
@@ -28,6 +29,8 @@ export interface SiteKey {
   crypto_result_style: number | null;
   redirect_success_url: string | null;
   redirect_failed_url: string | null;
+  /** The smallest deposit this site may ask for (500 unless lowered; never under 100). */
+  min_deposit: number;
 }
 
 const AUTO = "auto";
@@ -95,6 +98,57 @@ function KeyReveal({ siteId, hasSecret }: { siteId: string; hasSecret: boolean }
 }
 
 /** One website that uses PayTrace: its key, where its payment results go, how its result page looks, and what to send its developer. */
+/** The smallest deposit this site may ask for (owner 2026-11-14): 500 like every site, or lowered down to 100 for this
+ *  one. The same for bKash, Nagad, Rocket and USDT. The database checks it when each order is made. */
+function MinDeposit({ site, onSaved }: { site: SiteKey; onSaved: () => void }) {
+  const current = site.min_deposit ?? DEFAULT_MIN_DEPOSIT;
+  const [text, setText] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const shown = text ?? String(current);
+  const value = parseMinDeposit(shown);
+  const changed = value !== null && value !== current;
+
+  async function save(amount: number) {
+    setBusy(true); setNote("");
+    const { error } = await sb.rpc("set_key_min_deposit", { p_id: site.id, p_amount: amount });
+    setBusy(false);
+    if (error) { setNote(error.message); return; }
+    setText(null);
+    setNote("Saved.");
+    onSaved();
+  }
+
+  return (
+    <section className="grid gap-2">
+      <h4 className="text-sm font-semibold">Smallest deposit</h4>
+      <p className="text-xs text-muted-foreground">
+        Every site starts at {DEFAULT_MIN_DEPOSIT} taka. Lower it here for this site only, down to {LOWEST_MIN_DEPOSIT}. It counts for bKash, Nagad, Rocket and USDT; the largest stays 50,000.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2 text-sm">
+          <span>From</span>
+          <Input
+            className="w-28 tabular"
+            inputMode="numeric"
+            value={shown}
+            onChange={(e) => { setText(e.target.value); setNote(""); }}
+            aria-label={`Smallest deposit for ${site.name}`}
+          />
+          <span>taka</span>
+        </label>
+        <Button size="sm" onClick={() => value !== null && void save(value)} disabled={!changed || busy}>{busy ? "Saving…" : "Save"}</Button>
+        {current !== DEFAULT_MIN_DEPOSIT ? (
+          <Button size="sm" variant="ghost" onClick={() => void save(DEFAULT_MIN_DEPOSIT)} disabled={busy}>Back to {DEFAULT_MIN_DEPOSIT}</Button>
+        ) : null}
+      </div>
+      {value === null ? <p className="text-xs text-status-warn">Type a whole amount from {LOWEST_MIN_DEPOSIT} to {DEFAULT_MIN_DEPOSIT}.</p> : null}
+      <p className={`text-xs ${current !== DEFAULT_MIN_DEPOSIT ? "text-status-warn" : "text-muted-foreground"}`}>{minDepositLine(current)}</p>
+      {note ? <p className={`text-xs ${note === "Saved." ? "text-status-ok" : "text-status-bad"}`}>{note}</p> : null}
+    </section>
+  );
+}
+
 export function SiteCard({ site, outbox = [], numbers, onChanged, onRevoke }: { site: SiteKey; outbox?: OutboxRow[]; numbers?: { lines: string[]; unchosen: number }; onChanged: () => void; onRevoke: () => void }) {
   const [url, setUrl] = useState("");
   const [hookBusy, setHookBusy] = useState(false);
@@ -315,6 +369,8 @@ export function SiteCard({ site, outbox = [], numbers, onChanged, onRevoke }: { 
         </div>
       </section>
 
+      <MinDeposit site={site} onSaved={onChanged} />
+
       <section className="grid gap-2">
         <h4 className="text-sm font-semibold">4. Which deposit numbers this site shows</h4>
         {numbers && numbers.lines.length ? (
@@ -331,7 +387,7 @@ export function SiteCard({ site, outbox = [], numbers, onChanged, onRevoke }: { 
 
       <section className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
         <div className="flex flex-wrap items-center gap-2">
-          <CopyButton text={() => depositInstructions()} label="Copy developer brief" />
+          <CopyButton text={() => depositInstructions(undefined, site.min_deposit ?? DEFAULT_MIN_DEPOSIT)} label="Copy developer brief" />
           <span className="text-xs text-muted-foreground">Plain text for the developer. It does not contain the key.</span>
         </div>
         <Confirm
