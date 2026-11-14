@@ -1,11 +1,15 @@
-import { useState } from "react";
-import { BatteryMedium, BellRing, ChevronLeft, ChevronRight, Check, HeartPulse, ListOrdered, Pencil, Smartphone, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, BatteryMedium, BellRing, ChevronLeft, ChevronRight, Check, ListOrdered, Pencil, Smartphone, X } from "lucide-react";
 import { must, sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { PROVIDER_LABEL, type Device, type DeviceBalance, type DeviceWallet } from "@/lib/types";
 import { addDays, dayLabel, dhakaDay, groupSummary, summarize, type DayTotal } from "@/lib/period";
 import { openPaymentsWith } from "@/lib/filters";
-import { infoProblems } from "@/lib/deviceHealth";
+import { agoText, blockingProblems, infoProblems } from "@/lib/deviceHealth";
+import { PHONE_TABS, phoneHash, phoneProblems, phoneTabOf, problemLine, tabCounts, type PhoneProblem, type PhoneTabId } from "@/lib/phoneList";
+import { useHashPath } from "@/hooks/useHashPath";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { useQuery } from "@/hooks/useQuery";
 import { wakePhone, WAKE_TEXT } from "@/lib/wake";
 import { Screen } from "@/components/Screen";
@@ -25,7 +29,7 @@ import { B2bCommand } from "@/components/B2bCommand";
 import { PhonePermissions } from "@/components/PhonePermissions";
 import { AppVersionCard, OutdatedCard, VersionChip } from "@/components/AppVersionCard";
 import { latestReleaseBuild } from "@/lib/latestRelease";
-import { newestOf } from "@/lib/appVersion";
+import { buildNumber, newestOf } from "@/lib/appVersion";
 import { GROUP_CODE, GroupChoice } from "@/components/GroupChoice";
 import { CommissionCard } from "@/components/CommissionCard";
 import { B2BFloat } from "@/components/B2BFloat";
@@ -52,6 +56,13 @@ export function Devices() {
   const [day, setDay] = useState(dhakaDay());
   const today = dhakaDay();
   const now = useNow(5000);
+  // "#/devices/<phone id>/<tab>" opens one phone's own page; "#/devices" is the list.
+  const path = useHashPath();
+  const openId = path[0] === "devices" ? path[1] : undefined;
+  const phoneTab = phoneTabOf(path[2]);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [openId]);
 
   const { data, error, loading, refresh } = useQuery(
     async () => {
@@ -147,12 +158,7 @@ export function Devices() {
     setWakingAll(false);
   }
 
-  return (
-    <Screen loading={loading} error={error} hasData={!!data}>
-      <PageHeader
-        title="Phones"
-        description="Each phone that forwards payment messages. Totals run from 12:00 AM to 11:59 PM Bangladesh time."
-        actions={
+  const dayNav = (
           <div className="flex max-w-full flex-wrap items-center gap-1">
             <Button variant="outline" size="icon" aria-label="Previous day" onClick={() => setDay(addDays(day, -1))}>
               <ChevronLeft />
@@ -173,7 +179,78 @@ export function Devices() {
                 Today
               </Button>
             ) : null}
-            <Button size="sm" className="ml-2" onClick={() => void wakeAll()} disabled={wakingAll || offline.length === 0}>
+          </div>
+  );
+
+  /** What is wrong with a phone right now, worst first (the list shows the first; the phone's page shows them all). */
+  const problemsOf = (d: Device): PhoneProblem[] => {
+    const h = deviceHealth(d, now);
+    const blocking = blockingProblems(d.info);
+    const build = buildNumber(d.info?.app_version);
+    return phoneProblems({
+      online: h.level === "online",
+      lastHeard: agoText(h.minutes),
+      blocking,
+      otherProblems: Math.max(0, infoProblems(d.info).length - blocking.length),
+      buildsBehind: build !== null && data?.newestBuild ? Math.max(0, data.newestBuild - build) : null,
+      openGaps: (data?.gaps ?? []).filter((g) => g.device_id === d.id).length,
+    });
+  };
+  /** A phone's money for the day: every movement counted once when that could be loaded, else the SMS totals. */
+  const moneyOf = (d: Device) => {
+    const s = perDevice.get(d.id) ?? summarize([]);
+    const merged = data?.dayMoneyError ? null : dayTotals(rowsOf(data?.dayMoney ?? [], d.id));
+    return { received: merged ? merged.received : s.received, cashOut: merged ? merged.cashOut : s.cashOut, commission: s.commission };
+  };
+
+  const openDevice = approved.find((d) => d.id === openId);
+  if (data && openDevice) {
+    const d = openDevice;
+    return (
+      <Screen loading={loading} error={error} hasData={!!data}>
+        <PhonePage
+          key={d.id}
+          device={d}
+          tab={phoneTab}
+          problems={problemsOf(d)}
+          dayNav={dayNav}
+          day={day}
+          sum={perDevice.get(d.id)}
+          balances={data.balances.filter((b) => b.device_id === d.id)}
+          floats={data.floats.filter((f) => f.device_id === d.id)}
+          floatsError={data.floatsError}
+          gaps={data.gaps.filter((g) => g.device_id === d.id)}
+          notOurs={data.notOurs}
+          wallets={data.wallets.filter((w) => w.device_id === d.id)}
+          walletStats={data.walletStats.filter((x) => x.device_id === d.id)}
+          dayMoney={rowsOf(data.dayMoney, d.id)}
+          dayMoneyError={data.dayMoneyError}
+          dayChecks={data.dayChecks.filter((c) => c.device_id === d.id)}
+          dayCheckError={data.dayCheckError}
+          rates={data.rates.filter((r) => r.device_id === d.id)}
+          commission={data.commission.find((c) => c.device_id === d.id)}
+          newest={data.newestBuild}
+          error={failed[d.id]}
+          onChanged={refresh}
+          onRemove={async () => {
+            await setStatus(d, "revoked");
+            window.location.hash = "#/devices";
+          }}
+          onError={(m) => setFailed((f) => ({ ...f, [d.id]: m }))}
+        />
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen loading={loading} error={error} hasData={!!data}>
+      <PageHeader
+        title="Phones"
+        description="Each phone that forwards payment messages. Tap a phone to open it. Totals run from 12:00 AM to 11:59 PM Bangladesh time."
+        actions={
+          <div className="flex max-w-full flex-wrap items-center gap-2">
+            {dayNav}
+            <Button size="sm" onClick={() => void wakeAll()} disabled={wakingAll || offline.length === 0}>
               <BellRing aria-hidden /> {wakingAll ? "Sending…" : offline.length ? `Wake ${offline.length} offline` : "All online"}
             </Button>
           </div>
@@ -181,16 +258,6 @@ export function Devices() {
       />
 
       {wakeAllNote ? <p role="status" className="mb-4 text-sm text-muted-foreground">{wakeAllNote}</p> : null}
-
-      <OutdatedCard phones={approved.map((d) => ({ name: d.name, version: d.info?.app_version }))} newest={data?.newestBuild ?? null} />
-
-      <AppVersionCard
-        newest={data?.newestBuild ?? null}
-        fromLink={data?.fromLink ?? null}
-        notes={data?.release?.notes ?? null}
-        versions={approved.map((d) => d.info?.app_version)}
-        onChanged={refresh}
-      />
 
       <div className={`mb-6 ${STAT_GRID}`}>
         <StatCard tone="blue" label="Phones online" value={`${online} of ${approved.length}`} sub={dayLabel(day)} icon={Smartphone} />
@@ -262,7 +329,7 @@ export function Devices() {
       ) : null}
 
       {coverage.missing.length > 0 || coverage.invalid.length > 0 ? (
-        <Card className="border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100" role="status">
+        <Card className="mb-4 border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100" role="status">
           <p className="font-medium">Deposit numbers need attention</p>
           <ul className="mt-1 list-disc pl-5">
             {coverage.invalid.map((x) => (
@@ -285,41 +352,84 @@ export function Devices() {
           </p>
         </Card>
       ) : (
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 2xl:grid-cols-2">
+        <Card className="divide-y divide-border overflow-hidden">
           {approved.map((d) => (
-            <DeviceCard
-              key={d.id}
-              device={d}
-              day={day}
-              sum={perDevice.get(d.id)}
-              balances={(data?.balances ?? []).filter((b) => b.device_id === d.id)}
-              floats={(data?.floats ?? []).filter((f) => f.device_id === d.id)}
-              floatsError={data?.floatsError ?? ""}
-              gaps={(data?.gaps ?? []).filter((g) => g.device_id === d.id)}
-              notOurs={data?.notOurs ?? []}
-              wallets={(data?.wallets ?? []).filter((w) => w.device_id === d.id)}
-              walletStats={(data?.walletStats ?? []).filter((x) => x.device_id === d.id)}
-              dayMoney={rowsOf(data?.dayMoney ?? [], d.id)}
-              dayMoneyError={data?.dayMoneyError ?? ""}
-              dayChecks={(data?.dayChecks ?? []).filter((c) => c.device_id === d.id)}
-              dayCheckError={data?.dayCheckError ?? ""}
-              rates={(data?.rates ?? []).filter((r) => r.device_id === d.id)}
-              commission={(data?.commission ?? []).find((c) => c.device_id === d.id)}
-              newest={data?.newestBuild ?? null}
-              error={failed[d.id]}
-              onChanged={refresh}
-              onRemove={() => setStatus(d, "revoked")}
-              onError={(m) => setFailed((f) => ({ ...f, [d.id]: m }))}
-            />
+            <PhoneRow key={d.id} device={d} online={deviceHealth(d, now).level === "online"} money={moneyOf(d)} problems={problemsOf(d)} />
           ))}
-        </div>
+        </Card>
       )}
+
+      <div className="mt-6">
+      <OutdatedCard phones={approved.map((d) => ({ name: d.name, version: d.info?.app_version }))} newest={data?.newestBuild ?? null} />
+
+      <AppVersionCard
+        newest={data?.newestBuild ?? null}
+        fromLink={data?.fromLink ?? null}
+        notes={data?.release?.notes ?? null}
+        versions={approved.map((d) => d.info?.app_version)}
+        onChanged={refresh}
+      />
+      </div>
     </Screen>
   );
 }
 
-function DeviceCard({
+/** One phone as one line of the list: who it is, whether it is up, the day's money, and the worst thing wrong with it. */
+function PhoneRow({
   device: d,
+  money,
+  problems,
+  online,
+}: {
+  device: Device;
+  online: boolean;
+  money: { received: { amount: number; n: number }; cashOut: { amount: number; n: number } };
+  problems: PhoneProblem[];
+}) {
+  const worst = problems[0];
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        window.location.hash = phoneHash(d.id);
+      }}
+      className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/60 focus-visible:bg-muted/60"
+    >
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <DeviceChip id={d.id} name={d.name || "Unnamed phone"} className="text-base font-semibold" />
+          <Badge tone={online ? "ok" : "bad"}>{online ? "Online" : "Offline"}</Badge>
+          {d.info?.battery !== undefined ? (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><BatteryMedium className="h-3.5 w-3.5" aria-hidden />{d.info.battery}%</span>
+          ) : null}
+        </span>
+        <span className="mt-1 block text-xs text-muted-foreground tabular sm:hidden">
+          Received {tk(money.received.amount)} · Cash Out {tk(money.cashOut.amount)}
+        </span>
+        <span className={cn("mt-1 block text-xs", !worst ? "text-muted-foreground" : worst.tone === "bad" ? "text-status-bad" : "text-status-warn")}>
+          {worst ? problemLine(problems) : "Nothing wrong"}
+        </span>
+      </span>
+      <span className="hidden shrink-0 text-right sm:block">
+        <span className="block text-xs text-muted-foreground">Received</span>
+        <span className="block whitespace-nowrap text-sm font-semibold tabular">{tk(money.received.amount)}</span>
+      </span>
+      <span className="hidden shrink-0 text-right sm:block">
+        <span className="block text-xs text-muted-foreground">Cash Out</span>
+        <span className="block whitespace-nowrap text-sm font-semibold tabular">{tk(money.cashOut.amount)}</span>
+      </span>
+      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+    </button>
+  );
+}
+
+/** One phone's own page (owner 2026-11-13: the long card had every control of a phone on one screen). The same
+ *  controls as before, sorted under five tabs; nothing was taken away. */
+function PhonePage({
+  device: d,
+  tab,
+  problems,
+  dayNav,
   day,
   sum,
   balances,
@@ -342,6 +452,9 @@ function DeviceCard({
   onError,
 }: {
   device: Device;
+  tab: PhoneTabId;
+  problems: PhoneProblem[];
+  dayNav: React.ReactNode;
   day: string;
   sum: ReturnType<typeof summarize> | undefined;
   balances: DeviceBalance[];
@@ -365,7 +478,6 @@ function DeviceCard({
 }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(d.name);
-  const [showHealth, setShowHealth] = useState(false);
   const [waking, setWaking] = useState(false);
   const [wakeNote, setWakeNote] = useState("");
   const s = sum ?? summarize([]);
@@ -374,7 +486,10 @@ function DeviceCard({
   const merged = dayMoneyError ? null : dayTotals(dayMoney);
   const received = merged ? merged.received : s.received;
   const cashOut = merged ? merged.cashOut : s.cashOut;
-  const problems = infoProblems(d.info).length;
+  const counts = tabCounts(problems);
+  const open = (t: PhoneTabId) => {
+    window.location.hash = phoneHash(d.id, t);
+  };
 
   /** Sends one wake-up push to this phone right now. If it arrives, the phone is back within a minute or two. */
   async function testWake() {
@@ -392,105 +507,185 @@ function DeviceCard({
     onChanged();
   }
 
-  return (
-    <Card className="flex min-w-0 flex-col gap-4 p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          {editing ? (
-            <form
-              className="flex items-center gap-1"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void save();
-              }}
-            >
-              <Input autoFocus value={name} maxLength={40} onChange={(e) => setName(e.target.value)} aria-label="Phone name" className="h-9" />
-              <Button type="submit" size="icon" variant="ghost" aria-label="Save name"><Check /></Button>
-              <Button type="button" size="icon" variant="ghost" aria-label="Cancel" onClick={() => { setName(d.name); setEditing(false); }}><X /></Button>
-            </form>
-          ) : (
-            <div className="flex items-center gap-1">
-              <h3 className="min-w-0 text-lg font-semibold"><DeviceChip id={d.id} name={d.name || "Unnamed phone"} className="text-lg" /></h3>
-              <Button size="icon" variant="ghost" aria-label="Rename this phone" onClick={() => setEditing(true)}><Pencil /></Button>
-            </div>
-          )}
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
-            <span className="font-mono">{d.pair_code}</span>
-            {d.info?.battery !== undefined ? (
-              <span className="inline-flex items-center gap-1"><BatteryMedium className="h-3.5 w-3.5" aria-hidden />{d.info.battery}%</span>
-            ) : null}
-            <VersionChip version={d.info?.app_version} newest={newest} />
-          </p>
-        </div>
-        <DeviceHealthBadge device={d} />
-      </div>
-
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        <div>
-          <p className="text-xs text-muted-foreground">Received</p>
-          <p className="whitespace-nowrap text-base font-semibold tabular sm:text-lg">{tk(received.amount)}</p>
-          <p className="text-xs text-muted-foreground">{received.n} payments</p>
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground">Cash Out</p>
-          <p className="whitespace-nowrap text-base font-semibold tabular sm:text-lg">{tk(cashOut.amount)}</p>
-          <p className="text-xs text-muted-foreground">{cashOut.n} receipts</p>
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground">Commission</p>
-          <p className="whitespace-nowrap text-base font-semibold tabular sm:text-lg">{tk(s.commission)}</p>
-        </div>
-      </div>
-
-      <DayMoney deviceId={d.id} rows={dayMoney} checks={dayChecks} error={dayMoneyError} checkError={dayCheckError} dayLabel={dayLabel(day)} today={day === dhakaDay()} />
-
-      <WalletsCard deviceId={d.id} wallets={wallets} reported={d.info?.wallets} stats={walletStats} defaultGroup={d.default_group ?? "main"} onChanged={onChanged} />
-
-      <B2BFloat deviceId={d.id} floats={floats} loadError={floatsError} balances={balances} gaps={gaps} onChanged={onChanged} />
-
-      <CommissionCard device={d} rates={rates} balance={commission} onChanged={onChanged} />
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" onClick={() => openPaymentsWith({ device: d.id, from: day, to: day })}>
-          <ListOrdered aria-hidden /> View transactions
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => setShowHealth((v) => !v)} aria-expanded={showHealth}>
-          <HeartPulse aria-hidden /> Phone health{problems ? ` (${problems})` : ""}
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => void testWake()} disabled={waking}>
-          <BellRing aria-hidden /> {waking ? "Sending…" : "Wake up now"}
-        </Button>
-        <Confirm
-          title={`Remove ${d.name || d.pair_code}?`}
-          description="It stops sending payments immediately. Its old transactions stay. To use it again you would approve a new code on that phone."
-          confirmLabel="Remove"
-          onConfirm={onRemove}
-        >
-          <Button size="sm" variant="ghost">Remove</Button>
-        </Confirm>
-        {error ? <span className="text-xs text-destructive">{error}</span> : null}
-      </div>
-      {wakeNote ? <p role="status" className="text-sm text-muted-foreground">{wakeNote}</p> : null}
-      {d.status === "approved" ? (
-        <div className="flex flex-col gap-2">
-          <PhoneActions deviceId={d.id} />
-          <PhonePermissions device={d} onChanged={onChanged} />
-          {d.allow_balance !== false ? WALLETS.map((w) => <BalanceCheck key={w} deviceId={d.id} provider={w} appBalance={(d.info as { app_balance?: unknown } | null | undefined)?.app_balance} appNagad={(d.info as { app_nagad?: unknown } | null | undefined)?.app_nagad} />) : null}
-          {d.allow_cashin === true ? <CashInSection deviceId={d.id} /> : null}
-          {d.allow_cashin === true ? <B2bCommand deviceId={d.id} /> : null}
-          {d.allow_balance !== false ? <StatementSection deviceId={d.id} wallets={d.info?.wallets} /> : null}
-        </div>
-      ) : null}
-      {(() => {
-        const ignored = notOursLines(notOurs, d.id, d.info?.wallets);
-        return ignored.length ? (
-          <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm" role="note">
-            {ignored.map((line) => <p key={line}>{line}</p>)}
-            <p className="mt-1 text-xs text-muted-foreground">{NOT_OURS_RULE}</p>
-          </div>
-        ) : null;
-      })()}
-      {showHealth ? <DeviceDetails info={d.info} /> : null}
+  const ignored = notOursLines(notOurs, d.id, d.info?.wallets);
+  const off = (what: string, switchName: string) => (
+    <Card className="p-4 text-sm">
+      <p className="font-medium">{what} is switched off for this phone.</p>
+      <p className="mt-1 text-muted-foreground">
+        Switch on “{switchName}” under “What the dashboard may do with this phone”{tab === "send" ? " above" : " on the Send money tab"}.
+      </p>
+      {tab === "send" ? null : <Button size="sm" variant="outline" className="mt-3" onClick={() => open("send")}>Open Send money</Button>}
     </Card>
+  );
+
+  return (
+    <div className="flex min-w-0 flex-col gap-4">
+      <div>
+        <Button variant="ghost" size="sm" className="-ml-2" onClick={() => { window.location.hash = "#/devices"; }}>
+          <ArrowLeft aria-hidden /> All phones
+        </Button>
+      </div>
+
+      <Card className="flex flex-col gap-3 p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            {editing ? (
+              <form
+                className="flex items-center gap-1"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void save();
+                }}
+              >
+                <Input autoFocus value={name} maxLength={40} onChange={(e) => setName(e.target.value)} aria-label="Phone name" className="h-9" />
+                <Button type="submit" size="icon" variant="ghost" aria-label="Save name"><Check /></Button>
+                <Button type="button" size="icon" variant="ghost" aria-label="Cancel" onClick={() => { setName(d.name); setEditing(false); }}><X /></Button>
+              </form>
+            ) : (
+              <div className="flex items-center gap-1">
+                <h2 className="min-w-0 text-xl font-semibold"><DeviceChip id={d.id} name={d.name || "Unnamed phone"} className="text-xl" /></h2>
+                <Button size="icon" variant="ghost" aria-label="Rename this phone" onClick={() => setEditing(true)}><Pencil /></Button>
+              </div>
+            )}
+            <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
+              <span className="font-mono">{d.pair_code}</span>
+              {d.info?.battery !== undefined ? (
+                <span className="inline-flex items-center gap-1"><BatteryMedium className="h-3.5 w-3.5" aria-hidden />{d.info.battery}%</span>
+              ) : null}
+              <VersionChip version={d.info?.app_version} newest={newest} />
+            </p>
+          </div>
+          <DeviceHealthBadge device={d} />
+        </div>
+        {problems.length ? (
+          <ul className="flex flex-col gap-1 text-sm">
+            {problems.map((p) => (
+              <li key={p.text}>
+                <button type="button" onClick={() => open(p.tab)} className={cn("text-left underline-offset-2 hover:underline", p.tone === "bad" ? "text-status-bad" : "text-status-warn")}>
+                  {p.text}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      </Card>
+
+      <nav aria-label="This phone's pages" className="-mx-4 overflow-x-auto px-4 lg:mx-0 lg:px-0">
+        <div className="flex w-max gap-1 rounded-xl border border-border bg-card p-1">
+          {PHONE_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => open(t.id)}
+              aria-current={tab === t.id ? "page" : undefined}
+              className={cn(
+                "flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
+                tab === t.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              {t.label}
+              {tab !== t.id && counts[t.id] > 0 ? (
+                <span className="rounded-full bg-status-warn-bg px-2 py-0.5 text-xs font-semibold text-status-warn">{counts[t.id]}</span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      {tab === "today" ? (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-base font-semibold">Money · {dayLabel(day)}</h3>
+            {dayNav}
+          </div>
+          <Card className="grid grid-cols-3 gap-2 p-4 sm:gap-3 sm:p-5">
+            <div>
+              <p className="text-xs text-muted-foreground">Received</p>
+              <p className="whitespace-nowrap text-base font-semibold tabular sm:text-lg">{tk(received.amount)}</p>
+              <p className="text-xs text-muted-foreground">{received.n} payments</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Cash Out</p>
+              <p className="whitespace-nowrap text-base font-semibold tabular sm:text-lg">{tk(cashOut.amount)}</p>
+              <p className="text-xs text-muted-foreground">{cashOut.n} receipts</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Commission</p>
+              <p className="whitespace-nowrap text-base font-semibold tabular sm:text-lg">{tk(s.commission)}</p>
+            </div>
+          </Card>
+          <DayMoney deviceId={d.id} rows={dayMoney} checks={dayChecks} error={dayMoneyError} checkError={dayCheckError} dayLabel={dayLabel(day)} today={day === dhakaDay()} />
+          <div>
+            <Button size="sm" onClick={() => openPaymentsWith({ device: d.id, from: day, to: day })}>
+              <ListOrdered aria-hidden /> View transactions
+            </Button>
+          </div>
+          {ignored.length ? (
+            <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm" role="note">
+              {ignored.map((line) => <p key={line}>{line}</p>)}
+              <p className="mt-1 text-xs text-muted-foreground">{NOT_OURS_RULE}</p>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+
+      {tab === "wallets" ? (
+        <>
+          <WalletsCard open deviceId={d.id} wallets={wallets} reported={d.info?.wallets} stats={walletStats} defaultGroup={d.default_group ?? "main"} onChanged={onChanged} />
+          <B2BFloat open={gaps.length > 0} deviceId={d.id} floats={floats} loadError={floatsError} balances={balances} gaps={gaps} onChanged={onChanged} />
+          {d.allow_balance !== false ? (
+            <>
+              <div className="flex flex-col gap-2">
+                <h3 className="text-base font-semibold">Check a balance now</h3>
+                {WALLETS.map((w) => <BalanceCheck key={w} deviceId={d.id} provider={w} appBalance={(d.info as { app_balance?: unknown } | null | undefined)?.app_balance} appNagad={(d.info as { app_nagad?: unknown } | null | undefined)?.app_nagad} />)}
+              </div>
+              <StatementSection deviceId={d.id} wallets={d.info?.wallets} />
+            </>
+          ) : off("Checking the balance and reading the statement", "Check the balance and read the statement")}
+        </>
+      ) : null}
+
+      {tab === "send" ? (
+        <>
+          <PhonePermissions device={d} onChanged={onChanged} />
+          {d.allow_cashin === true ? (
+            <>
+              <CashInSection open deviceId={d.id} />
+              <B2bCommand deviceId={d.id} />
+            </>
+          ) : off("Sending money", "Send money from this phone")}
+        </>
+      ) : null}
+
+      {tab === "commission" ? <CommissionCard open device={d} rates={rates} balance={commission} onChanged={onChanged} /> : null}
+
+      {tab === "tools" ? (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => void testWake()} disabled={waking}>
+              <BellRing aria-hidden /> {waking ? "Sending…" : "Wake up now"}
+            </Button>
+          </div>
+          {wakeNote ? <p role="status" className="text-sm text-muted-foreground">{wakeNote}</p> : null}
+          <PhoneActions deviceId={d.id} />
+          <div className="flex flex-col gap-2">
+            <h3 className="text-base font-semibold">Phone health</h3>
+            <DeviceDetails info={d.info} />
+          </div>
+          <Card className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
+            <span className="text-muted-foreground">Remove this phone: it stops sending payments at once. Its old transactions stay.</span>
+            <Confirm
+              title={`Remove ${d.name || d.pair_code}?`}
+              description="It stops sending payments immediately. Its old transactions stay. To use it again you would approve a new code on that phone."
+              confirmLabel="Remove"
+              onConfirm={onRemove}
+            >
+              <Button size="sm" variant="outline">Remove</Button>
+            </Confirm>
+          </Card>
+        </>
+      ) : null}
+    </div>
   );
 }

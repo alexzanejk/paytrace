@@ -6,15 +6,18 @@ export function Disclosure({
   icon: Icon,
   title,
   summary,
+  open,
   children,
 }: {
   icon: LucideIcon;
   title: string;
   summary?: ReactNode;
+  /** Start unfolded (where the section is the main thing on its page). */
+  open?: boolean;
   children: ReactNode;
 }) {
   return (
-    <details className="group rounded-lg border border-border">
+    <details className="group rounded-lg border border-border" open={open || undefined}>
       <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg p-3 hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
         <Icon className="h-4 w-4 shrink-0" aria-hidden />
         <span className="text-sm font-semibold">{title}</span>

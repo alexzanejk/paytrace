@@ -20,6 +20,7 @@ check("an old build cannot read the balance in the app", !appBalanceFor("bkash",
 check("a Nagad agent Cash In may go through the Nagad app on a build that says app_nagad", appWayFor({ ...ready, provider: "nagad", appCashin: undefined, appNagad: true }).ok);
 check("not on an older build", appWayFor({ ...ready, provider: "nagad", appNagad: undefined }).why.includes("Nagad app way"));
 check("a personal Nagad Send Money stays USSD", !appWayFor({ provider: "nagad", account: "personal", appNagad: true }).ok);
+check("Rocket names its own USSD code", wayLabel("ussd", "rocket") === "USSD (*322#)" && wayWords("ussd", "rocket") === "by USSD (*322#)" && wayLabel("ussd", "bkash") === "USSD (*247#)");
 check("Rocket still has no app way", !appWayFor({ ...ready, provider: "rocket", appNagad: true }).ok);
 check("the Nagad buttons are named for Nagad", wayLabel("app", "nagad") === "Nagad app" && wayLabel("ussd", "nagad") === "USSD (*167#)" && wayLabel("app", "bkash") === "bKash app");
 check("the Nagad confirm words say হ্যাঁ, not tap and hold", wayWords("app", "nagad").includes("Nagad app") && !wayWords("app", "nagad").includes("tap and hold"));

@@ -19,8 +19,8 @@ const WALLETS = ["bkash", "nagad", "rocket"] as const;
  *  came in with no SMS and is not explained yet (migration 063: rubel's bKash took Tk 7,000 of B2B on 7 Nov, bKash sent
  *  no SMS, the statement was never pulled in time, and the whole balance read as the owner's). A B2B OUT in the last
  *  24 hours is shown in red. */
-export function B2BFloat({ deviceId, floats, loadError = "", balances, gaps = [], onChanged }: {
-  deviceId: string; floats: B2BFloatRow[]; loadError?: string; balances: DeviceBalance[]; gaps?: GapRow[]; onChanged: () => void;
+export function B2BFloat({ deviceId, floats, loadError = "", balances, gaps = [], onChanged, open }: {
+  open?: boolean; deviceId: string; floats: B2BFloatRow[]; loadError?: string; balances: DeviceBalance[]; gaps?: GapRow[]; onChanged: () => void;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [text, setText] = useState("");
@@ -57,7 +57,7 @@ export function B2BFloat({ deviceId, floats, loadError = "", balances, gaps = []
   }
 
   return (
-    <Disclosure icon={Landmark} title="B2B money (distributor float)" summary={summary}>
+    <Disclosure open={open} icon={Landmark} title="B2B money (distributor float)" summary={summary}>
       <p className="mb-3 text-sm text-muted-foreground">
         Money the distributor puts into an agent wallet (B2B in) is not yours, so jobs start from <span className="font-medium text-foreground">your money</span> = balance minus the B2B float.
         Type the B2B amount in the wallet right now as the opening; from then on every B2B in adds to it and every B2B out takes from it (from the SMS, or from the wallet&apos;s statement when no SMS comes, as on bKash).

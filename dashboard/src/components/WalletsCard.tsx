@@ -19,7 +19,7 @@ const METHOD_LABEL = { send_money: "Send Money", cash_out: "Cash Out (agent)" } 
 
 /** The wallet numbers this phone receives deposits on. The pay page shows one of these to a customer. [reported] are the
  *  numbers the phone app itself has saved (its heartbeat carries them), offered here so they are picked, not typed. */
-export function WalletsCard({ deviceId, wallets, reported, stats, defaultGroup, onChanged }: { deviceId: string; wallets: DeviceWallet[]; reported?: ReportedWallet[]; stats?: WalletOrderStat[]; defaultGroup: string; onChanged: () => void }) {
+export function WalletsCard({ deviceId, wallets, reported, stats, defaultGroup, onChanged, open }: { open?: boolean; deviceId: string; wallets: DeviceWallet[]; reported?: ReportedWallet[]; stats?: WalletOrderStat[]; defaultGroup: string; onChanged: () => void }) {
   const [adding, setAdding] = useState(false);
   const [provider, setProvider] = useState<string>("bkash");
   const [number, setNumber] = useState("");
@@ -87,6 +87,7 @@ export function WalletsCard({ deviceId, wallets, reported, stats, defaultGroup, 
 
   return (
     <Disclosure
+      open={open}
       icon={Wallet}
       title="Deposit numbers"
       summary={wallets.length === 0 ? "None yet" : `${wallets.length} number${wallets.length === 1 ? "" : "s"}`}
