@@ -284,3 +284,7 @@ export function recentNumbers(payouts: PayoutRow[], limit = 6): string[] {
   }
   return seen;
 }
+
+/** Said before the owner settles a payment the phone could not vouch for. Both answers are final, so both ask first. */
+export const SENT_WARNING = "Only say this after you saw it in the wallet. It will show as Paid and is never sent again.";
+export const NOT_SENT_WARNING = "Only say this after checking the wallet. The money becomes payable again, so a wrong answer pays it twice.";

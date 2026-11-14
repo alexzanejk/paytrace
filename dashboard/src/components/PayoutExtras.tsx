@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { HandCoins, Pencil, Plus } from "lucide-react";
+import { Confirm } from "@/components/Confirm";
 import { sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { PROVIDERS, PROVIDER_LABEL } from "@/lib/types";
@@ -192,7 +193,6 @@ export function ExtraPayoutList({ rows, nameOf, onDone, onAdd }: {
   const [problem, setProblem] = useState("");
   const live = rows.filter((p) => p.status === "paid");
   async function undo(p: PayoutRow) {
-    if (!window.confirm(`Undo the ${tk(Number(p.send_amount))} recorded by hand${p.for_trx ? ` for ${p.for_trx}` : ""}?`)) return;
     setBusy(p.id); setProblem("");
     const r = await sb.rpc("resolve_payout", { p_payout: p.id, p_sent: false, p_trx: null });
     setBusy("");
@@ -216,7 +216,14 @@ export function ExtraPayoutList({ rows, nameOf, onDone, onAdd }: {
                 {p.note ? ` · ${p.note}` : ""}
               </p>
             </div>
-            <Button size="sm" variant="outline" disabled={busy === p.id} onClick={() => void undo(p)}>Undo</Button>
+            <Confirm
+              title={`Undo the ${tk(Number(p.send_amount))} recorded by hand${p.for_trx ? ` for ${p.for_trx}` : ""}?`}
+              description="The record is removed from this list. Do this only if the money was not really paid."
+              confirmLabel="Undo"
+              onConfirm={() => undo(p)}
+            >
+              <Button size="sm" variant="outline" disabled={busy === p.id}>Undo</Button>
+            </Confirm>
           </li>
         ))}
       </ul>

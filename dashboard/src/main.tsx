@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./index.css";
 import { watchInstall } from "./lib/install";
 
@@ -16,6 +17,8 @@ if ("serviceWorker" in navigator && location.protocol === "https:") {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary whole>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );

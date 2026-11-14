@@ -82,7 +82,8 @@ export function Overview() {
     <Screen loading={loading || devices.loading} error={error ?? devices.error} hasData={!!data}>
       <PageHeader
         title="Home"
-        description="What needs you now, then the money. Days run 12:00 AM to 11:59 PM Bangladesh time; payments held for review are not counted."
+        description="What needs you now, then the money."
+        help={<><p>Days run 12:00 AM to 11:59 PM Bangladesh time.</p><p>Payments held for review are not counted in the money figures.</p></>}
       />
 
       <NeedsYou devices={devices.list} />

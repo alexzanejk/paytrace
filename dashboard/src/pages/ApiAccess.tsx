@@ -112,7 +112,8 @@ export function ApiAccess() {
       <div className="grid max-w-4xl grid-cols-[minmax(0,1fr)] gap-6">
         <PageHeader
           title="Websites"
-          description="Each website that uses PayTrace gets its own key. Add the website, choose where it receives payment results, then send its developer the guide."
+          description="Each website that uses PayTrace gets its own key."
+          help={<><p>1. Add the website.</p><p>2. Choose where it receives payment results.</p><p>3. Send its developer the guide.</p></>}
         />
 
         <ol className="grid gap-3 sm:grid-cols-3">

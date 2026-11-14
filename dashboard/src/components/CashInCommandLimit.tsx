@@ -64,7 +64,7 @@ export function CashInCommandLimit() {
           <Button size="sm" onClick={() => void save()} disabled={saving}>Save limit</Button>
           <Button size="sm" variant="ghost" onClick={() => { setText("0"); }}>Switch off</Button>
         </div>
-        {saved ? <p className="text-sm text-emerald-600">Saved.</p> : null}
+        {saved ? <p className="text-sm text-status-ok">Saved.</p> : null}
         {problem ? <p role="alert" className="text-sm text-destructive">{problem}</p> : null}
       </CardContent>
     </Card>

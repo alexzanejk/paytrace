@@ -19,7 +19,7 @@ interface Answer { deviceId: string; cmd: PhoneCommand | null; problem?: string 
 /** The shared error texts speak of the bKash app; for a Nagad search they mean the Nagad app. */
 const appWords = (t: string, app: SearchApp) => (app === "nagad" ? t.replace(/bKash/g, "Nagad") : t);
 
-const TONE: Record<string, string> = { ok: "text-emerald-700 dark:text-emerald-400", warn: "text-amber-700 dark:text-amber-400", idle: "text-muted-foreground" };
+const TONE: Record<string, string> = { ok: "text-status-ok", warn: "text-status-warn", idle: "text-muted-foreground" };
 
 /** "Search the bKash app" (owner 2026-11-11): type a TrxID or a customer's number, and a phone looks it up in its own bKash
  *  agent app (Statements search). Read only; a held payment whose TrxID is found there is released by the server. */
@@ -187,7 +187,7 @@ export function AppSearch({ initial }: { initial?: string } = {}) {
             <div className="mb-1 font-medium">{nameOf(a.deviceId)}</div>
             {a.problem ? <p className="text-destructive">{a.problem}</p>
               : !a.cmd || isLive(a.cmd) ? <p className="text-muted-foreground">{a.cmd?.status === "running" ? `The phone is searching its ${appName} (about a minute)…` : "Waking the phone…"}</p>
-              : a.cmd.status !== "done" ? <p className="text-amber-700 dark:text-amber-400">The search did not work. {appWords(errorText(a.cmd.error, wallet), app)}</p>
+              : a.cmd.status !== "done" ? <p className="text-status-warn">The search did not work. {appWords(errorText(a.cmd.error, wallet), app)}</p>
               : words ? <p className={TONE[words.tone]}>{appWords(words.text, app)}</p>
               : <p className="text-muted-foreground">The phone answered, but not with a search result. Update its PayTrace app.</p>}
             {r && r.rows.length ? (

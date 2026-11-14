@@ -170,7 +170,7 @@ function Field({ name, value }: { name: string; value: string | null }) {
 }
 
 const MATCH_TEXT: Record<RowMatch, { text: string; cls: string }> = {
-  have: { text: "we have it", cls: "text-emerald-600 dark:text-emerald-400" },
+  have: { text: "we have it", cls: "text-status-ok" },
   missing: { text: "MISSING", cls: "text-destructive font-semibold" },
   unknown: { text: "no SMS expected", cls: "text-muted-foreground" },
 };

@@ -3,6 +3,7 @@
 // deposits or verify transactions, and a website key cannot touch Review.
 import { useState } from "react";
 import { Eye, EyeOff, KeyRound } from "lucide-react";
+import { Confirm } from "@/components/Confirm";
 import { must, sb } from "@/lib/supabase";
 import { when } from "@/lib/format";
 import { useQuery } from "@/hooks/useQuery";
@@ -40,7 +41,6 @@ export function HubAccessCard() {
     refresh();
   }
   async function revoke(k: HubKey) {
-    if (!window.confirm(`Revoke the Hub key ${k.key_prefix}…? Admin Hub loses its Review access until a new key is pasted there.`)) return;
     setBusy(true);
     const { error: err } = await sb.rpc("revoke_hub_key", { p_id: k.id });
     if (err) setProblem(err.message);
@@ -80,9 +80,14 @@ export function HubAccessCard() {
                   <span>Address for the Hub:</span>
                   <code className="rounded bg-muted px-2 py-0.5">{HUB_URL}</code>
                   <CopyButton text={HUB_URL} label="Copy" />
-                  <Button variant="ghost" size="sm" className="ml-auto text-status-bad" disabled={busy} onClick={() => revoke(k)}>
-                    Revoke
-                  </Button>
+                  <Confirm
+                    title={`Revoke the Hub key ${k.key_prefix}…?`}
+                    description="Admin Hub loses its Review access until a new key is pasted there."
+                    confirmLabel="Revoke"
+                    onConfirm={() => revoke(k)}
+                  >
+                    <Button variant="ghost" size="sm" className="ml-auto text-status-bad" disabled={busy}>Revoke</Button>
+                  </Confirm>
                 </div>
               </li>
             ))}

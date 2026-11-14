@@ -63,6 +63,15 @@ export const ORDER_STATUS: Record<string, Word> = {
   cancelled: { label: "Cancelled", meaning: "Cancelled by a person. It will not take a payment.", tone: "bad" },
 };
 
+/** A command sent to a phone (balance check, Cash In, B2B, a read of the wallet app). */
+export const COMMAND_STATUS: Record<string, Word> = {
+  queued: { label: "Waiting for the phone", meaning: "The phone has not taken it yet. An online phone takes it within 30 seconds.", tone: "idle" },
+  running: { label: "Phone is doing it", meaning: "The phone took it and is working on it now.", tone: "info" },
+  done: { label: "Done", meaning: "The phone finished it.", tone: "ok" },
+  failed: { label: "Failed", meaning: "The phone could not finish it. For money, the payout it belongs to says whether anything was sent.", tone: "bad" },
+  cancelled: { label: "Not taken", meaning: "The phone did not take it in time, or it was cancelled. Nothing was done.", tone: "idle" },
+};
+
 /** Other statuses the badge may meet (phones, webhooks, crypto). Tone only; the word is the code itself. */
 export const OTHER_STATUS_TONE: Record<string, Tone> = {
   approved: "ok", sent: "ok", revoked: "bad", failed: "bad", new: "info", running: "info", queued: "idle", done: "ok",

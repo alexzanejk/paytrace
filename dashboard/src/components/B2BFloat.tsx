@@ -95,7 +95,7 @@ export function B2BFloat({ deviceId, floats, loadError = "", balances, gaps = []
                 {" · float "}{tk(Math.max(Number(f?.float ?? 0), 0))}
                 {pendingIn > 0 ? ` · came in with no SMS, not explained yet ${tk(pendingIn)}` : ""}
               </p>
-              {warn ? <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400" role="alert">{warn}</p> : null}
+              {warn ? <p className="mt-1 text-xs font-medium text-status-warn" role="alert">{warn}</p> : null}
               {red && f ? (
                 <p className="mt-1 text-xs font-medium text-destructive" role="alert">
                   B2B OUT {f.last_out_amount != null ? tk(Number(f.last_out_amount)) : ""} {when(f.last_out_at)}: money left this wallet for the distributor.
@@ -104,7 +104,7 @@ export function B2BFloat({ deviceId, floats, loadError = "", balances, gaps = []
               {open.length > 0 ? (
                 <ul className="mt-2 space-y-2">
                   {open.map((g) => (
-                    <li key={g.id} className="rounded-md border border-amber-300/60 bg-amber-50/60 p-2 dark:border-amber-500/30 dark:bg-amber-950/20">
+                    <li key={g.id} className="rounded-md border border-status-warn/40 bg-status-warn-bg/60 p-2">
                       <p className="text-xs">{gapLine(g)}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">{gapStatus(g)} What was it?</p>
                       <div className="mt-1.5 flex flex-wrap gap-1.5">

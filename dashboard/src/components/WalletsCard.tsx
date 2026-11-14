@@ -138,9 +138,9 @@ export function WalletsCard({ deviceId, wallets, reported, stats, defaultGroup, 
               {!normalizeBdNumber(w.wallet_number) ? (
                 <span className="text-xs text-destructive">Not a valid number ({w.wallet_number.length} digits): customers cannot pay to it. Add the right one below.</span>
               ) : fromPhone.get(w.provider)?.state === "matches" ? (
-                <span className="text-xs text-emerald-700 dark:text-emerald-400">matches the phone ✓</span>
+                <span className="text-xs text-status-ok">matches the phone ✓</span>
               ) : fromPhone.get(w.provider)?.state === "differs" ? (
-                <span className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400">
+                <span className="flex items-center gap-2 text-xs text-status-warn">
                   the phone says {fromPhone.get(w.provider)!.number}
                   <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => void save(w.provider, fromPhone.get(w.provider)!.number, w.method, w.enabled)}>
                     Use the phone's number
@@ -149,7 +149,7 @@ export function WalletsCard({ deviceId, wallets, reported, stats, defaultGroup, 
               ) : null}
               {(() => {
                 const line = walletStatLine(statFor(stats, w));
-                return line ? <span className={`basis-full text-xs ${line.tone === "warn" ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"}`}>{line.text}</span> : null;
+                return line ? <span className={`basis-full text-xs ${line.tone === "warn" ? "text-status-warn" : "text-muted-foreground"}`}>{line.text}</span> : null;
               })()}
             </span>
             <span className="flex items-center gap-2 text-xs text-muted-foreground">

@@ -73,7 +73,11 @@ export function Payments() {
   if (view === "sms") return <SmsList preset={preset} switcher={switcher} />;
   return (
     <>
-      <PageHeader title="Transactions" description="Every transaction of every wallet, from SMS, the wallet's own list and PayTrace's own sends." />
+      <PageHeader
+        title="Transactions"
+        description="Every transaction of every wallet."
+        help={<><p>Joined from three places: the SMS, the wallet's own list (read by the phone), and PayTrace's own sends.</p><p>Each movement is listed once.</p></>}
+      />
       {switcher}
       <AppSearch />
       <AllMovements preset={preset} />
@@ -167,7 +171,8 @@ function SmsList({ preset, switcher }: { preset: PaymentsPreset | null; switcher
     <Screen loading={loading || devices.loading} error={error ?? devices.error} hasData={!!data}>
       <PageHeader
         title="Transactions"
-        description={`Showing ${rangeLabel(range)} (days run 12:00 AM to 11:59 PM Bangladesh time).`}
+        description={`Showing ${rangeLabel(range)}.`}
+        help={<><p>The SMS receipts and whether each was credited to an order.</p><p>Days run 12:00 AM to 11:59 PM Bangladesh time.</p></>}
         actions={
           <Button variant="outline" size="sm" onClick={exportCsv} disabled={rows.length === 0}>
             <Download aria-hidden /> Download CSV

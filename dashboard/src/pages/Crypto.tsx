@@ -80,7 +80,8 @@ export function Crypto() {
     <Screen loading={loading} error={error} hasData={!!data}>
       <PageHeader
         title="Crypto (USDT)"
-        description="Customers pay USDT to your own address. PayTrace watches the blockchain and pays the order when the exact amount arrives. No phone is needed."
+        description="Customers pay USDT to your own address."
+        help={<><p>PayTrace watches the blockchain and pays the order when the exact amount arrives.</p><p>No phone is needed.</p></>}
       />
       {data ? <Body settings={data.settings} transfers={data.transfers} open={data.open} onChanged={refresh} /> : null}
     </Screen>
