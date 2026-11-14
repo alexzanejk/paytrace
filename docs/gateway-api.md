@@ -29,7 +29,7 @@ generated from `dashboard/src/lib/apiDocs.ts` (`depositInstructions`), which is 
 
 ## USDT deposits (BEP20 and TRC20)
 
-`create-deposit` also takes `provider` `usdt_bep20` or `usdt_trc20`. The `amount` stays in **taka** (500 to 50000). PayTrace converts it with the
+`create-deposit` also takes `provider` `usdt_bep20` or `usdt_trc20`. The `amount` stays in **taka** (500 to 50000, or the site's own lower minimum: see below). PayTrace converts it with the
 owner's rate (dashboard, Crypto page, "Taka for 1 USDT"), rounds the USDT up to 2 decimals and adds a unique tail of 0.0001 to 0.0099 USDT, so each
 open order on a network has its own exact amount. The answer carries `crypto: {chain, asset: "USDT", amount, address}`. The customer pays that exact
 amount to the owner's receiving address; the pay page (no TrxID box) shows it with a countdown and switches to the result by itself.
@@ -91,7 +91,7 @@ not a recognised one. The owner sees it in Review and can approve it by hand.
 
 ## Limits
 
-Orders: amount 500 to 50000 taka with at most 2 decimals (owner's limits, `gw_create_deposit`, migration 017); expiry default 40 minutes, at most 60, a value under 20 is raised to 20 (was 3 to 60 / default 15 until 2026-11-04, when the live data showed paid deposits taking 31 minutes on average). A claimed order gets 10 extra minutes
+Orders: amount 500 to 50000 taka with at most 2 decimals (owner's limits, `gw_create_deposit`, migration 017). Since migration 100 the owner can lower ONE site's minimum, down to 100, on the dashboard's Websites card ("Smallest deposit"); it counts for bKash, Nagad, Rocket and USDT, the maximum stays 50000, and the 400 error names the site's own range; expiry default 40 minutes, at most 60, a value under 20 is raised to 20 (was 3 to 60 / default 15 until 2026-11-04, when the live data showed paid deposits taking 31 minutes on average). A claimed order gets 10 extra minutes
 for a late SMS. 5 TrxID attempts per order. 120 website API calls per minute per key. Withdrawals are not built yet.
 
 ## Result page looks

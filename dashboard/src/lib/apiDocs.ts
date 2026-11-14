@@ -71,7 +71,7 @@ export function developerInstructions(key?: string): string {
 export const GATEWAY_URL = `${SUPABASE_URL}/functions/v1/gateway`;
 
 /** The text the owner sends to the developer who adds PayTrace deposits to a website. */
-export function depositInstructions(key?: string): string {
+export function depositInstructions(key?: string, minDeposit = 500): string {
   const k = key ?? "<YOUR_KEY>";
   return [
     "Deposit gateway",
@@ -84,7 +84,7 @@ export function depositInstructions(key?: string): string {
     `Authorization: Bearer ${k}`,
     "Content-Type: application/json",
     '{ "amount": 500, "order_id": "SHOP-1001", "provider": "nagad", "method": "cash_out", "return_url": "https://yourshop.com/thanks", "expires_in_minutes": 40 }',
-    "- amount: required, from 500 to 50000 taka.",
+    `- amount: required, from ${minDeposit} to 50000 taka.`,
     "- order_id: required. YOUR own order number. Sending the same order_id again returns the same order (safe to retry).",
     "- provider: required (\"bkash\", \"nagad\", \"rocket\", \"upay\"). YOUR site shows the deposit methods and lets the customer choose; the payment page starts after that choice.",
     '- method: optional, "send_money" or "cash_out". Use it when you offer both for one provider (for example Nagad Send Money and Nagad Cash Out). Leave it out to accept either.',
