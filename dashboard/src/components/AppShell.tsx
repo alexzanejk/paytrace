@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Ellipsis, LogOut, Moon, ShieldCheck, Sun } from "lucide-react";
 import { InstallButton } from "@/components/InstallCard";
+import { GlobalSearchBox } from "@/components/GlobalSearchBox";
 import { cn } from "@/lib/utils";
 import { sb } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -19,9 +20,12 @@ export function AppShell({
   tab,
   onTab,
   onSignOut,
+  searching,
   children,
 }: {
   tab: TabId;
+  /** What the search box at the top is showing the answer for (null = an ordinary page is open). */
+  searching: string | null;
   onTab: (t: TabId) => void;
   onSignOut: () => void;
   children: ReactNode;
@@ -30,7 +34,9 @@ export function AppShell({
   const now = useNow(5000);
   const { dark, toggle } = useTheme();
   const section = sectionOf(tab);
-  const pages = pagesOf(section);
+  // The search answer belongs to no section: nothing is lit in the menu and no tabs show.
+  const found = searching !== null;
+  const pages = found ? [] : pagesOf(section);
 
   // Small live numbers for the menu: what waits for a person in each section, and how many phones are up.
   const { data: live } = useQuery(
@@ -65,7 +71,7 @@ export function AppShell({
     n > 0 ? <span className="rounded-full bg-status-warn-bg px-2 py-0.5 text-xs font-semibold text-status-warn">{n}</span> : null;
 
   const navButton = (s: (typeof SECTIONS)[number]) => {
-    const on = s.id === section.id;
+    const on = !found && s.id === section.id;
     const Icon = s.icon;
     return (
       <button
@@ -136,7 +142,7 @@ export function AppShell({
     ) : null;
 
   const inBar = SECTIONS.filter((s) => BOTTOM_BAR.includes(s.id));
-  const moreOn = open || !BOTTOM_BAR.includes(section.id);
+  const moreOn = open || (!found && !BOTTOM_BAR.includes(section.id));
   const moreBadge = SECTIONS.filter((s) => !BOTTOM_BAR.includes(s.id)).reduce((n, s) => n + sectionBadge(s.id), 0);
   const barButton = (key: string, label: string, Icon: (typeof SECTIONS)[number]["icon"], on: boolean, n: number, onClick: () => void, extra?: Record<string, unknown>) => (
     <button
@@ -174,13 +180,13 @@ export function AppShell({
         {/* Phones and tablets: a top bar with a menu button. */}
         <header className="sticky top-0 z-40 border-b border-border bg-card lg:hidden">
           <div className="flex items-center gap-3 px-4 py-3">
-            <h1 className="flex items-center gap-2 text-lg font-semibold">
+            <h1 className="flex shrink-0 items-center gap-2 text-lg font-semibold">
               <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary text-primary-foreground" aria-hidden>
                 <ShieldCheck className="h-4 w-4" />
               </span>
               PayTrace
             </h1>
-            <span className="ml-auto text-sm font-medium text-muted-foreground">{open ? "More" : section.label}</span>
+            <GlobalSearchBox id="search-top" current={searching ?? ""} className="ml-auto flex-1 sm:max-w-sm" />
           </div>
         </header>
         <DeviceAlertBar onOpen={() => onTab("devices")} />
@@ -192,8 +198,9 @@ export function AppShell({
           </nav>
         ) : null}
         <div className={cn("mx-auto max-w-[88rem] px-4 pb-24 pt-5 sm:pt-6 lg:px-8 lg:pb-6 lg:pl-4", open ? "hidden lg:block" : "")}>
+          <GlobalSearchBox id="search-wide" current={searching ?? ""} className="mb-4 hidden max-w-md lg:block" />
           {tabs}
-          <main key={tab} className="page-in">{children}</main>
+          <main key={found ? "search" : tab} className="page-in">{children}</main>
         </div>
       </div>
 
@@ -202,7 +209,7 @@ export function AppShell({
         aria-label="Sections"
         className="fixed inset-x-0 bottom-0 z-40 flex border-t border-border bg-card pb-[env(safe-area-inset-bottom)] lg:hidden"
       >
-        {inBar.map((s) => barButton(s.id, s.label, s.icon, !open && s.id === section.id, sectionBadge(s.id), () => go(s.pages[0])))}
+        {inBar.map((s) => barButton(s.id, s.label, s.icon, !open && !found && s.id === section.id, sectionBadge(s.id), () => go(s.pages[0])))}
         {barButton("more", "More", Ellipsis, moreOn, moreBadge, () => setOpen((o) => !o), { "aria-expanded": open })}
       </nav>
     </div>

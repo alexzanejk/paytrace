@@ -23,14 +23,14 @@ const TONE: Record<string, string> = { ok: "text-emerald-700 dark:text-emerald-4
 
 /** "Search the bKash app" (owner 2026-11-11): type a TrxID or a customer's number, and a phone looks it up in its own bKash
  *  agent app (Statements search). Read only; a held payment whose TrxID is found there is released by the server. */
-export function AppSearch() {
+export function AppSearch({ initial }: { initial?: string } = {}) {
   const devices = useDevices(30000);
   const [app, setApp] = useState<SearchApp>("bkash");
   const choices = phoneChoices(devices.list, Date.now(), app);
   const phones = choices.filter((p) => p.canSearch);
   const appName = SEARCH_APP_LABEL[app];
   const wallet = app === "nagad" ? "Nagad" : "bKash";
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initial ?? "");
   const [choice, setChoice] = useState("auto");
   const [problem, setProblem] = useState("");
   const [note, setNote] = useState("");

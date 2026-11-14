@@ -22,6 +22,9 @@ import { ApiAccess } from "@/pages/ApiAccess";
 import { SiteNumbers } from "@/pages/SiteNumbers";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { Help } from "@/pages/Help";
+import { SearchPage } from "@/pages/SearchPage";
+import { queryFromPath } from "@/lib/globalSearch";
+import { useHashPath } from "@/hooks/useHashPath";
 
 type Phase = { name: "loading" } | { name: "login"; note?: string } | { name: "mfa" } | { name: "ready" };
 
@@ -35,6 +38,9 @@ export default function App() {
   const [phase, setPhase] = useState<Phase>({ name: "loading" });
   const [settings, setSettings] = useState<Settings | null>(null);
   const [tab, setTab] = useState<TabId>(tabFromHash);
+  // "#/search/<what was typed>" is the answer to the search box at the top of every page.
+  const path = useHashPath();
+  const searching = path[0] === "search" ? queryFromPath(path[1]) : null;
 
   const boot = useCallback(async () => {
     const { data } = await sb.auth.getSession();
@@ -76,7 +82,15 @@ export default function App() {
   if (phase.name === "mfa") return <MfaChallenge onVerified={boot} />;
 
   return (
-    <AppShell tab={tab} onTab={openTab} onSignOut={() => void sb.auth.signOut()}>
+    <AppShell tab={tab} onTab={openTab} searching={searching} onSignOut={() => void sb.auth.signOut()}>
+      {searching !== null ? <SearchPage typed={searching} /> : <Pages tab={tab} settings={settings} onSettings={setSettings} />}
+    </AppShell>
+  );
+}
+
+function Pages({ tab, settings, onSettings }: { tab: TabId; settings: Settings | null; onSettings: (s: Settings | null) => void }) {
+  return (
+    <>
       {tab === "overview" && <Overview />}
       {tab === "review" && <Review />}
       {tab === "ledger" && <Ledger />}
@@ -91,8 +105,8 @@ export default function App() {
       {tab === "logs" && <Logs />}
       {tab === "api" && <ApiAccess />}
       {tab === "numbers" && <SiteNumbers />}
-      {tab === "settings" && <SettingsPage onSaved={setSettings} />}
+      {tab === "settings" && <SettingsPage onSaved={onSettings} />}
       {tab === "help" && <Help />}
-    </AppShell>
+    </>
   );
 }
