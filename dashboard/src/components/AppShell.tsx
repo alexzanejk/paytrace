@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { LogOut, Menu, Moon, ShieldCheck, Sun, X } from "lucide-react";
+import { Ellipsis, LogOut, Moon, ShieldCheck, Sun } from "lucide-react";
 import { InstallButton } from "@/components/InstallCard";
 import { cn } from "@/lib/utils";
 import { sb } from "@/lib/supabase";
@@ -9,8 +9,11 @@ import { deviceHealth } from "@/lib/deviceHealth";
 import { useQuery } from "@/hooks/useQuery";
 import { useNow } from "@/hooks/useNow";
 import { useTheme } from "@/hooks/useTheme";
-import type { TabId } from "@/lib/nav";
-import { GROUPS, TABS } from "@/lib/nav";
+import type { SectionId, TabId } from "@/lib/nav";
+import { BOTTOM_BAR, SECTIONS, pagesOf, sectionOf } from "@/lib/nav";
+import { sectionBadges } from "@/lib/needsYou";
+
+const WAITING = ["checking", "mismatch", "review"];
 
 export function AppShell({
   tab,
@@ -26,82 +29,132 @@ export function AppShell({
   const [open, setOpen] = useState(false);
   const now = useNow(5000);
   const { dark, toggle } = useTheme();
+  const section = sectionOf(tab);
+  const pages = pagesOf(section);
 
-  // Small live numbers for the menu: how many payments wait for a person, and how many phones are up.
+  // Small live numbers for the menu: what waits for a person in each section, and how many phones are up.
   const { data: live } = useQuery(
     async () => {
-      const [review, devices] = await Promise.all([
-        sb.from("payments").select("id", { count: "exact", head: true }).eq("status", "review").neq("txn_type", "cash_out"),
+      const count = (table: string, col: string, values: string[]) =>
+        sb.from(table).select("id", { count: "exact", head: true }).in(col, values).then((r) => (r.error ? null : r.count ?? 0), () => null);
+      const [held, sends, taka, payoutsUnsure, commissionUnsure, devices] = await Promise.all([
+        count("payments", "status", ["review"]),
+        count("job_transfers", "status", WAITING),
+        count("cashin_jobs", "status", WAITING),
+        count("payouts", "status", ["unsure"]),
+        count("commission_pays", "status", ["unsure"]),
         sb.from("devices").select("id,last_seen_at,approved_at").eq("status", "approved"),
       ]);
-      return { review: review.count ?? 0, devices: devices.data ?? [] };
+      return { held, jobsWaiting: (sends ?? 0) + (taka ?? 0), payoutsUnsure, commissionUnsure, devices: devices.data ?? [] };
     },
     [],
     { refreshMs: 15000 },
   );
   const online = (live?.devices ?? []).filter((d) => deviceHealth(d, now).level === "online").length;
   const total = live?.devices.length ?? 0;
-  const badge = (id: TabId) => (id === "review" && live && live.review > 0 ? live.review : null);
+  const badges = live ? sectionBadges(live) : null;
+  const sectionBadge = (id: SectionId): number => (badges && id in badges ? badges[id as keyof typeof badges] : 0);
+  const pageBadge = (id: TabId): number =>
+    !live ? 0 : id === "review" ? live.held ?? 0 : id === "jobs" ? live.jobsWaiting : id === "payout" ? live.payoutsUnsure ?? 0 : id === "commission" ? live.commissionUnsure ?? 0 : 0;
 
-  const navButton = (id: TabId, label: string, Icon: (typeof TABS)[number]["icon"]) => {
-    const n = badge(id);
+  const go = (id: TabId) => {
+    onTab(id);
+    setOpen(false);
+  };
+  const pill = (n: number) =>
+    n > 0 ? <span className="rounded-full bg-status-warn-bg px-2 py-0.5 text-xs font-semibold text-status-warn">{n}</span> : null;
+
+  const navButton = (s: (typeof SECTIONS)[number]) => {
+    const on = s.id === section.id;
+    const Icon = s.icon;
     return (
       <button
-        key={id}
+        key={s.id}
         type="button"
-        onClick={() => {
-          onTab(id);
-          setOpen(false);
-        }}
-        aria-current={tab === id ? "page" : undefined}
+        onClick={() => go(s.pages[0])}
+        aria-current={on ? "page" : undefined}
         className={cn(
           "flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors",
-          tab === id ? "bg-card text-primary shadow-[0_1px_3px_rgba(16,24,40,0.10)]" : "text-muted-foreground hover:bg-card/60 hover:text-foreground",
+          on ? "bg-card text-primary shadow-[0_1px_3px_rgba(16,24,40,0.10)]" : "text-muted-foreground hover:bg-card/60 hover:text-foreground",
         )}
       >
-        <Icon className={cn("h-[18px] w-[18px] shrink-0", tab === id ? "text-primary" : "")} aria-hidden />
-        <span className="flex-1 text-left">{label}</span>
-        {n ? <span className="rounded-full bg-status-warn-bg px-2 py-0.5 text-xs font-semibold text-status-warn">{n}</span> : null}
+        <Icon className={cn("h-[18px] w-[18px] shrink-0", on ? "text-primary" : "")} aria-hidden />
+        <span className="flex-1 text-left">{s.label}</span>
+        {pill(sectionBadge(s.id))}
       </button>
     );
   };
 
+  const extras = (
+    <div className="flex flex-col gap-2 border-t border-border pt-4">
+      <button type="button" onClick={() => go("devices")} className="flex items-center gap-2 rounded-lg px-4 py-2 text-left text-sm hover:bg-muted">
+        <span
+          aria-hidden
+          className={cn("h-2.5 w-2.5 rounded-full", total === 0 ? "bg-muted-foreground" : online === total ? "bg-status-ok" : "bg-status-bad")}
+        />
+        <span>{total === 0 ? "No phones yet" : `${online} of ${total} phone${total === 1 ? "" : "s"} online`}</span>
+      </button>
+      <InstallButton onDone={() => setOpen(false)} />
+      <Button variant="ghost" size="sm" onClick={toggle} className="justify-start" aria-pressed={dark}>
+        {dark ? <Sun aria-hidden /> : <Moon aria-hidden />} {dark ? "Light mode" : "Dark mode"}
+      </Button>
+      <Button variant="ghost" size="sm" onClick={onSignOut} className="justify-start">
+        <LogOut aria-hidden /> Sign out
+      </Button>
+    </div>
+  );
+
   const menu = (
     <div className="flex h-full flex-col gap-5">
-      {GROUPS.map((g) => (
-        <div key={g}>
-          <p className="mb-1 px-4 text-xs font-medium text-muted-foreground">{g}</p>
-          <div className="flex flex-col gap-0.5">
-            {TABS.filter((t) => t.group === g).map((t) => navButton(t.id, t.label, t.icon))}
-          </div>
-        </div>
-      ))}
-      <div className="mt-auto flex flex-col gap-2 border-t border-border pt-4">
-        <button
-          type="button"
-          onClick={() => {
-            onTab("devices");
-            setOpen(false);
-          }}
-          className="flex items-center gap-2 rounded-lg px-4 py-2 text-left text-sm hover:bg-muted"
-        >
-          <span
-            aria-hidden
-            className={cn("h-2.5 w-2.5 rounded-full", total === 0 ? "bg-muted-foreground" : online === total ? "bg-status-ok" : "bg-status-bad")}
-          />
-          <span>
-            {total === 0 ? "No phones yet" : `${online} of ${total} phone${total === 1 ? "" : "s"} online`}
-          </span>
-        </button>
-        <InstallButton onDone={() => setOpen(false)} />
-        <Button variant="ghost" size="sm" onClick={toggle} className="justify-start" aria-pressed={dark}>
-          {dark ? <Sun aria-hidden /> : <Moon aria-hidden />} {dark ? "Light mode" : "Dark mode"}
-        </Button>
-        <Button variant="ghost" size="sm" onClick={onSignOut} className="justify-start">
-          <LogOut aria-hidden /> Sign out
-        </Button>
-      </div>
+      <div className="flex flex-col gap-0.5">{SECTIONS.map(navButton)}</div>
+      <div className="mt-auto">{extras}</div>
     </div>
+  );
+
+  // A section's pages as tabs across the top (nothing for a section with one page).
+  const tabs =
+    pages.length > 1 ? (
+      <nav aria-label={`${section.label} pages`} className="-mx-4 mb-4 overflow-x-auto px-4 lg:mx-0 lg:px-0">
+        <div className="flex w-max gap-1 rounded-xl border border-border bg-card p-1">
+          {pages.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => go(p.id)}
+              aria-current={tab === p.id ? "page" : undefined}
+              className={cn(
+                "flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
+                tab === p.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              {p.label}
+              {tab === p.id ? null : pill(pageBadge(p.id))}
+            </button>
+          ))}
+        </div>
+      </nav>
+    ) : null;
+
+  const inBar = SECTIONS.filter((s) => BOTTOM_BAR.includes(s.id));
+  const moreOn = open || !BOTTOM_BAR.includes(section.id);
+  const moreBadge = SECTIONS.filter((s) => !BOTTOM_BAR.includes(s.id)).reduce((n, s) => n + sectionBadge(s.id), 0);
+  const barButton = (key: string, label: string, Icon: (typeof SECTIONS)[number]["icon"], on: boolean, n: number, onClick: () => void, extra?: Record<string, unknown>) => (
+    <button
+      key={key}
+      type="button"
+      onClick={onClick}
+      aria-current={on ? "page" : undefined}
+      {...extra}
+      className={cn("relative flex min-w-0 flex-1 flex-col items-center gap-0.5 px-1 py-2 text-[11px] font-medium", on ? "text-primary" : "text-muted-foreground")}
+    >
+      <Icon className="h-5 w-5" aria-hidden />
+      <span className="max-w-full truncate">{label}</span>
+      {n > 0 ? (
+        <span className="absolute right-[calc(50%-1.5rem)] top-1 min-w-4 rounded-full bg-status-warn px-1 text-center text-[10px] font-semibold leading-4 text-card" aria-label={`${n} waiting`}>
+          {n}
+        </span>
+      ) : null}
+    </button>
   );
 
   return (
@@ -127,22 +180,31 @@ export function AppShell({
               </span>
               PayTrace
             </h1>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="ml-auto"
-              aria-label={open ? "Close menu" : "Open menu"}
-              aria-expanded={open}
-              onClick={() => setOpen((o) => !o)}
-            >
-              {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </Button>
+            <span className="ml-auto text-sm font-medium text-muted-foreground">{open ? "More" : section.label}</span>
           </div>
-          {open ? <nav className="border-t border-border px-3 py-3" aria-label="Sections">{menu}</nav> : null}
         </header>
         <DeviceAlertBar onOpen={() => onTab("devices")} />
-        <main key={tab} className="page-in mx-auto max-w-[88rem] px-4 py-5 sm:py-6 lg:px-8 lg:pl-4">{children}</main>
+        {/* Phones and tablets: "More" shows the rest of the menu in place of the page. */}
+        {open ? (
+          <nav className="px-3 py-4 pb-24 lg:hidden" aria-label="More sections">
+            <div className="flex flex-col gap-0.5">{SECTIONS.filter((s) => !BOTTOM_BAR.includes(s.id)).map(navButton)}</div>
+            <div className="mt-4">{extras}</div>
+          </nav>
+        ) : null}
+        <div className={cn("mx-auto max-w-[88rem] px-4 pb-24 pt-5 sm:pt-6 lg:px-8 lg:pb-6 lg:pl-4", open ? "hidden lg:block" : "")}>
+          {tabs}
+          <main key={tab} className="page-in">{children}</main>
+        </div>
       </div>
+
+      {/* Phones and tablets: the four sections used most, and More, always within thumb reach. */}
+      <nav
+        aria-label="Sections"
+        className="fixed inset-x-0 bottom-0 z-40 flex border-t border-border bg-card pb-[env(safe-area-inset-bottom)] lg:hidden"
+      >
+        {inBar.map((s) => barButton(s.id, s.label, s.icon, !open && s.id === section.id, sectionBadge(s.id), () => go(s.pages[0])))}
+        {barButton("more", "More", Ellipsis, moreOn, moreBadge, () => setOpen((o) => !o), { "aria-expanded": open })}
+      </nav>
     </div>
   );
 }
