@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Ellipsis, LogOut, Moon, ShieldCheck, Sun } from "lucide-react";
 import { InstallButton } from "@/components/InstallCard";
 import { GlobalSearchBox } from "@/components/GlobalSearchBox";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { cn } from "@/lib/utils";
 import { sb } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -200,7 +201,10 @@ export function AppShell({
         <div className={cn("mx-auto max-w-[88rem] px-4 pb-24 pt-5 sm:pt-6 lg:px-8 lg:pb-6 lg:pl-4", open ? "hidden lg:block" : "")}>
           <GlobalSearchBox id="search-wide" current={searching ?? ""} className="mb-4 hidden max-w-md lg:block" />
           {tabs}
-          <main key={found ? "search" : tab} className="page-in">{children}</main>
+          <main key={found ? "search" : tab} className="page-in">
+            {/* Inside the keyed <main>, so opening another page clears a failure. */}
+            <ErrorBoundary>{children}</ErrorBoundary>
+          </main>
         </div>
       </div>
 

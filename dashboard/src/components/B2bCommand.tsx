@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRightLeft, Send, TriangleAlert } from "lucide-react";
+import { ArrowRightLeft, Send } from "lucide-react";
+import { MoneyConfirm } from "@/components/MoneyConfirm";
 import { sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { errorText, isLive, POLL_MS, type PhoneCommand } from "@/lib/phoneCommands";
@@ -109,7 +110,7 @@ export function B2bCommand({ deviceId }: { deviceId: string }) {
           </div>
         </div>
         {typed && amount == null ? (
-          <p className="text-xs text-rose-600">Type an amount between {tk(LEAST_B2B)} and {tk(MOST_B2B)} (two decimals at most).</p>
+          <p className="text-xs text-status-bad">Type an amount between {tk(LEAST_B2B)} and {tk(MOST_B2B)} (two decimals at most).</p>
         ) : null}
 
         {amount != null ? (
@@ -124,17 +125,15 @@ export function B2bCommand({ deviceId }: { deviceId: string }) {
         </Button>
 
         {confirming && amount != null ? (
-          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">
-            <p className="flex items-start gap-2 font-medium">
-              <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-              <span>{b2bSummary(amount, tk as (n: number) => string, lastDso)}</span>
-            </p>
-            <p className="mt-1 text-muted-foreground">This really moves the money. It cannot be taken back.</p>
-            <div className="mt-2 flex gap-2">
-              <Button size="sm" onClick={() => void send()} disabled={busy}>Yes, B2B it</Button>
-              <Button size="sm" variant="outline" onClick={() => setConfirming(false)}>No</Button>
-            </div>
-          </div>
+          <MoneyConfirm
+            yes="Yes, B2B it"
+            busy={busy}
+            onYes={() => void send()}
+            onBack={() => setConfirming(false)}
+            note="This really moves the money. It cannot be taken back."
+          >
+            {b2bSummary(amount, tk as (n: number) => string, lastDso)}
+          </MoneyConfirm>
         ) : null}
 
         {line ? <p className="text-sm text-muted-foreground">{line}</p> : null}
@@ -142,7 +141,7 @@ export function B2bCommand({ deviceId }: { deviceId: string }) {
         {last && last.status !== "queued" && last.status !== "running" ? (
           <PhoneTrace screens={last.screens} label="How the phone did it" />
         ) : null}
-        {problem ? <p className="text-sm text-rose-600">{problem}</p> : null}
+        {problem ? <p className="text-sm text-status-bad">{problem}</p> : null}
       </div>
     </Disclosure>
   );

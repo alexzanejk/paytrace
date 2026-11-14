@@ -94,7 +94,8 @@ export function Ledger() {
     <Screen loading={phones.loading} error={phones.error} hasData={!!phones.data}>
       <PageHeader
         title="Wallet ledger"
-        description="Every transaction of one wallet in time order, as the wallet app shows it: what arrived as an SMS plus what only the wallet's own statement lists."
+        description="One wallet's transactions in time order."
+        help={<><p>It joins what arrived as an SMS with what only the wallet's own statement lists.</p><p>A row marked ≈ has a date from the statement but no exact time.</p></>}
         actions={<Button variant="outline" size="sm" onClick={exportCsv} disabled={rows.length === 0}><Download aria-hidden /> CSV</Button>}
       />
 
@@ -128,7 +129,7 @@ export function Ledger() {
           ) : null}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
-          <span>{rows.length} rows · {counts.both} confirmed by the statement · <span className={counts.statementOnly ? "font-medium text-amber-700 dark:text-amber-400" : ""}>{counts.statementOnly} with no SMS</span> · {counts.smsOnly} SMS only</span>
+          <span>{rows.length} rows · {counts.both} confirmed by the statement · <span className={counts.statementOnly ? "font-medium text-status-warn" : ""}>{counts.statementOnly} with no SMS</span> · {counts.smsOnly} SMS only</span>
           {walletSlot != null ? <span>This wallet is on SIM {walletSlot + 1}; rows from the other SIM are not shown.</span> : null}
           {settings ? (
             <span className="flex items-center gap-2">
@@ -162,7 +163,7 @@ export function Ledger() {
                 const inn = isIn(r.kind, r.amount);
                 const stmtOnly = r.source === "statement";
                 return (
-                  <li key={r.payment_id ?? `${r.sort_at}-${i}`} className={`grid grid-cols-[4.5rem_1fr_auto] gap-x-3 gap-y-1 px-4 py-2 text-sm sm:grid-cols-[5rem_1fr_8rem_8rem] ${stmtOnly ? "bg-amber-50 dark:bg-amber-950/30" : ""}`}>
+                  <li key={r.payment_id ?? `${r.sort_at}-${i}`} className={`grid grid-cols-[4.5rem_1fr_auto] gap-x-3 gap-y-1 px-4 py-2 text-sm sm:grid-cols-[5rem_1fr_8rem_8rem] ${stmtOnly ? "bg-status-warn-bg/50" : ""}`}>
                     <span className="tabular text-muted-foreground" title={r.exact_time ? "Time from the SMS" : "No exact time: placed between its neighbours in the wallet's own list"}>
                       {new Date(r.sort_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Dhaka" })}{r.exact_time ? "" : "≈"}
                     </span>
@@ -171,12 +172,12 @@ export function Ledger() {
                       {r.counterparty ? <span className="text-muted-foreground"> · {r.counterparty}</span> : null}
                       <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                         {r.trx_id ? <span className="font-mono">{r.trx_id}</span> : null}
-                        <Badge className={stmtOnly ? "bg-amber-600 text-white hover:bg-amber-600" : ""}>{SOURCE_WORDS[r.source] ?? r.source}</Badge>
+                        <Badge tone={stmtOnly ? "warn" : "idle"}>{SOURCE_WORDS[r.source] ?? r.source}</Badge>
                         {r.status && r.status !== "statement" ? <StatusBadge status={r.status} /> : null}
                         {r.chain_status ? <ChainBadge status={r.chain_status} delta={null} /> : null}
                       </span>
                     </span>
-                    <span className={`tabular text-right font-medium ${inn ? "text-emerald-700 dark:text-emerald-400" : "text-destructive"}`}>{inn ? "+" : "−"}{tk(Math.abs(Number(r.amount)))}</span>
+                    <span className={`tabular text-right font-medium ${inn ? "text-status-ok" : "text-destructive"}`}>{inn ? "+" : "−"}{tk(Math.abs(Number(r.amount)))}</span>
                     <span className="tabular text-right text-muted-foreground max-sm:col-start-3">{r.balance == null ? "" : `bal ${tk(Number(r.balance))}`}</span>
                   </li>
                 );

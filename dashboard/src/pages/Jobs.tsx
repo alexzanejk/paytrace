@@ -84,7 +84,8 @@ export function Jobs() {
     <Screen loading={loading || devices.loading} error={error ?? devices.error} hasData={!!data}>
       <PageHeader
         title="Jobs"
-        description="Each wallet on each phone has one job. When the wallet's own money reaches its amount, the phone rings and shows it: Taka = send the money to one of our saved bKash / Nagad numbers; Crypto = send it to our crypto wallet. Change any wallet's job or amount below, any time."
+        description="One job per wallet. The phone rings when the wallet's own money reaches its amount."
+        help={<><p>Taka job: the partner sends the money to one of our saved bKash / Nagad numbers.</p><p>Crypto job: the partner sends it to our crypto wallet.</p><p>Change any wallet's job or amount below, any time.</p></>}
       />
       {data ? (
         <div className="grid grid-cols-[minmax(0,1fr)] gap-6">

@@ -77,7 +77,8 @@ export function JobHistory() {
     <Screen loading={loading || devices.loading} error={error ?? devices.error} hasData={!!data}>
       <PageHeader
         title="Job history"
-        description="Every job on every phone, Taka and Crypto: what is on the phones now, what the partners say they did, what was verified, and what was rejected or cancelled."
+        description="Every job on every phone, Taka and Crypto."
+        help={<><p>Pending: on the phones now.</p><p>Waiting for OK: the partner says it is done; accept it once the money reached you.</p><p>Done: verified.</p><p>Rejected / cancelled: not accepted, or taken off the phone.</p></>}
         actions={<Button size="sm" variant="outline" onClick={downloadCsv} disabled={rows.length === 0}><Download aria-hidden /> CSV</Button>}
       />
 

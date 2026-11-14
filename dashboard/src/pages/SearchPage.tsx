@@ -106,7 +106,7 @@ export function SearchPage({ typed }: { typed: string }) {
   }
 
   // Wallet-list rows PayTrace already shows as a transaction (same TrxID) are not listed twice.
-  const haveTrx = new Set((data?.payments.rows ?? []).map((p) => p.trx_id.toUpperCase()));
+  const haveTrx = new Set((data?.payments.rows ?? []).map((p) => (p.trx_id ?? "").toUpperCase()));
   const listOnly = (data?.appRows.rows ?? []).filter((r) => !r.trx_id || !haveTrx.has(r.trx_id.toUpperCase()));
   const found = data
     ? data.payments.rows.length + listOnly.length + data.orders.rows.length + data.payouts.rows.length + data.commission.rows.length + data.sends.rows.length + data.ownNumbers.rows.length
@@ -235,7 +235,7 @@ export function SearchPage({ typed }: { typed: string }) {
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                       {c.provider ? <ProviderChip provider={c.provider} /> : null}
                       <span className="text-sm font-medium">{SEND_WORD[c.kind] ?? c.kind}</span>
-                      <StatusBadge status={c.status} kind="other" />
+                      <StatusBadge status={c.status} kind="command" />
                       {c.amount != null ? <span className="text-sm font-semibold tabular">{tk(c.amount)}</span> : null}
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">

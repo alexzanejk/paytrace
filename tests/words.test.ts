@@ -1,5 +1,5 @@
 import {
-  GENUINE, HOW_IT_FITS, HUB_VIEW, ORDER_STATUS, PAGE_INTRO, PAYMENT_STATUS, PAYMENT_TYPE, SAME_THING, genuineWord, hubView,
+  COMMAND_STATUS, GENUINE, HOW_IT_FITS, HUB_VIEW, ORDER_STATUS, PAGE_INTRO, PAYMENT_STATUS, PAYMENT_TYPE, SAME_THING, genuineWord, hubView,
 } from "../dashboard/src/lib/words.ts";
 
 let pass = 0, fail = 0;
@@ -22,6 +22,12 @@ check("every payment status has an Admin Hub view", PAYMENT_CODES.every((c) => H
 const leaks = (w: Record<string, { label: string }>) => Object.values(w).filter((x) => /_/.test(x.label) || /^[a-z]+$/.test(x.label));
 check("no label is a raw code (payment)", leaks(PAYMENT_STATUS).length === 0, leaks(PAYMENT_STATUS));
 check("no label is a raw code (order)", leaks(ORDER_STATUS).length === 0, leaks(ORDER_STATUS));
+
+// Commands sent to a phone: the five states the database uses, each in plain words.
+const COMMAND_CODES = ["queued", "running", "done", "failed", "cancelled"];
+check("every phone command status has words", COMMAND_CODES.every((c) => COMMAND_STATUS[c]?.label && COMMAND_STATUS[c]?.meaning));
+check("no label is a raw code (command)", leaks(COMMAND_STATUS).length === 0, leaks(COMMAND_STATUS));
+check("a command the phone never took does not read as a failure", COMMAND_STATUS.cancelled.tone === "idle" && COMMAND_STATUS.failed.tone === "bad");
 
 // Admin Hub alignment (its code: found = VERIFIED, found-but-held = HELD FOR REVIEW, not found = UNVERIFIED).
 check("found payments show VERIFIED in Admin Hub", ["matched", "unmatched", "tracked_only"].every((c) => hubView(c).label === "VERIFIED"));

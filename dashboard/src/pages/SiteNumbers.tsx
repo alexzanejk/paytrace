@@ -61,7 +61,8 @@ export function SiteNumbers() {
     <Screen loading={loading} error={error} hasData={!!data}>
       <PageHeader
         title="Numbers by site"
-        description="Tick the deposit numbers each website may show its customers. Only numbers on your MAIN phones are listed. A website with no tick for a wallet type is given any main number, in turn, as before."
+        description="Tick the deposit numbers each website may show its customers."
+        help={<><p>Only numbers on your MAIN phones are listed.</p><p>A website with no tick for a wallet type is given any main number, in turn.</p></>}
       />
 
       <Card className="mb-4 p-4 text-sm text-muted-foreground">

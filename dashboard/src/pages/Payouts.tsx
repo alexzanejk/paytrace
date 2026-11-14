@@ -1,12 +1,14 @@
 import { AppSearch } from "@/components/AppSearch";
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, ChevronDown, ChevronRight, HandCoins, Search, TriangleAlert } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronRight, HandCoins, Search } from "lucide-react";
+import { Confirm } from "@/components/Confirm";
+import { MoneyConfirm } from "@/components/MoneyConfirm";
 import { must, sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { PROVIDERS, PROVIDER_LABEL, type Payment } from "@/lib/types";
 import { rangeBounds, rangeLabel, periodRange } from "@/lib/period";
 import {
-  PAYOUT_WORDS, UNSURE_HELP, checkNumbers, groupDigits, liveItemsByPayment, parsePct, parseSendAmount, keepPctFor, payoutLine, payoutRefusal, recentNumbers, tickableRefusal, HELD_REFUSAL,
+  PAYOUT_WORDS, UNSURE_HELP, SENT_WARNING, NOT_SENT_WARNING, checkNumbers, groupDigits, liveItemsByPayment, parsePct, parseSendAmount, keepPctFor, payoutLine, payoutRefusal, recentNumbers, tickableRefusal, HELD_REFUSAL,
   parseFee, sendMethod, sendProblem, senderOptions, splitPayout, ROCKET_NOTE, METHOD_WORDS, type PayoutItemRow, type PayoutRow,
 } from "@/lib/payouts";
 import { nudgePhone } from "@/lib/wake";
@@ -133,7 +135,8 @@ export function Payouts() {
     <Screen loading={loading || devices.loading} error={error ?? devices.error} hasData={!!data}>
       <PageHeader
         title="Payout"
-        description={`Pay on received money: keep your share and send the rest. Showing ${rangeLabel(range)} (Bangladesh days).`}
+        description={`Keep your share, send the rest. Showing ${rangeLabel(range)}.`}
+        help={<><p>Tick the received transactions, then send from a phone or mark them paid by hand.</p><p>A transaction can be in one payout only, so it is never paid twice.</p><p>Days run 12:00 AM to 11:59 PM Bangladesh time.</p></>}
       />
 
       <Card className="mb-4 flex flex-wrap items-center justify-between gap-3 p-3">
@@ -513,18 +516,17 @@ function PayoutPanel({
       {!confirming ? (
         <Button disabled={!ready || busy} onClick={() => setConfirming(true)}>{byHand ? "Mark as paid…" : "Send…"}</Button>
       ) : (
-        <div className="space-y-3 rounded-lg border border-status-warn bg-status-warn-bg p-3 text-sm">
-          <p className="flex gap-2 font-medium text-status-warn">
-            <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
-            {byHand
-              ? `Record that you paid ${tk(split!.send)}${nums.number ? ` to ${groupDigits(nums.number)}` : ""} and kept ${tk(split!.keep)}. The ${chosen.length} transaction${chosen.length === 1 ? "" : "s"} will show Paid.`
-              : `Send ${tk(split!.send)} by ${METHOD_WORDS[sendMethod(sender!.account)]} to ${groupDigits(nums.number!)} from ${sender!.label}, ${wayWords(way, sender!.provider)}.${split!.fee ? ` ${tk(split!.fee)} is set aside for the bKash fee.` : ""} You keep ${tk(split!.keep)}. ${way === "app" ? `The phone sends only when the ${sender!.provider === "nagad" ? "Nagad" : "bKash"} app shows this number and this amount.` : "The phone types the PIN only on the wallet screen that shows this number and this amount."}`}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Button disabled={busy} onClick={() => void go()}>{busy ? "Working…" : byHand ? "Yes, mark paid" : "Yes, send it"}</Button>
-            <Button variant="outline" disabled={busy} onClick={() => setConfirming(false)}>Back</Button>
-          </div>
-        </div>
+        <MoneyConfirm
+          yes={byHand ? "Yes, mark paid" : "Yes, send it"}
+          busy={busy}
+          onYes={() => void go()}
+          onBack={() => setConfirming(false)}
+          note={byHand ? "Nothing is sent: it is only recorded as paid." : "This really sends the money. It cannot be taken back."}
+        >
+          {byHand
+            ? `Record that you paid ${tk(split!.send)}${nums.number ? ` to ${groupDigits(nums.number)}` : ""} and kept ${tk(split!.keep)}. The ${chosen.length} transaction${chosen.length === 1 ? "" : "s"} will show Paid.`
+            : `Send ${tk(split!.send)} by ${METHOD_WORDS[sendMethod(sender!.account)]} to ${groupDigits(nums.number!)} from ${sender!.label}, ${wayWords(way, sender!.provider)}.${split!.fee ? ` ${tk(split!.fee)} is set aside for the bKash fee.` : ""} You keep ${tk(split!.keep)}. ${way === "app" ? `The phone sends only when the ${sender!.provider === "nagad" ? "Nagad" : "bKash"} app shows this number and this amount.` : "The phone types the PIN only on the wallet screen that shows this number and this amount."}`}
+        </MoneyConfirm>
       )}
     </Card>
   );
@@ -560,8 +562,12 @@ function UnsureControls({ p, onDone }: { p: PayoutRow; onDone: () => void }) {
       <p className="text-xs text-muted-foreground">{UNSURE_HELP}{p.error ? ` (phone said: ${p.error})` : ""}</p>
       <div className="flex flex-wrap items-center gap-2">
         <Input className="w-44" placeholder="TrxID, if you see it" value={trx} onChange={(e) => setTrx(e.target.value)} />
-        <Button size="sm" disabled={busy} onClick={() => void say(true)}>It was sent</Button>
-        <Button size="sm" variant="outline" disabled={busy} onClick={() => void say(false)}>It was NOT sent</Button>
+        <Confirm title="Record it as sent?" description={SENT_WARNING} confirmLabel="Yes, it was sent" onConfirm={() => say(true)}>
+          <Button size="sm" disabled={busy}>It was sent</Button>
+        </Confirm>
+        <Confirm title="Record it as NOT sent?" description={NOT_SENT_WARNING} confirmLabel="It was NOT sent" onConfirm={() => say(false)}>
+          <Button size="sm" variant="outline" disabled={busy}>It was NOT sent</Button>
+        </Confirm>
       </div>
       {problem ? <p className="text-xs text-status-bad">{problem}</p> : null}
     </div>
@@ -572,7 +578,6 @@ function PayoutDetails({ p, nameOf, onDone }: { p: PayoutRow; nameOf: (id: strin
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
   async function undo() {
-    if (!window.confirm("Undo this payout recorded by hand? The transactions become payable again.")) return;
     setBusy(true);
     const r = await sb.rpc("resolve_payout", { p_payout: p.id, p_sent: false, p_trx: null });
     setBusy(false);
@@ -585,7 +590,11 @@ function PayoutDetails({ p, nameOf, onDone }: { p: PayoutRow; nameOf: (id: strin
         Started {when(p.created_at)}{p.paid_at ? ` · paid ${when(p.paid_at)}` : ""}{p.balance_after != null ? ` · wallet balance after ${tk(Number(p.balance_after))}` : ""}{p.note ? ` · note: ${p.note}` : ""}
       </p>
       {p.status === "unsure" ? <UnsureControls p={p} onDone={onDone} /> : null}
-      {p.status === "paid" && p.method === "manual" ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void undo()}>Undo (it was not paid)</Button> : null}
+      {p.status === "paid" && p.method === "manual" ? (
+        <Confirm title="Undo this payout recorded by hand?" description="Its transactions become payable again. Do this only if the money was not really paid." confirmLabel="Undo" onConfirm={undo}>
+          <Button size="sm" variant="outline" disabled={busy}>Undo (it was not paid)</Button>
+        </Confirm>
+      ) : null}
       {problem ? <p className="text-xs text-status-bad">{problem}</p> : null}
     </div>
   );

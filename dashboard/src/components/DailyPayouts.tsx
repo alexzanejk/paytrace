@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CheckCircle2, HandCoins, TriangleAlert } from "lucide-react";
+import { CheckCircle2, HandCoins } from "lucide-react";
 import { must, sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { dhakaDay } from "@/lib/period";
@@ -9,7 +9,9 @@ import {
   type CommissionDayRow, type CommissionPayRow, type PayDayRow,
 } from "@/lib/commissionPays";
 import { nudgePhone } from "@/lib/wake";
-import { ROCKET_NOTE } from "@/lib/payouts";
+import { NOT_SENT_WARNING, ROCKET_NOTE, SENT_WARNING } from "@/lib/payouts";
+import { Confirm } from "@/components/Confirm";
+import { MoneyConfirm } from "@/components/MoneyConfirm";
 import { useQuery } from "@/hooks/useQuery";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -235,18 +237,17 @@ function PartnerDays({
           {!confirming ? (
             <Button disabled={!!blocked || busy} onClick={() => setConfirming(true)}>{byHand ? "Mark as paid…" : "Pay…"}</Button>
           ) : (
-            <div className="space-y-2 rounded-lg border border-status-warn bg-status-warn-bg p-3 text-sm">
-              <p className="flex gap-2 font-medium text-status-warn">
-                <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
-                {byHand
-                  ? `Record ${ticked.size} day${ticked.size === 1 ? "" : "s"} of ${nameOf(partnerId)}'s commission (${tk(split.total)}) as paid.`
-                  : `Send ${tk(split.send)} to ${number} by ${option!.method === "cash_in" ? "Cash In" : "Send Money"} (${option!.label}), ${wayWords(way, option!.provider)}. ${way === "app" ? `The phone sends only when the ${option!.provider === "nagad" ? "Nagad" : "bKash"} app shows this number and this amount.` : "The phone types the PIN only on the wallet screen that shows this number and this amount."}`}
-              </p>
-              <div className="flex gap-2">
-                <Button disabled={busy} onClick={() => void go()}>{busy ? "Working…" : byHand ? "Yes, mark paid" : "Yes, pay it"}</Button>
-                <Button variant="outline" disabled={busy} onClick={() => setConfirming(false)}>Back</Button>
-              </div>
-            </div>
+            <MoneyConfirm
+              yes={byHand ? "Yes, mark paid" : "Yes, pay it"}
+              busy={busy}
+              onYes={() => void go()}
+              onBack={() => setConfirming(false)}
+              note={byHand ? "Nothing is sent: it is only recorded as paid." : "This really sends the money. It cannot be taken back."}
+            >
+              {byHand
+                ? `Record ${ticked.size} day${ticked.size === 1 ? "" : "s"} of ${nameOf(partnerId)}'s commission (${tk(split.total)}) as paid.`
+                : `Send ${tk(split.send)} to ${number} by ${option!.method === "cash_in" ? "Cash In" : "Send Money"} (${option!.label}), ${wayWords(way, option!.provider)}. ${way === "app" ? `The phone sends only when the ${option!.provider === "nagad" ? "Nagad" : "bKash"} app shows this number and this amount.` : "The phone types the PIN only on the wallet screen that shows this number and this amount."}`}
+            </MoneyConfirm>
           )}
         </div>
       ) : null}
@@ -275,8 +276,12 @@ function LivePay({ p, nameOf, onDone }: { p: CommissionPayRow; nameOf: (id: stri
           <p className="text-xs text-muted-foreground">{UNSURE_HELP}{p.error ? ` (phone said: ${p.error})` : ""}</p>
           <div className="flex flex-wrap gap-2">
             <Input className="w-44" placeholder="TrxID, if you see it" value={trx} onChange={(e) => setTrx(e.target.value)} />
-            <Button size="sm" disabled={busy} onClick={() => void say(true)}>It was sent</Button>
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => void say(false)}>It was NOT sent</Button>
+            <Confirm title="Record it as sent?" description={SENT_WARNING} confirmLabel="Yes, it was sent" onConfirm={() => say(true)}>
+              <Button size="sm" disabled={busy}>It was sent</Button>
+            </Confirm>
+            <Confirm title="Record it as NOT sent?" description={NOT_SENT_WARNING} confirmLabel="It was NOT sent" onConfirm={() => say(false)}>
+              <Button size="sm" variant="outline" disabled={busy}>It was NOT sent</Button>
+            </Confirm>
           </div>
           {problem ? <p className="text-xs text-status-bad">{problem}</p> : null}
         </div>
@@ -290,7 +295,6 @@ function PaidByHand({ pays, nameOf, onDone }: { pays: CommissionPayRow[]; nameOf
   const [problem, setProblem] = useState("");
   if (!pays.length) return null;
   async function undo(id: string) {
-    if (!window.confirm("Undo this payment marked by hand? Its days become due again.")) return;
     const r = await sb.rpc("resolve_commission_pay", { p_pay: id, p_sent: false, p_trx: null });
     if (r.error) setProblem(r.error.message); else onDone();
   }
@@ -301,7 +305,9 @@ function PaidByHand({ pays, nameOf, onDone }: { pays: CommissionPayRow[]; nameOf
         {pays.map((p) => (
           <li key={p.id} className="flex flex-wrap items-center gap-2">
             {payLine(p, nameOf)} · {when(p.created_at)}{p.note ? ` · ${p.note}` : ""}
-            <button type="button" className="underline" onClick={() => void undo(p.id)}>Undo</button>
+            <Confirm title="Undo this payment marked by hand?" description="Its days become due again. Do this only if the money was not really paid." confirmLabel="Undo" onConfirm={() => undo(p.id)}>
+              <button type="button" className="underline">Undo</button>
+            </Confirm>
           </li>
         ))}
       </ul>

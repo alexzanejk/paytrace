@@ -68,7 +68,8 @@ export function Commission() {
     <Screen loading={loading || devices.loading} error={error ?? devices.error} hasData={!!data}>
       <PageHeader
         title="Commission"
-        description={`What partners earn on the money that comes through their phones. Showing ${rangeLabel(range)} (days run 12:00 AM to 11:59 PM Bangladesh time). Set each phone's rates on the Phones page. PayTrace only records this: you pay partners yourself and record it below.`}
+        description={`What partners earn. Showing ${rangeLabel(range)}.`}
+        help={<><p>Partners earn a share of the Cash Out that comes through their phones.</p><p>Days run 12:00 AM to 11:59 PM Bangladesh time.</p><p>Set each phone&apos;s rates on its own page under Phones → Commission.</p><p>Pay a partner from a phone below, or pay them yourself and mark it paid.</p></>}
         actions={
           <Button variant="outline" size="sm" onClick={exportCsv} disabled={days.length === 0}>
             <Download aria-hidden /> Download CSV

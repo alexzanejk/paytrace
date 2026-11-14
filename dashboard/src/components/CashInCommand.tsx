@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Send, TriangleAlert } from "lucide-react";
+import { Send } from "lucide-react";
+import { MoneyConfirm } from "@/components/MoneyConfirm";
 import { sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import {
@@ -112,7 +113,7 @@ export function CashInCommand({ deviceId, provider }: { deviceId: string; provid
         </div>
       </div>
       {typed && amount == null ? (
-        <p className="text-xs text-rose-600">Type a whole amount between {tk(LEAST_PER_CASH_IN)} and {tk(MOST_PER_CASH_IN)} (paisa allowed, two decimals at most).</p>
+        <p className="text-xs text-status-bad">Type a whole amount between {tk(LEAST_PER_CASH_IN)} and {tk(MOST_PER_CASH_IN)} (paisa allowed, two decimals at most).</p>
       ) : null}
 
       <SendWayChoice deviceId={deviceId} provider={provider} account="agent" method="cash_in" value={way} onChange={(w) => { setWay(w); setConfirming(false); }} />
@@ -141,24 +142,20 @@ export function CashInCommand({ deviceId, provider }: { deviceId: string; provid
       </div>
 
       {confirming && amount != null && chosen && (
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">
-          <p className="flex items-start gap-2 font-medium">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-            <span>{cashInSummary(label, amount, numberLabel(chosen), tk as (n: number) => string)} Sent {wayWords(way, provider)}.</span>
-          </p>
-          <p className="mt-1 text-muted-foreground">
-            This really sends the money. Check the amount and the number: it cannot be taken back.
-          </p>
-          <div className="mt-2 flex gap-2">
-            <Button size="sm" onClick={() => void send()} disabled={busy}>Yes, send it</Button>
-            <Button size="sm" variant="outline" onClick={() => setConfirming(false)}>No</Button>
-          </div>
-        </div>
+        <MoneyConfirm
+          yes="Yes, send it"
+          busy={busy}
+          onYes={() => void send()}
+          onBack={() => setConfirming(false)}
+          note="This really sends the money. Check the amount and the number: it cannot be taken back."
+        >
+          {cashInSummary(label, amount, numberLabel(chosen), tk as (n: number) => string)} Sent {wayWords(way, provider)}.
+        </MoneyConfirm>
       )}
 
       {line && <p className="text-sm text-muted-foreground">{line}</p>}
       {last && (last.status === "failed" || last.status === "cancelled") ? <PhoneTrace screens={last.screens} /> : null}
-      {problem && <p className="text-sm text-rose-600">{problem}</p>}
+      {problem && <p className="text-sm text-status-bad">{problem}</p>}
     </div>
   );
 }

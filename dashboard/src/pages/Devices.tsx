@@ -246,7 +246,8 @@ export function Devices() {
     <Screen loading={loading} error={error} hasData={!!data}>
       <PageHeader
         title="Phones"
-        description="Each phone that forwards payment messages. Tap a phone to open it. Totals run from 12:00 AM to 11:59 PM Bangladesh time."
+        description="Tap a phone to open it."
+        help={<><p>Each phone here forwards payment messages to PayTrace.</p><p>Totals run from 12:00 AM to 11:59 PM Bangladesh time.</p></>}
         actions={
           <div className="flex max-w-full flex-wrap items-center gap-2">
             {dayNav}
@@ -329,7 +330,7 @@ export function Devices() {
       ) : null}
 
       {coverage.missing.length > 0 || coverage.invalid.length > 0 ? (
-        <Card className="mb-4 border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100" role="status">
+        <Card className="mb-4 border-status-warn bg-status-warn-bg p-3 text-sm text-status-warn" role="status">
           <p className="font-medium">Deposit numbers need attention</p>
           <ul className="mt-1 list-disc pl-5">
             {coverage.invalid.map((x) => (
