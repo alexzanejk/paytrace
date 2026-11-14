@@ -41,7 +41,7 @@ export function SendWayChoice({ deviceId, provider, account, method, value, onCh
     <div className="space-y-1">
       <div className="text-sm font-medium">Send by</div>
       <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Send by">
-        {(["ussd", "app"] as const).map((w) => {
+        {((provider === "bkash" || provider === "nagad" ? ["ussd", "app"] : ["ussd"]) as SendWay[]).map((w) => {
           const disabled = w === "app" && !app.ok;
           const on = value === w;
           return (

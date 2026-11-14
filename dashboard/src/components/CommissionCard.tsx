@@ -16,7 +16,9 @@ export function CommissionCard({
   rates,
   balance,
   onChanged,
+  open,
 }: {
+  open?: boolean;
   device: Device;
   rates: RateRow[];
   balance: CommissionBalance | undefined;
@@ -55,6 +57,7 @@ export function CommissionCard({
 
   return (
     <Disclosure
+      open={open}
       icon={Percent}
       title="Partner commission"
       summary={owed > 0 || over > 0 ? `${over > 0 ? "Overpaid" : "Owed"} ${tk(over > 0 ? over : owed)}` : current.size === 0 ? "No rates yet" : "Nothing owed"}

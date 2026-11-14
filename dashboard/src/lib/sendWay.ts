@@ -19,7 +19,9 @@ export interface AppWayInput {
 
 /** The button's words for a way, for this wallet. */
 export const wayLabel = (w: SendWay, provider?: string | null): string =>
-  provider === "nagad" ? (w === "app" ? "Nagad app" : "USSD (*167#)") : WAY_LABEL[w];
+  provider === "nagad" ? (w === "app" ? "Nagad app" : "USSD (*167#)")
+    : provider === "rocket" ? (w === "app" ? "Rocket app" : "USSD (*322#)")
+    : WAY_LABEL[w];
 
 /** Whether the bKash app way can be chosen, and if not, why, in words. */
 export function appWayFor(o: AppWayInput): { ok: boolean; why: string } {
@@ -40,6 +42,7 @@ export const wayToSend = (chosen: SendWay, o: AppWayInput): SendWay => (chosen =
 export const wayWords = (w: SendWay, provider?: string | null): string =>
   provider === "nagad"
     ? (w === "app" ? "through the Nagad app (হ্যাঁ only when it shows this number and amount)" : "by USSD (*167#)")
+    : provider === "rocket" ? "by USSD (*322#)"
     : (w === "app" ? "through the bKash app (tap and hold)" : "by USSD (*247#)");
 
 /** The balance check's own app way (migration 089, owner 2026-11-11: "yes build balance check in app"): bKash only, and only

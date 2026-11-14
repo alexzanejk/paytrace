@@ -26,7 +26,8 @@ import { Help } from "@/pages/Help";
 type Phase = { name: "loading" } | { name: "login"; note?: string } | { name: "mfa" } | { name: "ready" };
 
 const tabFromHash = (): TabId => {
-  const raw = window.location.hash.replace(/^#\/?/, "");
+  // The first part of the address is the page ("#/devices/<phone>/wallets" is still the Phones page).
+  const raw = window.location.hash.replace(/^#\/?/, "").split("/")[0];
   return isTabId(raw) ? raw : "overview";
 };
 

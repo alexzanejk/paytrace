@@ -12,7 +12,7 @@ import { WALLETS, walletLabel } from "@/lib/phoneCommands";
  *  "Send money from this phone" switch, the 100 to 50,000 Tk bounds on one cash-in (database and phone), the saved-number
  *  rule, and the phone typing its PIN only on a wallet screen showing this number and this amount. To pay on received
  *  money to a typed number, use the Payout page. */
-export function CashInSection({ deviceId }: { deviceId: string }) {
+export function CashInSection({ deviceId, open }: { deviceId: string; open?: boolean }) {
   const [usedToday, setUsedToday] = useState<number | null>(null);
 
   const load = useCallback(async () => {
@@ -23,7 +23,7 @@ export function CashInSection({ deviceId }: { deviceId: string }) {
   useEffect(() => { void load(); }, [load]);
 
   return (
-    <Disclosure icon={Send} title="Cash in from this phone" summary={usedToday ? `${tk(usedToday)} sent today` : ""}>
+    <Disclosure open={open} icon={Send} title="Cash in from this phone" summary={usedToday ? `${tk(usedToday)} sent today` : ""}>
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
           {usedToday != null ? `${tk(usedToday)} sent by cash-in from this phone today. ` : ""}No daily limit for an agent
