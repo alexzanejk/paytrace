@@ -178,6 +178,67 @@ export function tickableRefusal(why: string | null): boolean {
   return why === null || why === HELD_REFUSAL;
 }
 
+/** At most this many transactions in one payout (the database's own limit). */
+export const MOST_TICKS = 200;
+
+/** Ticks outlive the list (owner 2026-11-14: "selecting one you can't search another"). After each load, decide which
+ *  ticks stay. `list` = the rows on screen, `picked` = fresh copies of ticked rows that are NOT on screen, `asked` = the
+ *  off-screen ids that load asked the database for. A tick is dropped only on fresh evidence: its row came back and can
+ *  no longer be paid, or it was asked for and did not come back. A tick nobody has checked yet is kept. */
+export function settleTicks<T extends PayablePayment>(
+  ticked: string[], list: T[], picked: T[], asked: string[], taken: Set<string>,
+): { keep: string[]; dropped: { id: string; why: string }[] } {
+  const fresh = new Map<string, T>();
+  for (const r of picked) fresh.set(r.id, r);
+  for (const r of list) fresh.set(r.id, r);
+  const wasAsked = new Set(asked);
+  const keep: string[] = [];
+  const dropped: { id: string; why: string }[] = [];
+  for (const id of ticked) {
+    const row = fresh.get(id);
+    if (row) {
+      const why = payoutRefusal(row, taken);
+      if (tickableRefusal(why)) keep.push(id); else dropped.push({ id, why: why! });
+    } else if (wasAsked.has(id)) {
+      dropped.push({ id, why: "No longer in PayTrace" });
+    } else {
+      keep.push(id);
+    }
+  }
+  return { keep, dropped };
+}
+
+/** The ticked rows in the order they were ticked: the freshest copy of each (on screen, else re-read, else as ticked). */
+export function tickedRows<T extends { id: string }>(ticked: string[], list: T[], picked: T[], kept: Map<string, T>): T[] {
+  const onScreen = new Map(list.map((r) => [r.id, r]));
+  const reRead = new Map(picked.map((r) => [r.id, r]));
+  return ticked.map((id) => onScreen.get(id) ?? reRead.get(id) ?? kept.get(id)).filter((r): r is T => !!r);
+}
+
+/** The tick at the top of the list: adds every payable row on screen to the ticks (up to the limit), or, when they are
+ *  all ticked already, takes just those off. Ticks on rows that are not on screen are never touched. */
+export function toggleShown(ticked: string[], shownIds: string[], most = MOST_TICKS): string[] {
+  const have = new Set(ticked);
+  if (shownIds.length > 0 && shownIds.every((id) => have.has(id))) {
+    const off = new Set(shownIds);
+    return ticked.filter((id) => !off.has(id));
+  }
+  const out = [...ticked];
+  for (const id of shownIds) {
+    if (out.length >= most) break;
+    if (!have.has(id)) { out.push(id); have.add(id); }
+  }
+  return out;
+}
+
+/** What to say when ticks were taken off by a re-check. */
+export function droppedLine(dropped: { id: string; why: string }[], trxOf: (id: string) => string | undefined): string {
+  if (!dropped.length) return "";
+  const names = dropped.slice(0, 3).map((d) => `${trxOf(d.id) ?? "one transaction"} (${d.why.toLowerCase()})`).join(", ");
+  const more = dropped.length > 3 ? ` and ${dropped.length - 3} more` : "";
+  return `${dropped.length === 1 ? "A ticked transaction was" : `${dropped.length} ticked transactions were`} taken out: ${names}${more}.`;
+}
+
 /** The payout a transaction belongs to now (the live one), from the item rows. */
 export function liveItemsByPayment(items: PayoutItemRow[]): Map<string, string> {
   const m = new Map<string, string>();
