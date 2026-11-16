@@ -158,7 +158,10 @@
             </intent-filter>
         </receiver>
 
-        <!-- Hands the downloaded update to Android's installer without exposing a file path. -->
+        <!-- Android's installer reports here when PayTrace installs its own update (SelfInstall). -->
+        <receiver android:name=".InstallResultReceiver" android:exported="false" />
+
+        <!-- Hands the downloaded update to Android's installer without exposing a file path (fallback only). -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.updates"

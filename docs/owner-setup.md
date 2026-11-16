@@ -492,9 +492,12 @@ of just timing out:
   self-repair log; there is also a **Repair now** button), and the Phones page shows "Accessibility service not running"
   while it is dead. The real fix is still to stop the phone killing PayTrace: Autostart, Battery saver "No restrictions",
   lock the app in Recents, keep the phone charged.
-* **Android's "restricted settings" block**, which it puts on apps installed outside a store and which comes back with
-  every update. Fix: PayTrace's app page, three dots at the top right, "Allow restricted settings", confirm, then
-  switch it on in Accessibility again. The app's warning has a button to that page.
+* **Android's "restricted settings" block**, which it puts on apps installed outside a store. Fix: PayTrace's app page,
+  three dots at the top right, "Allow restricted settings", confirm, then switch it on in Accessibility again. The app's
+  warning has a button to that page. **From the build that "installs updates the way app stores do" onwards**, updates made
+  with the app's own **Update now** button should no longer bring this block back, so it is needed once per phone (the
+  first install from a downloaded file still gets it). An APK installed by opening the downloaded file again (from the
+  download link or a file manager) is still marked restricted: update from inside the app instead.
 
 ### Rocket joined the dashboard's phone commands (2026-11-02)
 
