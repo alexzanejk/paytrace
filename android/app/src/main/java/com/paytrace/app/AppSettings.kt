@@ -354,11 +354,18 @@ class AppSettings(ctx: Context) {
     var personalAllowed: Boolean
         get() = p.getBoolean("personal_allowed", false)
         set(v) { p.edit().putBoolean("personal_allowed", v).apply() }
-    /** A personal account's number and SIM (-1 = no SIM chosen yet). Its PIN is in PersonalAccounts.pinStore. */
-    fun personalNumberOf(provider: String): String = p.getString("personal_number_$provider", "") ?: ""
-    fun setPersonalNumberOf(provider: String, v: String) { p.edit().putString("personal_number_$provider", v.filter { it.isDigit() }.take(13)).apply() }
-    fun personalSlotOf(provider: String): Int = p.getInt("personal_slot_$provider", -1).let { if (it in 0..1) it else -1 }
-    fun setPersonalSlotOf(provider: String, v: Int) { p.edit().putInt("personal_slot_$provider", if (v in 0..1) v else -1).apply() }
+    /** A personal account's number and SIM (-1 = no SIM chosen yet). Its PIN is in PersonalAccounts.pinStore. A phone may hold
+     *  TWO personal accounts of one wallet, one per SIM (owner 2026-11-16): [n] is 1 or 2. Account 1 keeps the original keys,
+     *  so nothing saved before is lost. */
+    private fun personalKey(what: String, provider: String, n: Int) = if (n == 2) "personal2_${what}_$provider" else "personal_${what}_$provider"
+    fun personalNumberOf(provider: String, n: Int = 1): String = p.getString(personalKey("number", provider, n), "") ?: ""
+    fun setPersonalNumberOf(provider: String, v: String, n: Int = 1) { p.edit().putString(personalKey("number", provider, n), v.filter { it.isDigit() }.take(13)).apply() }
+    fun personalSlotOf(provider: String, n: Int = 1): Int = p.getInt(personalKey("slot", provider, n), -1).let { if (it in 0..1) it else -1 }
+    fun setPersonalSlotOf(provider: String, v: Int, n: Int = 1) { p.edit().putInt(personalKey("slot", provider, n), if (v in 0..1) v else -1).apply() }
+    /** Which personal account (1 or 2; 0 = neither) is signed in to the wallet's personal app on this phone. That app holds
+     *  one account at a time. PayTrace does not drive the personal app yet; this tells the dashboard which one it is. */
+    fun personalAppOf(provider: String): Int = p.getInt("personal_app_$provider", 0).let { if (it in 1..2) it else 0 }
+    fun setPersonalAppOf(provider: String, n: Int) { p.edit().putInt("personal_app_$provider", if (n in 1..2) n else 0).apply() }
 
     /** How many runs in a row the direct way failed on this phone (see UssdDirectHealth). Reset whenever it works. */
     var ussdDirectFails: Int
