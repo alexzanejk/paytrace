@@ -274,7 +274,7 @@ export function payoutLine(p: PayoutRow, phoneName: (id: string | null) => strin
 export const UNSURE_HELP =
   "The phone stopped after typing the PIN, so PayTrace cannot tell whether the money went. Check the wallet (its statement on the phone card, or the SMS), then say which. The transactions stay taken until you do, so they can never be paid twice.";
 
-export interface WalletAccount { provider: string; number: string; slot: number; found: boolean; kind?: "agent" | "personal" }
+export interface WalletAccount { provider: string; number: string; slot: number; found: boolean; kind?: "agent" | "personal"; app?: boolean }
 
 export interface SenderOption {
   key: string;
@@ -302,9 +302,15 @@ export function senderOptions(
   const out: SenderOption[] = [];
   for (const d of phones) {
     if (d.status !== "approved") continue;
+    const listed = new Set<string>();
     for (const w of d.info?.wallets ?? []) {
       if (!SENDS.includes(w.provider)) continue;
       const account = w.kind === "personal" ? "personal" : "agent";
+      // A phone may hold two personal accounts of one wallet; the phone sends Send Money from personal account 1,
+      // which it always lists first, so only that one is offered.
+      const one = `${w.provider}:${account}`;
+      if (listed.has(one)) continue;
+      listed.add(one);
       const why = !d.allow_cashin
         ? "Sending money is switched off for this phone (Phones page, \"What the dashboard may do\")."
         : account === "personal" && w.provider !== "bkash"

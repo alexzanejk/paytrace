@@ -78,6 +78,12 @@ const s2 = senderOptions([{ ...phones[0]!, allow_personal: true, info: { wallets
 ] } }]);
 check("with the switch on, a personal bKash account can send (Send Money)", s2.some((o) => o.account === "personal" && o.provider === "bkash" && o.why === "") && sendMethod("personal") === "send_money" && sendMethod("agent") === "cash_in");
 check("personal Nagad still waits for its recording", s2.some((o) => o.account === "personal" && o.provider === "nagad" && o.why.includes("not built yet")));
+const s3 = senderOptions([{ ...phones[0]!, allow_personal: true, info: { wallets: [
+  { provider: "bkash", number: "01811111111", slot: 0, found: false, kind: "personal" as const },
+  { provider: "bkash", number: "01822222222", slot: 1, found: false, kind: "personal" as const, app: true },
+] } }]);
+check("two personal bKash accounts on one phone give ONE sender, account 1 (the phone sends from it)",
+  s3.length === 1 && s3[0]!.label.includes("01811111111") && new Set(s3.map((o) => o.key)).size === s3.length, s3);
 check("a phone with sending switched off says so", s.some((o) => o.deviceId === "d2" && o.why.includes("switched off")));
 
 // ---- paid details ----

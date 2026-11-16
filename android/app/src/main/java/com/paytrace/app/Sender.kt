@@ -139,7 +139,7 @@ object Sender {
         // Each says whether it is the agent or a personal account (owner 2026-11-08), so the server files its SMS under the right one.
         val wallets = PersonalAccounts.walletsJson(
             UssdProviders.all.map { prov -> Triple(prov, s.walletNumberOf(prov), Pair(s.ussdSlotOf(prov), s.walletSimFoundOf(prov) >= 0)) },
-            PersonalAccounts.providers.map { prov -> Triple(prov, s.personalNumberOf(prov), s.personalSlotOf(prov)) },
+            PersonalAccounts.entries(s),
             s.personalAllowed,
         )
         if (wallets.length() > 0) o.put("wallets", wallets)

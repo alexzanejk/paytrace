@@ -78,6 +78,14 @@ i = cleanInfo({ wallets: [
 check("each account keeps agent or personal; anything else reads as agent", (i.wallets ?? []).map((w) => w.kind).join(",") === "agent,personal,agent", i.wallets);
 i = cleanInfo({ wallets: "01712345678" }, at);
 check("wallets that are not a list are dropped", i.wallets === undefined);
+i = cleanInfo({ wallets: [
+  { provider: "bkash", number: "01711111111", slot: 0, kind: "personal", app: true },
+  { provider: "bkash", number: "01722222222", slot: 1, kind: "personal" },
+  { provider: "nagad", number: "01733333333", slot: 0, app: true },
+] }, at);
+check("two personal accounts of one wallet are both kept; only a personal one can say it is in the app",
+  JSON.stringify((i.wallets ?? []).map((w) => [w.number, w.kind, w.app ?? false])) ===
+    JSON.stringify([["01711111111", "personal", true], ["01722222222", "personal", false], ["01733333333", "agent", false]]), i.wallets);
 i = cleanInfo({ accessibility_on: true, accessibility_running: "false", accessibility_repairs: "3" }, at);
 check("the accessibility service's real state is kept: on, not running, 3 repairs", i.accessibility_on === true && i.accessibility_running === false && i.accessibility_repairs === 3, i);
 i = cleanInfo({ accessibility_on: "yes", accessibility_running: 2, accessibility_repairs: -1 }, at);

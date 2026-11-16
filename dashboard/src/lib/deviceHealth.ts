@@ -33,7 +33,7 @@ export interface DeviceInfo {
   /** How often the phone has switched that dead service off and on by itself (needs the one-time adb grant). */
   accessibility_repairs?: number;
   /** Wallet numbers saved on the phone: which number is bKash, Nagad, Rocket, and which SIM each is in. */
-  wallets?: { provider: string; number: string; slot: number; found: boolean; kind?: "agent" | "personal" }[];
+  wallets?: { provider: string; number: string; slot: number; found: boolean; kind?: "agent" | "personal"; app?: boolean }[];
   sim_keys?: string; // the names on the last SMS broadcast whose SIM the phone could not read (names only, never values)
   push_ready?: boolean;
   keepalive_test?: "pass" | "fail" | "short";
@@ -174,6 +174,8 @@ const WALLET_NAME: Record<string, string> = { bkash: "bKash", nagad: "Nagad", ro
 /** "bKash 01712345678 · SIM 1 (found by the app)" for each wallet number the phone reported. Empty for older builds. */
 export function walletLines(info: DeviceInfo | null | undefined): string[] {
   return (info?.wallets ?? []).map(
-    (w) => `${WALLET_NAME[w.provider] ?? w.provider}${w.kind === "personal" ? " personal" : ""} ${w.number} · SIM ${w.slot + 1}${w.found ? " (found by the app)" : " (picked by hand)"}`,
+    (w) =>
+      `${WALLET_NAME[w.provider] ?? w.provider}${w.kind === "personal" ? " personal" : ""} ${w.number} · SIM ${w.slot + 1}${w.found ? " (found by the app)" : " (picked by hand)"}` +
+      (w.kind === "personal" && w.app ? ` · signed in to the ${WALLET_NAME[w.provider] ?? w.provider} app` : ""),
   );
 }

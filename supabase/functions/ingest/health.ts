@@ -9,6 +9,7 @@ export interface WalletInfo {
   slot: number;
   found: boolean;
   kind: "agent" | "personal"; // migration 065: an older app reports none, and those were all agent accounts
+  app?: true; // a personal account signed in to the wallet's personal app on the phone (one per wallet; 2026-11-16)
 }
 
 export interface DeviceInfo {
@@ -110,7 +111,8 @@ export function cleanInfo(body: Record<string, unknown>, now: Date = new Date())
   if (a11yRepairs !== undefined) info.accessibility_repairs = a11yRepairs;
   if (Array.isArray(body.wallets)) {
     const wallets: WalletInfo[] = [];
-    for (const w of body.wallets.slice(0, 6)) {
+    // Up to 3 agent accounts and 2 personal accounts each for bKash and Nagad (2026-11-16: two personal accounts per wallet).
+    for (const w of body.wallets.slice(0, 8)) {
       if (!w || typeof w !== "object") continue;
       const o = w as Record<string, unknown>;
       const provider = typeof o.provider === "string" && /^(bkash|nagad|rocket|upay)$/.test(o.provider) ? o.provider : null;
@@ -119,7 +121,11 @@ export function cleanInfo(body: Record<string, unknown>, now: Date = new Date())
       const slot = o.slot === 0 || o.slot === "0" ? 0 : o.slot === 1 || o.slot === "1" ? 1 : undefined;
       const found = asBool(o.found);
       const kind = o.kind === "personal" ? "personal" : "agent";
-      if (provider && number && slot !== undefined) wallets.push({ provider, number, slot, found: found === true, kind });
+      if (provider && number && slot !== undefined) {
+        const one: WalletInfo = { provider, number, slot, found: found === true, kind };
+        if (kind === "personal" && asBool(o.app) === true) one.app = true;
+        wallets.push(one);
+      }
     }
     if (wallets.length) info.wallets = wallets;
   }

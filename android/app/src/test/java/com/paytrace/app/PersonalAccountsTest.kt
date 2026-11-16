@@ -18,7 +18,7 @@ class PersonalAccountsTest {
         Triple("nagad", "", Pair(0, false)),
         Triple("rocket", "01900000000", Pair(1, false)),
     )
-    private val personal = listOf(Triple("bkash", "01800000000", 1), Triple("nagad", "01600000000", -1))
+    private val personal = listOf(PersonalEntry("bkash", "01800000000", 1), PersonalEntry("nagad", "01600000000", -1))
 
     @Test fun everyAccountSaysWhichKindItIs() {
         val a = PersonalAccounts.walletsJson(agents, personal, true)
@@ -35,5 +35,26 @@ class PersonalAccountsTest {
         val a = PersonalAccounts.walletsJson(agents, personal, false)
         assertEquals(2, a.length())
         for (i in 0 until a.length()) assertEquals("agent", a.getJSONObject(i).getString("kind"))
+    }
+
+    @Test fun twoPersonalAccountsOfOneWalletAreBothSentAndOneSaysItIsInTheApp() {
+        val two = listOf(
+            PersonalEntry("bkash", "01811111111", 0),
+            PersonalEntry("bkash", "01822222222", 1, inApp = true),
+        )
+        val a = PersonalAccounts.walletsJson(emptyList(), two, true)
+        assertEquals(2, a.length())
+        assertEquals("01811111111", a.getJSONObject(0).getString("number"))
+        assertFalse(a.getJSONObject(0).has("app"))
+        assertTrue(a.getJSONObject(1).getBoolean("app"))
+        assertEquals(1, a.getJSONObject(1).getInt("slot"))
+    }
+
+    @Test fun aSimHeldByAnyOtherAccountOfTheWalletIsTaken() {
+        val others = listOf("01704241450" to 0, "" to 1)
+        assertTrue(PersonalAccounts.taken(others, 0))
+        // The other personal account has no number yet, so it claims no SIM.
+        assertFalse(PersonalAccounts.taken(others, 1))
+        assertTrue(PersonalAccounts.taken(listOf("" to 0, "01811111111" to 1), 1))
     }
 }
