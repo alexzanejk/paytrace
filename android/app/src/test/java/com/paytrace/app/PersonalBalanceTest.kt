@@ -73,19 +73,20 @@ class PersonalBalanceTest {
             PersonalBalanceReport.line(2, "01800000000", 0, UssdOutcome(false, null, "no_pin")))
     }
 
-    /** The same day's Send Money of Tk 50 (reference typed by hand as "A"; PayTrace types "PT") goes through the
-     *  existing flow unchanged. */
+    /** The same day's Send Money screens (the owner sent Tk 50 with reference "A"; PayTrace never sends under Tk 100
+     *  and types "PT", so the amount here is 100) go through the existing flow unchanged. */
     @Test fun theSendMoneyRecordingStillWalksThrough() {
-        val order = CashInOrder("bkash", "01320352256", 50.0)
-        val confirm = "Add up to 5 Priyo Numbers to\nSend Money for FREE.\nSend Money.\nTo: 01320352256\nAmount: Tk 50\n" +
+        val order = CashInOrder("bkash", "01320352256", 100.0)
+        val confirm = "Add up to 5 Priyo Numbers to\nSend Money for FREE.\nSend Money.\nTo: 01320352256\nAmount: Tk 100\n" +
             "Reference: PT\nEnter Menu PIN to confirm:"
-        val receipt = "Send Money Tk 50.00 to 01320352256 successful. Ref PT. Fee Tk 5.00. Balance Tk 17,205.08. TrxID DKH8KOLCEM"
+        val receipt = "Send Money Tk 100.00 to 01320352256 successful. Ref PT. Fee Tk 5.00. Balance Tk 17,205.08. TrxID DKH8KOLCEM"
         val steps = walk(SendMoneyFlow(order, pin), menu, "Enter Receiver bKash Account No:",
             "FREE Send Money to 5 Priyo\nNumbers.\nDial *247# and select number 9\nto find priyo Numbers.\nEnter Amount:",
             "FREE Send Money to 5 Priyo\nnumbers up to 25,000 Tk. every\nmonth.\nEnter Reference:", confirm, receipt)
         assertEquals(UssdAction.Reply("1"), steps[0])
         assertEquals(UssdAction.Reply("01320352256"), steps[1])
-        assertEquals(UssdAction.Reply("50"), steps[2])
+        assertEquals(UssdAction.Reply("100"), steps[2])
+        assertEquals(UssdAction.Reply("PT"), steps[3])
         assertEquals(UssdAction.Reply("0000", secret = true), steps[4])
         val done = steps[5] as UssdAction.Done
         assertEquals("DKH8KOLCEM", done.trx)
