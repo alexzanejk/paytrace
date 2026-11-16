@@ -11,6 +11,21 @@ export function Login({ note, onSignedIn }: { note?: string; onSignedIn: () => v
   const [password, setPassword] = useState("");
   const [error, setError] = useState(note ?? "");
   const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState("");
+
+  async function forgot() {
+    setError("");
+    setSent("");
+    const to = email.trim();
+    if (!to.includes("@")) return setError("Type your email above first, then press this again.");
+    setBusy(true);
+    // The link brings you back to this same address, where the dashboard asks for the new password.
+    const { error } = await sb.auth.resetPasswordForEmail(to, { redirectTo: `${window.location.origin}/` });
+    setBusy(false);
+    if (error && /rate|seconds|too many/i.test(error.message)) return setError("An email was sent a moment ago. Wait a minute before asking again.");
+    if (error) return setError(`The email could not be sent: ${error.message}`);
+    setSent("If this is the admin's email, a reset link is on its way. Open it on this device within an hour.");
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -59,6 +74,19 @@ export function Login({ note, onSignedIn }: { note?: string; onSignedIn: () => v
             <Button type="submit" disabled={busy} className="mt-1">
               {busy ? "Signing in…" : "Sign in"}
             </Button>
+            <button
+              type="button"
+              onClick={() => void forgot()}
+              disabled={busy}
+              className="self-start text-sm text-primary underline-offset-4 hover:underline disabled:opacity-50"
+            >
+              Forgot your password?
+            </button>
+            {sent ? (
+              <p role="status" className="text-sm text-muted-foreground">
+                {sent}
+              </p>
+            ) : null}
             {error ? (
               <p role="alert" className="text-sm text-destructive">
                 {error}
