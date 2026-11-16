@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { sb } from "@/lib/supabase";
+import { LANDING, sb } from "@/lib/supabase";
 import type { Settings } from "@/lib/types";
 import { isTabId, type TabId } from "@/lib/nav";
 import { AppShell } from "@/components/AppShell";
 import { Login } from "@/components/Login";
 import { MfaChallenge } from "@/components/MfaChallenge";
+import { PasswordReset } from "@/components/PasswordReset";
 import { needsSecondStep } from "@/lib/mfa";
 import { Overview } from "@/pages/Overview";
 import { Review } from "@/pages/Review";
@@ -26,7 +27,12 @@ import { SearchPage } from "@/pages/SearchPage";
 import { queryFromPath } from "@/lib/globalSearch";
 import { useHashPath } from "@/hooks/useHashPath";
 
-type Phase = { name: "loading" } | { name: "login"; note?: string } | { name: "mfa" } | { name: "ready" };
+type Phase = { name: "loading" } | { name: "login"; note?: string } | { name: "mfa" } | { name: "reset" } | { name: "ready" };
+
+// The page was opened from a "reset your password" email: ask for the new password before anything else.
+let resetting = LANDING.recovery;
+// An old or used email link leaves "#error=..." in the address; take it out so it is not read as a page.
+if (LANDING.error && typeof window !== "undefined") window.history.replaceState(null, "", window.location.pathname);
 
 const tabFromHash = (): TabId => {
   // The first part of the address is the page ("#/devices/<phone>/wallets" is still the Phones page).
@@ -44,7 +50,8 @@ export default function App() {
 
   const boot = useCallback(async () => {
     const { data } = await sb.auth.getSession();
-    if (!data.session) return setPhase({ name: "login" });
+    if (!data.session) return setPhase({ name: "login", note: LANDING.error ?? undefined });
+    if (resetting) return setPhase({ name: "reset" });
     // Password accepted, but two-step login is on and the code has not been entered yet.
     if (await needsSecondStep()) return setPhase({ name: "mfa" });
     const { data: admin } = await sb.from("admins").select("user_id").maybeSingle();
@@ -61,6 +68,10 @@ export default function App() {
     void boot();
     const { data: sub } = sb.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_OUT") setPhase({ name: "login" });
+      if (event === "PASSWORD_RECOVERY") {
+        resetting = true;
+        setPhase({ name: "reset" });
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, [boot]);
@@ -80,6 +91,16 @@ export default function App() {
   if (phase.name === "loading") return <main className="p-6 text-muted-foreground">Loading…</main>;
   if (phase.name === "login") return <Login note={phase.note} onSignedIn={boot} />;
   if (phase.name === "mfa") return <MfaChallenge onVerified={boot} />;
+  if (phase.name === "reset")
+    return (
+      <PasswordReset
+        onDone={() => {
+          resetting = false;
+          window.history.replaceState(null, "", window.location.pathname);
+          void boot();
+        }}
+      />
+    );
 
   return (
     <AppShell tab={tab} onTab={openTab} searching={searching} onSignOut={() => void sb.auth.signOut()}>

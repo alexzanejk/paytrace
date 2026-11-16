@@ -4,6 +4,7 @@ import { PROVIDERS, PROVIDER_LABEL, type Settings } from "@/lib/types";
 import { useQuery } from "@/hooks/useQuery";
 import { Screen } from "@/components/Screen";
 import { TwoStepCard } from "@/components/TwoStepCard";
+import { PasswordCard } from "@/components/PasswordCard";
 import { AlertsCard } from "@/components/AlertsCard";
 import { InstallCard } from "@/components/InstallCard";
 import { Button } from "@/components/ui/button";
@@ -90,6 +91,8 @@ export function SettingsPage({ onSaved }: { onSaved: (s: Settings) => void }) {
         </Card>
 
         <AlertsCard />
+
+        <PasswordCard />
 
         <TwoStepCard />
 

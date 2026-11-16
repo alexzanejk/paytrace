@@ -1,10 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
 
 import { SUPABASE_URL } from "@/lib/config";
+import { readLanding } from "@/lib/password";
 
 export { SUPABASE_URL };
 // Publishable key: public by design. Row Level Security protects the data.
 const SUPABASE_KEY = "sb_publishable_faG5Xm4u4Dp9ObPP10oaSQ_Ocye9262";
+
+// Read BEFORE the client starts: it takes the sign-in out of the address and clears it.
+export const LANDING = readLanding(typeof window === "undefined" ? "" : window.location.hash);
 
 export const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 export const INGEST_URL = `${SUPABASE_URL}/functions/v1/ingest`;
