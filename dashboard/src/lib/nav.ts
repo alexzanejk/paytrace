@@ -1,4 +1,4 @@
-import { Bitcoin, HandCoins, BookOpen, BookText, Briefcase, ClipboardList, Hash, History, Home, KeyRound, ListChecks, Percent, Receipt, ScrollText, Settings2, Smartphone } from "lucide-react";
+import { Bitcoin, Code2, HandCoins, BookOpen, BookText, Briefcase, ClipboardList, Hash, History, Home, KeyRound, ListChecks, Percent, Receipt, ScrollText, Settings2, Smartphone } from "lucide-react";
 
 /** Every page. Ids are stable (the address bar, bookmarks and `lib/filters.ts` use them), so a link such as `#/numbers`
  *  keeps working whatever the menu looks like. `label` is the page's name on its tab. The money pages keep Admin Hub's
@@ -17,6 +17,7 @@ export const TABS = [
   { id: "api", label: "Sites", icon: KeyRound },
   { id: "numbers", label: "Numbers by site", icon: Hash },
   { id: "crypto", label: "Crypto (USDT)", icon: Bitcoin },
+  { id: "paycode", label: "Pay page code", icon: Code2 },
   { id: "settings", label: "Settings", icon: Settings2 },
   { id: "logs", label: "Activity log", icon: ScrollText },
   { id: "help", label: "Help", icon: BookOpen },
@@ -34,7 +35,7 @@ export const SECTIONS = [
   { id: "payout", label: "Pay out", icon: HandCoins, pages: ["payout", "commission"] },
   { id: "jobs", label: "Jobs", icon: Briefcase, pages: ["jobs", "jobhistory"] },
   { id: "phones", label: "Phones", icon: Smartphone, pages: ["devices"] },
-  { id: "websites", label: "Websites", icon: KeyRound, pages: ["api", "numbers", "crypto"] },
+  { id: "websites", label: "Websites", icon: KeyRound, pages: ["api", "numbers", "crypto", "paycode"] },
   { id: "settings", label: "Settings", icon: Settings2, pages: ["settings", "logs", "help"] },
 ] as const satisfies ReadonlyArray<{ id: string; label: string; icon: unknown; pages: readonly TabId[] }>;
 

@@ -66,6 +66,22 @@ Websites → "Where should the customer go afterwards?"; a per-deposit `return_u
 `redirect_failed_url`. The listener code is in the public guide (`/docs/`, "Keep customers on your site"). Webhook header names are
 neutral (`X-Webhook-Signature`, `X-Webhook-Event`, user-agent `Deposit-Webhook/1`).
 
+## The website's own pay page (self-hosted, 2026-11-17)
+
+A website may show its own copy of the bKash / Nagad / Rocket page instead of sending the customer to `pay_url`. The
+dashboard's **Websites → Pay page code** has the three pages (one HTML file each, with its own loading animation) and the
+server code (Node.js and PHP).
+
+- `create-deposit` now also answers `amount`, `provider`, `wallet_number` and `wallet_method`: show those on the page.
+- `POST /submit-trx` (server to server, same `Authorization: Bearer <key>`), body `{ "order_id" | "tracking_number",
+  "transaction_id" }`, answers `{ "state": "paid" | "checking" | "review" | "used" | "expired" | "too_many" |
+  "wrong_method" | "invalid" | "closed", "order_id", "tracking_number", "transaction_id" }`. It is the same check as the
+  customer typing the TrxID on PayTrace's page (5 tries per order, 120 calls a minute per key). `checking` = saved, the
+  payment has not arrived yet: ask `order-status` again in a few seconds.
+- `order-status` answers and webhook bodies also carry `wallet_number` and `wallet_method`.
+- The page never holds the key: it posts to the website's own server, which calls the gateway. Credit the customer only
+  on `paid` (webhook or `order-status`), never because the page said so.
+
 ## Webhook
 
 `POST` JSON `{"event":"deposit.paid","data":{"tracking_number","order_id","status","amount","currency","provider","trx_id","paid_at"}}`.
