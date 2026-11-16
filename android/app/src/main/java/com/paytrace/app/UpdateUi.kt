@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -59,6 +60,16 @@ private fun UpdateActions(info: UpdateInfo) {
                         // block Accessibility again until "Allow restricted settings").
                         msg = "Tap Install on the next screen."
                         ctx.startActivity(Updater.installIntent(ctx, file))
+                    } else {
+                        // Safety net: if Android never answers the session, open the file the old way.
+                        delay(SelfInstall.WAIT_MS)
+                        if (SelfInstall.stillWaiting(SelfInstall.status.value)) {
+                            SelfInstall.say("")
+                            msg = "Tap Install on the next screen."
+                            try { ctx.startActivity(Updater.installIntent(ctx, file)) } catch (_: Exception) {
+                                msg = "The update could not be opened. Tap Update now to try again."
+                            }
+                        }
                     }
                 }
             },

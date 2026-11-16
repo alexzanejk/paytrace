@@ -22,4 +22,11 @@ class SelfInstallTest {
         assertEquals(0, InstallWords.SUCCESS)
         assertEquals(3, InstallWords.ABORTED)
     }
+
+    @Test
+    fun theFallbackOnlyStartsWhileAndroidHasNotAnswered() {
+        assertTrue(SelfInstall.stillWaiting(SelfInstall.READYING))
+        assertTrue(!SelfInstall.stillWaiting(InstallWords.text(InstallWords.PENDING_USER_ACTION)))
+        assertTrue(!SelfInstall.stillWaiting(""))
+    }
 }
