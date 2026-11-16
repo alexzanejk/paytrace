@@ -81,6 +81,9 @@ async function createDeposit(req: Request, body: Record<string, unknown>): Promi
     tracking_number: data.tracking_number,
     pay_url: `${PAY_URL}/pay/?trackingNumber=${data.tracking_number}`,
     status: data.status, expires_at: data.expires_at, group: data.group,
+    // For a site that shows its own copy of the pay page (migration 102): what to pay, and to which number.
+    amount: data.amount ?? d.amount, provider: data.provider ?? d.provider,
+    wallet_number: data.wallet_number ?? null, wallet_method: data.wallet_method ?? null,
   });
 }
 
@@ -158,6 +161,30 @@ async function orderStatus(req: Request, body: Record<string, unknown>): Promise
   if (data?.limited) return json({ error: "too many requests, try again in a minute" }, 429, { "retry-after": "60" });
   if (data?.error === "not_found") return json({ error: "order not found" }, 404);
   return json(data);
+}
+
+/** The TrxID a customer typed on the website's OWN copy of the pay page (owner 2026-11-17), sent by the website's server
+ *  with its key. Same checks as the customer typing it on PayTrace's page: the key must own the order (gw_merchant_order,
+ *  which also counts the rate limit), then gw_submit_trx -> claim_order, the one crediting path, 5 tries per order. */
+async function submitTrx(req: Request, body: Record<string, unknown>): Promise<Response> {
+  const key = extractKey(req.headers.get("authorization"));
+  if (!key) return json({ error: "unauthorized" }, 401);
+  const tracking = body.tracking_number === undefined ? null : isUuid(body.tracking_number) ? body.tracking_number : "bad";
+  if (tracking === "bad") return json({ error: "tracking_number is not valid" }, 400);
+  const orderId = typeof body.order_id === "string" || typeof body.order_id === "number" ? String(body.order_id) : null;
+  if (!tracking && !orderId) return json({ error: "send tracking_number or order_id" }, 400);
+  const trx = normalizeTrx(body.transaction_id);
+  if (!trx) return json({ state: "invalid", error: "transaction_id is not valid" }, 400);
+  const { data: order, error } = await db.rpc("gw_merchant_order", {
+    p_key_hash: await sha256hex(key), p_tracking: tracking, p_merchant_order_id: orderId, p_limit: MERCHANT_LIMIT_PER_MINUTE,
+  });
+  if (error) { console.error("gw_merchant_order failed", error.code); return json({ error: "lookup failed, try again" }, 500); }
+  if (order?.unauthorized) return json({ error: "unauthorized" }, 401);
+  if (order?.limited) return json({ error: "too many requests, try again in a minute" }, 429, { "retry-after": "60" });
+  if (order?.error === "not_found") return json({ error: "order not found" }, 404);
+  const res = await paySubmit({ tracking_number: order.tracking_number, transaction_id: trx });
+  const out = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  return json({ ...out, tracking_number: order.tracking_number, order_id: order.order_id, transaction_id: trx }, res.status);
 }
 
 // ---------- the customer's page ----------
@@ -269,6 +296,7 @@ async function handle(req: Request): Promise<Response> {
     case "groups": return await groupCreate(req, body);
     case "enabled": return parts.pop() === "groups" ? await groupEnabled(req, body) : json({ error: "unknown route" }, 404);
     case "order-status": return await orderStatus(req, body);
+    case "submit-trx": return await submitTrx(req, body);
     case "pay-order": return await payOrder(body);
     case "pay-pick": return await payPick(body);
     case "pay-submit": return await paySubmit(body);

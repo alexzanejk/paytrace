@@ -23,6 +23,8 @@ import { WalletsCard } from "@/components/WalletsCard";
 import { BalanceCheck } from "@/components/BalanceCheck";
 import { WALLETS } from "@/lib/phoneCommands";
 import { StatementSection } from "@/components/StatementSection";
+import { PersonalBalanceCheck } from "@/components/PersonalBalanceCheck";
+import { hasPersonalBkash } from "@/lib/personalBalance";
 import { PhoneActions } from "@/components/PhoneActions";
 import { CashInSection } from "@/components/CashInSection";
 import { B2bCommand } from "@/components/B2bCommand";
@@ -640,6 +642,7 @@ function PhonePage({
               <div className="flex flex-col gap-2">
                 <h3 className="text-base font-semibold">Check a balance now</h3>
                 {WALLETS.map((w) => <BalanceCheck key={w} deviceId={d.id} provider={w} appBalance={(d.info as { app_balance?: unknown } | null | undefined)?.app_balance} appNagad={(d.info as { app_nagad?: unknown } | null | undefined)?.app_nagad} />)}
+                {hasPersonalBkash(d.info?.wallets) || d.allow_personal ? <PersonalBalanceCheck deviceId={d.id} personalOn={d.allow_personal === true} /> : null}
               </div>
               <StatementSection deviceId={d.id} wallets={d.info?.wallets} />
             </>

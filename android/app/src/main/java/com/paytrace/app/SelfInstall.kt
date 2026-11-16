@@ -43,6 +43,15 @@ object InstallWords {
 object SelfInstall {
     private const val ACTION = "com.paytrace.app.INSTALL_RESULT"
 
+    /** Shown from the moment the update is handed over until Android answers. */
+    const val READYING = "Getting the update ready…"
+
+    /** If Android has not answered by then, the update is opened the old way instead, so it can never hang. */
+    const val WAIT_MS = 20_000L
+
+    /** True while still waiting for Android's first answer. Pure, tested. */
+    fun stillWaiting(status: String): Boolean = status == READYING
+
     private val _status = MutableStateFlow("")
     /** The newest answer from Android's installer, shown under the Update now button. */
     val status: StateFlow<String> = _status
@@ -71,11 +80,13 @@ object SelfInstall {
                         session.fsync(out)
                     }
                 }
-                val reply = Intent(ACTION).setPackage(ctx.packageName)
+                // Addressed to the receiver BY NAME. It has no intent filter in the manifest, so an action-only intent (the
+                // first version, build 241) never reached it and the phone sat on "Getting the update ready…" for ever.
+                val reply = Intent(ctx, InstallResultReceiver::class.java).setAction(ACTION)
                 val flags = PendingIntent.FLAG_UPDATE_CURRENT or
                     (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0)
                 val pi = PendingIntent.getBroadcast(ctx, sessionId, reply, flags)
-                say("Getting the update ready…")
+                say(READYING)
                 session.commit(pi.intentSender)
             }
             true
