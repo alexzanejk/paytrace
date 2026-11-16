@@ -11,6 +11,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -24,7 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Downloads the new version, checks it, and opens Android's installer. The person taps Install there. */
+/** Downloads the new version, checks it, and hands it to Android's installer the way app stores do ([SelfInstall]). The person taps Install there. */
 @Composable
 private fun UpdateActions(info: UpdateInfo) {
     val ctx = LocalContext.current
@@ -32,13 +33,16 @@ private fun UpdateActions(info: UpdateInfo) {
     var busy by remember { mutableStateOf(false) }
     var progress by remember { mutableIntStateOf(0) }
     var msg by remember { mutableStateOf("") }
+    val installed by SelfInstall.status.collectAsState()
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (msg.isNotBlank()) Text(msg, style = MaterialTheme.typography.bodySmall)
+        val shown = msg.ifBlank { installed }
+        if (shown.isNotBlank()) Text(shown, style = MaterialTheme.typography.bodySmall)
         Button(
             enabled = !busy,
             onClick = {
                 scope.launch {
                     msg = ""
+                    SelfInstall.say("")
                     if (Updater.needsPermission(ctx)) {
                         msg = "Android needs your OK first. Allow PayTrace to install apps on the next screen, go back, then tap Update now again."
                         ctx.startActivity(Updater.permissionIntent(ctx))
@@ -50,7 +54,9 @@ private fun UpdateActions(info: UpdateInfo) {
                     busy = false
                     if (file == null) {
                         msg = "The download did not work. Check the internet and try again."
-                    } else {
+                    } else if (!withContext(Dispatchers.IO) { SelfInstall.start(ctx, file) }) {
+                        // No installer session could be made: open the file the old way (Android may then
+                        // block Accessibility again until "Allow restricted settings").
                         msg = "Tap Install on the next screen."
                         ctx.startActivity(Updater.installIntent(ctx, file))
                     }
