@@ -746,6 +746,26 @@ object UssdRunner {
         }
     }
 
+    /** The balance of personal bKash account [n] (1 or 2), on its own SIM [slot] with its own PIN (owner's recording
+     *  2026-11-17). Read only, so a try that fails before the PIN is tried once more, like an agent balance check. The
+     *  dialer way only: the direct request cannot walk a menu (Android hides answers that keep a session open). */
+    fun runPersonalBalance(ctx: Context, n: Int, slot: Int, onFinish: (UssdOutcome) -> Unit) {
+        val app = ctx.applicationContext
+        val s = AppSettings(app)
+        fun fail(e: String) = onFinish(UssdOutcome(false, null, e))
+        if (!s.ussdAllowed) return fail("not_allowed")
+        if (!s.personalAllowed) return fail("personal_off")
+        if (slot !in 0..1) return fail("no_personal")
+        if (!UssdSetup.callPermission(app)) return fail("no_call_permission")
+        val pin = PersonalAccounts.pinStore(app, UssdProviders.BKASH, n).get()
+        if (pin.isEmpty()) return fail("no_pin")
+        if (UssdSession.active() || UssdApi.active() || AppReader.active()) return fail("busy")
+        AccessibilityHeal.prepare(app) { note ->
+            if (!UssdSetup.accessibilityOn(app)) return@prepare fail("no_accessibility")
+            viaDialer(app, UssdProviders.BKASH, 1, note, onFinish, s, pin, { PersonalBalanceFlow { pin } }, slotOverride = slot)
+        }
+    }
+
     /** The wallet's own statement, asked for from the dashboard. Read-only: it brings back the list of recent
      *  transactions, or one entry of it, exactly as the wallet wrote them. Always the dialer way, like a cash-in: the
      *  direct request cannot carry a menu session (Android hides every answer that keeps one open). Safe to try twice
@@ -961,6 +981,11 @@ object UssdCommands {
             val look = AppLook.parse(cmd.optJSONObject("look"))
             if (look?.query == null) { report(ctx, id, UssdOutcome(false, null, "bad_search"), kind); return }
             Handler(Looper.getMainLooper()).post { AppReader.start(ctx.applicationContext, look) { outcome -> report(ctx, id, outcome, kind) } }
+            return
+        }
+        // The balance of every personal bKash account on this phone (owner 2026-11-17). Names no wallet on the server.
+        if (kind == PersonalBalance.KIND) {
+            Handler(Looper.getMainLooper()).post { PersonalBalance.runAll(ctx) { outcome -> report(ctx, id, outcome, kind) } }
             return
         }
         if (PhoneActions.isAction(kind)) {
