@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, XCircle, X } from "lucide-react";
-import { DEMO, Gone, demoCryptoStyle, demoStyle, demoSwitch, getOrder, pickProvider, submitTrx, type OrderView, type SubmitState } from "./api";
+import { DEMO, Gone, SELF, demoCryptoStyle, demoStyle, demoSwitch, getOrder, pickProvider, submitTrx, type OrderView, type SubmitState } from "./api";
 import { leaveTo, reportHeight, tellParent } from "./embed";
 import { BkashMenuRow, HowToBody, howCaption, howClose, howKind, howTitle } from "./HowTo";
 import { ResultScreen, RESULT_STYLE_NAMES, type Phase } from "./ResultScreens";
@@ -30,7 +30,7 @@ type Toast = { kind: "ok" | "bad"; text: string } | null;
 /** The page a customer lands on after choosing the method on the website. It starts at the payment step: the number to pay,
  *  then the TrxID, then the result. Two layouts, matching the owner's reference pages: Cash Out and Send Money. */
 export function PayPage() {
-  const tracking = DEMO ? "demo" : new URLSearchParams(window.location.search).get("trackingNumber") ?? "";
+  const tracking = DEMO ? "demo" : SELF ? "self" : new URLSearchParams(window.location.search).get("trackingNumber") ?? "";
   const [lang, setLang] = useState<Lang>(readLang);
   const [screen, setScreen] = useState<Screen>(tracking ? "loading" : "gone");
   const [view, setView] = useState<OrderView | null>(null);

@@ -18,7 +18,7 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET" || req.mode !== "navigate") return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith("/pay") || url.pathname.startsWith("/docs") || url.pathname.startsWith("/.well-known")) return;
+  if (url.pathname.startsWith("/pay") || url.pathname.startsWith("/selfpay") || url.pathname.startsWith("/docs") || url.pathname.startsWith("/.well-known")) return;
   event.respondWith(
     fetch(req).catch(() => new Response(OFFLINE, { status: 503, headers: { "content-type": "text/html; charset=utf-8" } })),
   );

@@ -3,3 +3,4 @@ dist/
 .wrangler/
 *.local
 *.tsbuildinfo
+dist-selfpay/

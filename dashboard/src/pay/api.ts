@@ -1,4 +1,5 @@
 import { SUPABASE_URL } from "@/lib/config";
+import { readSelfConfig, type SelfConfig } from "./selfConfig";
 
 const BASE = `${SUPABASE_URL}/functions/v1/gateway`;
 
@@ -26,6 +27,9 @@ export interface OrderView {
 export type SubmitState = "paid" | "checking" | "review" | "used" | "expired" | "too_many" | "wrong_method" | "invalid" | "closed";
 
 export class Gone extends Error {}
+
+/** Set only on a website's self-hosted copy of this page (see selfConfig.ts). */
+export const SELF: SelfConfig | null = typeof document === "undefined" ? null : readSelfConfig(document.getElementById("pay-config")?.textContent);
 
 /** `/pay/?demo=1` shows the whole customer page with pretend data and talks to no server, so the owner can look at it
  *  (and try it: pick a wallet, enter any TrxID) before connecting a website. Nothing real is created or paid. */
@@ -125,9 +129,23 @@ async function call<T>(route: string, body: Record<string, unknown>): Promise<{ 
   return { status: res.status, data };
 }
 
+/** The website's own server, for a self-hosted page. Same answers as the gateway's routes. */
+async function callSite<T>(url: string, body: Record<string, unknown>): Promise<{ status: number; data: T }> {
+  const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), credentials: "same-origin" });
+  let data = {} as T;
+  try {
+    data = (await res.json()) as T;
+  } catch {
+    /* handled through the status */
+  }
+  return { status: res.status, data };
+}
+
 export async function getOrder(tracking: string): Promise<OrderView> {
   if (DEMO) return demoView();
-  const { status, data } = await call<OrderView>("pay-order", { tracking_number: tracking });
+  const { status, data } = SELF
+    ? await callSite<OrderView>(SELF.viewUrl, { order_id: SELF.orderId })
+    : await call<OrderView>("pay-order", { tracking_number: tracking });
   if (status === 404) throw new Gone();
   if (status !== 200) throw new Error("server");
   return data;
@@ -140,6 +158,8 @@ export async function pickProvider(tracking: string, provider: string): Promise<
     demo.provider = provider;
     return demoView();
   }
+  // A self-hosted page has its number from create-deposit; the fallback picker is PayTrace's own page only.
+  if (SELF) return { error: "no_wallet" };
   const { status, data } = await call<OrderView & { error?: string }>("pay-pick", { tracking_number: tracking, provider });
   if (status === 404) throw new Gone();
   if (status === 200) return data;
@@ -158,7 +178,9 @@ export async function submitTrx(tracking: string, trx: string): Promise<SubmitSt
     demo.paidAt = Date.now() + 6000; // pretend the SMS arrives and the payment is confirmed 6 seconds later
     return "checking";
   }
-  const { status, data } = await call<{ state?: SubmitState }>("pay-submit", { tracking_number: tracking, transaction_id: trx });
+  const { status, data } = SELF
+    ? await callSite<{ state?: SubmitState }>(SELF.submitUrl, { order_id: SELF.orderId, transaction_id: trx })
+    : await call<{ state?: SubmitState }>("pay-submit", { tracking_number: tracking, transaction_id: trx });
   if (status === 404) throw new Gone();
   if (status === 400 && data.state) return data.state;
   if (status !== 200 || !data.state) throw new Error("server");
