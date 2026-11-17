@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && vite build -c vite.selfpay.config.ts && node scripts/inline-selfpay.mjs",
     "preview": "vite preview",
     "test": "node scripts/run-tests.mjs"
   },

@@ -1,25 +1,20 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Download } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { CopyButton } from "@/components/CopyButton";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { GATEWAY_URL } from "@/lib/apiDocs";
-import { PAGE_BRANDS, apiNotes, brandOf, pageHtml, previewHtml, serverNode, serverPhp, type PageProvider } from "@/lib/payTemplates";
+import { PREVIEW_WALLETS, SELF_PAGE_PATH, apiNotes, previewUrl, serverNode, serverPhp, type PreviewWallet } from "@/lib/payTemplates";
 import { cn } from "@/lib/utils";
 
-function download(name: string, text: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: "text/html;charset=utf-8" }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+async function pageText(): Promise<string> {
+  const r = await fetch(SELF_PAGE_PATH, { cache: "no-store" });
+  if (!r.ok) throw new Error("not built");
+  return await r.text();
 }
 
-function Choice<T extends string>({ value, options, onChange, label }: { value: T; options: Array<{ id: T; label: string }>; onChange: (v: T) => void; label: string }) {
+function Choice<T extends string>({ value, options, onChange, label }: { value: T; options: ReadonlyArray<{ id: T; label: string }>; onChange: (v: T) => void; label: string }) {
   return (
     <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-1.5">
       {options.map((o) => (
@@ -49,75 +44,85 @@ function CodeBlock({ text }: { text: string }) {
   );
 }
 
-/** The bKash, Nagad and Rocket deposit pages as standalone files a website hosts itself (owner 2026-11-17), each with its
- *  own loading animation, plus the server code that fills them and hands the TrxID to the gateway. */
+/** PayTrace's own customer pay page as one file a website hosts itself (owner 2026-11-17), with the server code that fills it
+ *  in and answers it with the website's key. The file is built from the real page on every deploy. */
 export function PayPageCode() {
-  const [provider, setProvider] = useState<PageProvider>("bkash");
+  const [wallet, setWallet] = useState<PreviewWallet>("bkash");
   const [method, setMethod] = useState<"cash_out" | "send_money">("cash_out");
   const [server, setServer] = useState<"node" | "php">("node");
-  const brand = brandOf(provider);
-  const html = useMemo(() => pageHtml(provider), [provider]);
-  const preview = useMemo(() => previewHtml(provider, method), [provider, method]);
+  const [problem, setProblem] = useState("");
   const serverCode = server === "node" ? serverNode(GATEWAY_URL) : serverPhp(GATEWAY_URL);
+
+  async function download() {
+    setProblem("");
+    try {
+      const url = URL.createObjectURL(new Blob([await pageText()], { type: "text/html;charset=utf-8" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "pay-page.html";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setProblem("The page file could not be fetched. Reload the dashboard and try again.");
+    }
+  }
 
   return (
     <div className="space-y-5">
       <PageHeader
         title="Pay page code"
-        description="The bKash, Nagad and Rocket deposit pages for websites to host themselves."
+        description="Our customer pay page as one file, for a website to host on its own address."
         help={
           <p>
-            A website that does not want to send customers to PayTrace's own pay page copies these files instead. Its server makes the
-            order as usual (create-deposit now also answers with the wallet number), shows one of these pages, and passes the TrxID the
-            customer types to the gateway with its own key (the new submit-trx call). The website's API key never goes into the page.
-            The customer is still only credited when the payment really arrives, exactly as on PayTrace's own page.
+            This is the same pay page customers see on PayTrace's own address: same look, same Bangla and English, same bKash, Nagad
+            and Rocket layouts, same "how to find the TrxID" help and result screens. The website puts the file on its own server.
+            Its server makes the order as usual, fills the order into the page, and answers the page's two questions with the
+            website's key (the calls order-view and submit-trx). The key never goes into the page, and the customer is only credited
+            when the payment really arrives, exactly as on our own page.
           </p>
         }
       />
 
       <Card className="p-4">
         <ol className="grid gap-2 text-sm sm:grid-cols-3">
-          <li><strong>1. Copy a page.</strong> One file per wallet, with its own loading animation.</li>
-          <li><strong>2. Copy the server code.</strong> It fills the page for each order and keeps the key on the server.</li>
+          <li><strong>1. Download the page.</strong> One file for all three wallets: it shows bKash, Nagad or Rocket from the order.</li>
+          <li><strong>2. Copy the server code.</strong> It makes the order, opens the page and keeps the key on the server.</li>
           <li><strong>3. Give both to the site's developer</strong> with the site's key from the Sites page.</li>
         </ol>
       </Card>
 
       <Card className="space-y-4 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Choice label="Wallet" value={provider} onChange={setProvider} options={PAGE_BRANDS.map((b) => ({ id: b.id, label: b.name }))} />
-          <div className="flex flex-wrap gap-2">
-            <CopyButton text={html} label={`Copy ${brand.name} page`} variant="default" />
-            <Button size="sm" variant="outline" onClick={() => download(`${provider}.html`, html)}>
-              <Download aria-hidden /> Download {provider}.html
-            </Button>
-          </div>
-        </div>
-        <div className="grid gap-4 lg:grid-cols-[400px_minmax(0,1fr)]">
-          <div className="space-y-2">
+          <div className="flex flex-wrap gap-3">
+            <Choice label="Wallet" value={wallet} onChange={setWallet} options={PREVIEW_WALLETS.map((w) => ({ id: w.id, label: w.name }))} />
             <Choice
-              label="Way of paying in the preview"
+              label="Way of paying"
               value={method}
               onChange={setMethod}
               options={[{ id: "cash_out", label: "Cash Out" }, { id: "send_money", label: "Send Money" }]}
             />
-            <iframe
-              key={`${provider}-${method}`}
-              title={`${brand.name} page preview`}
-              srcDoc={preview}
-              sandbox="allow-scripts"
-              className="h-[640px] w-full max-w-[400px] rounded-md border border-border bg-white"
-            />
-            <p className="text-xs text-muted-foreground">
-              Preview with made-up numbers. Type any TrxID (6 or more letters/digits) and press the button to see the loading
-              animation ({brand.loader}) and the success screen. It sends nothing.
-            </p>
           </div>
-          <div className="min-w-0 space-y-2">
-            <h3 className="text-sm font-semibold">{provider}.html</h3>
-            <CodeBlock text={html} />
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => void download()}>
+              <Download aria-hidden /> Download pay-page.html
+            </Button>
+            <CopyButton text={pageText} label="Copy the page" />
           </div>
         </div>
+        {problem ? <p className="text-sm text-destructive">{problem}</p> : null}
+        <iframe
+          key={`${wallet}-${method}`}
+          title="Pay page preview"
+          src={previewUrl(wallet, method)}
+          className="h-[720px] w-full max-w-[430px] rounded-md border border-border bg-white"
+        />
+        <p className="text-xs text-muted-foreground">
+          The real page in preview mode, with made-up numbers: type any TrxID and press the button to see what the customer sees
+          next. It sends nothing. The file is about 600 KB because the fonts, logos and help pictures are inside it, so it needs
+          nothing from our address.
+        </p>
       </Card>
 
       <Card className="space-y-3 p-4">
@@ -128,9 +133,6 @@ export function PayPageCode() {
             <CopyButton text={serverCode} label="Copy server code" />
           </div>
         </div>
-        <p className="text-sm text-muted-foreground">
-          Opens the page for an order, passes the customer's TrxID to the gateway, and answers the page's "is it paid yet?" check.
-        </p>
         <CodeBlock text={serverCode} />
       </Card>
 

@@ -11,6 +11,8 @@
 //   GET  /functions/v1/gateway/groups           -> [{group,enabled,phone_name,provider,method,number,online}]   (no balances, no SMS text)
 //   POST /functions/v1/gateway/groups/enabled   {"group":"dvw9166","enabled":false}   switches a group off or on ("main" cannot be off)
 //   POST /functions/v1/gateway/order-status    {"tracking_number":"..."} or {"order_id":"SHOP-1001"}
+//   POST /functions/v1/gateway/submit-trx      {"order_id"|"tracking_number","transaction_id"}   the TrxID typed on the site's OWN copy of the pay page
+//   POST /functions/v1/gateway/order-view      {"order_id"|"tracking_number"}   what that page shows (the same answer as pay-order)
 // The customer's pay page (public; the tracking number is an unguessable secret; browser calls come only from the dashboard's address):
 //   POST /gateway/pay-order   {"tracking_number"}                      what the page shows
 //   POST /gateway/pay-pick    {"tracking_number","provider"}           fallback only: gives an order that has no number yet one for its own provider
@@ -187,6 +189,28 @@ async function submitTrx(req: Request, body: Record<string, unknown>): Promise<R
   return json({ ...out, tracking_number: order.tracking_number, order_id: order.order_id, transaction_id: trx }, res.status);
 }
 
+/** What the customer's page shows, for a website that hosts its own copy of PayTrace's pay page (owner 2026-11-17). The
+ *  website's server calls this with its key and passes the answer to the page unchanged: exactly what /pay-order gives
+ *  PayTrace's own page. The page asks every 4 seconds while a customer is on it, so this is NOT counted against the
+ *  website's 120-calls-a-minute allowance (it only reads, and only that key's own orders). */
+async function orderView(req: Request, body: Record<string, unknown>): Promise<Response> {
+  const key = extractKey(req.headers.get("authorization"));
+  if (!key) return json({ error: "unauthorized" }, 401);
+  const tracking = body.tracking_number === undefined ? null : isUuid(body.tracking_number) ? body.tracking_number : "bad";
+  if (tracking === "bad") return json({ error: "tracking_number is not valid" }, 400);
+  const orderId = typeof body.order_id === "string" || typeof body.order_id === "number" ? String(body.order_id).trim() : null;
+  if (!tracking && !orderId) return json({ error: "send tracking_number or order_id" }, 400);
+  const { data: k, error: kErr } = await db.from("api_keys").select("id").eq("key_hash", await sha256hex(key)).is("revoked_at", null).maybeSingle();
+  if (kErr) return json({ error: "lookup failed, try again" }, 500);
+  if (!k) return json({ error: "unauthorized" }, 401);
+  let q = db.from("orders").select("tracking_number").eq("api_key_id", k.id).eq("kind", "deposit");
+  q = tracking ? q.eq("tracking_number", tracking) : q.eq("merchant_order_id", orderId!);
+  const { data: o, error: oErr } = await q.maybeSingle();
+  if (oErr) return json({ error: "lookup failed, try again" }, 500);
+  if (!o) return json({ error: "not_found" }, 404);
+  return await payOrder({ tracking_number: o.tracking_number });
+}
+
 // ---------- the customer's page ----------
 
 async function payOrder(body: Record<string, unknown>): Promise<Response> {
@@ -297,6 +321,7 @@ async function handle(req: Request): Promise<Response> {
     case "enabled": return parts.pop() === "groups" ? await groupEnabled(req, body) : json({ error: "unknown route" }, 404);
     case "order-status": return await orderStatus(req, body);
     case "submit-trx": return await submitTrx(req, body);
+    case "order-view": return await orderView(req, body);
     case "pay-order": return await payOrder(body);
     case "pay-pick": return await payPick(body);
     case "pay-submit": return await paySubmit(body);

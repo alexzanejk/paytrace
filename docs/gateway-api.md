@@ -68,19 +68,23 @@ neutral (`X-Webhook-Signature`, `X-Webhook-Event`, user-agent `Deposit-Webhook/1
 
 ## The website's own pay page (self-hosted, 2026-11-17)
 
-A website may show its own copy of the bKash / Nagad / Rocket page instead of sending the customer to `pay_url`. The
-dashboard's **Websites → Pay page code** has the three pages (one HTML file each, with its own loading animation) and the
-server code (Node.js and PHP).
+A website may host PayTrace's customer pay page itself instead of sending the customer to `pay_url`. The dashboard's
+**Websites → Pay page code** offers it as ONE file, `pay-page.html` (about 600 KB: code, styles, fonts, logos and help
+pictures are inside), built from the real page on every deploy, so it looks and works exactly like the page on our address
+(bKash, Nagad and Rocket; Cash Out and Send Money; Bangla/English; the result looks). It also has server code (Node.js, PHP).
 
-- `create-deposit` now also answers `amount`, `provider`, `wallet_number` and `wallet_method`: show those on the page.
-- `POST /submit-trx` (server to server, same `Authorization: Bearer <key>`), body `{ "order_id" | "tracking_number",
-  "transaction_id" }`, answers `{ "state": "paid" | "checking" | "review" | "used" | "expired" | "too_many" |
-  "wrong_method" | "invalid" | "closed", "order_id", "tracking_number", "transaction_id" }`. It is the same check as the
-  customer typing the TrxID on PayTrace's page (5 tries per order, 120 calls a minute per key). `checking` = saved, the
-  payment has not arrived yet: ask `order-status` again in a few seconds.
+- Make the order with `create-deposit` (it now also answers `amount`, `provider`, `wallet_number`, `wallet_method`).
+- Send `pay-page.html` with the placeholder `__PAY_CONFIG__` (it appears once) replaced by
+  `{"order_id":"<your order id>","view_url":"<your route>","submit_url":"<your route>"}` (write `<` as `\u003c`).
+- The page posts `{"order_id"}` to `view_url` every 4 seconds: call `POST /order-view` `{ "order_id" | "tracking_number" }`
+  with your key and return the answer unchanged, with the same HTTP status (404 = no such order). It is the same answer as
+  PayTrace's own page gets, and it is not counted against the 120 calls a minute.
+- On Confirm the page posts `{"order_id","transaction_id"}` to `submit_url`: call `POST /submit-trx` with your key and return
+  the answer unchanged. Answer `{ "state": "paid" | "checking" | "review" | "used" | "expired" | "too_many" | "wrong_method" |
+  "invalid" | "closed", ... }`; same check as the customer typing it on PayTrace's page (5 tries per order).
 - `order-status` answers and webhook bodies also carry `wallet_number` and `wallet_method`.
-- The page never holds the key: it posts to the website's own server, which calls the gateway. Credit the customer only
-  on `paid` (webhook or `order-status`), never because the page said so.
+- The key never goes into the page. Credit the customer only on `paid` (webhook or `order-status`), never because the page
+  said so. Check on your server that the `order_id` the page sends belongs to the signed-in customer.
 
 ## Webhook
 
