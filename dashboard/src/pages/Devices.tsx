@@ -642,7 +642,7 @@ function PhonePage({
               <div className="flex flex-col gap-2">
                 <h3 className="text-base font-semibold">Check a balance now</h3>
                 {WALLETS.map((w) => <BalanceCheck key={w} deviceId={d.id} provider={w} appBalance={(d.info as { app_balance?: unknown } | null | undefined)?.app_balance} appNagad={(d.info as { app_nagad?: unknown } | null | undefined)?.app_nagad} />)}
-                {hasPersonalBkash(d.info?.wallets) || d.allow_personal ? <PersonalBalanceCheck deviceId={d.id} personalOn={d.allow_personal === true} /> : null}
+                {hasPersonalBkash(d.info?.wallets) || d.allow_personal ? <PersonalBalanceCheck deviceId={d.id} personalOn={d.allow_personal === true} wallets={d.info?.wallets} /> : null}
               </div>
               <StatementSection deviceId={d.id} wallets={d.info?.wallets} />
             </>

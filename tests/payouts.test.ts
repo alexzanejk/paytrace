@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import {
-  checkNumbers, droppedLine, settleTicks, tickedRows, toggleShown, MOST_TICKS, extraSplit, feeLine, parseMoney, keepPctFor, parseSendAmount, groupDigits, parseFee, liveItemsByPayment, parsePct, payoutLine, payoutRefusal, tickableRefusal, recentNumbers, sendMethod, sendProblem, senderOptions, splitPayout,
+  checkNumbers, droppedLine, settleTicks, tickedRows, toggleShown, MOST_TICKS, extraSplit, feeLine, parseMoney, keepPctFor, parseSendAmount, groupDigits, parseFee, liveItemsByPayment, parsePct, payoutLine, payoutRefusal, tickableRefusal, recentNumbers, sendMethod, sendProblem, senderOptions, splitPayout, personalAccounts, accountName,
   type PayoutRow,
 } from "../dashboard/src/lib/payouts.ts";
 import { accountTitle, checkLine, figures, sourceLine, type DayMoneyRow } from "../dashboard/src/lib/dayMoney.ts";
@@ -82,8 +82,24 @@ const s3 = senderOptions([{ ...phones[0]!, allow_personal: true, info: { wallets
   { provider: "bkash", number: "01811111111", slot: 0, found: false, kind: "personal" as const },
   { provider: "bkash", number: "01822222222", slot: 1, found: false, kind: "personal" as const, app: true },
 ] } }]);
-check("two personal bKash accounts on one phone give ONE sender, account 1 (the phone sends from it)",
-  s3.length === 1 && s3[0]!.label.includes("01811111111") && new Set(s3.map((o) => o.key)).size === s3.length, s3);
+check("two personal bKash accounts on one phone are two senders, bKash 1 and bKash 2 (owner 2026-11-17)",
+  s3.length === 2 && s3.some((o) => o.personalN === 1 && o.label.includes("bKash 1 (personal)") && o.label.includes("01811111111"))
+    && new Set(s3.map((o) => o.key)).size === s3.length, s3);
+check("an older app (no account number) can only send from bKash 1: bKash 2 says to update",
+  s3.find((o) => o.personalN === 1)!.why === "" && s3.find((o) => o.personalN === 2)!.why.includes("Update"), s3);
+const s4 = senderOptions([{ ...phones[0]!, allow_personal: true, info: { wallets: [
+  { provider: "bkash", number: "01822222222", slot: 1, found: false, kind: "personal" as const, n: 2 },
+  { provider: "bkash", number: "01811111111", slot: 0, found: false, kind: "personal" as const, n: 1 },
+] } }]);
+check("a newer app names its accounts, so bKash 2 can send and the numbers follow the phone, not the order",
+  s4.find((o) => o.personalN === 2)!.label.includes("01822222222") && s4.every((o) => o.why === ""), s4);
+const numbered = personalAccounts([
+  { provider: "bkash", kind: "agent" }, { provider: "bkash", kind: "personal" }, { provider: "nagad", kind: "personal" }, { provider: "bkash", kind: "personal", n: 2 },
+]);
+check("personal accounts are numbered per wallet; an agent wallet is left out",
+  JSON.stringify(numbered.map((w) => [w.provider, w.n, w.confirmed])) === JSON.stringify([["bkash", 1, false], ["nagad", 1, false], ["bkash", 2, true]]), numbered);
+check("account names read bKash 1 / bKash 2 / bKash agent",
+  accountName("bkash", "personal", 2) === "bKash 2" && accountName("bkash", "agent") === "bKash agent" && accountName("nagad", "personal") === "Nagad 1");
 check("a phone with sending switched off says so", s.some((o) => o.deviceId === "d2" && o.why.includes("switched off")));
 
 // ---- paid details ----

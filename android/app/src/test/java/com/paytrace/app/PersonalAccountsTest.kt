@@ -57,4 +57,19 @@ class PersonalAccountsTest {
         assertFalse(PersonalAccounts.taken(others, 1))
         assertTrue(PersonalAccounts.taken(listOf("" to 0, "01811111111" to 1), 1))
     }
+
+    @Test fun eachPersonalAccountSaysWhichOneItIs() {
+        val two = listOf(PersonalEntry("bkash", "01811111111", 0, n = 1), PersonalEntry("bkash", "01822222222", 1, n = 2))
+        val a = PersonalAccounts.walletsJson(agents, two, true)
+        assertFalse(a.getJSONObject(0).has("n")) // an agent account has none
+        assertEquals(1, a.getJSONObject(2).getInt("n"))
+        assertEquals(2, a.getJSONObject(3).getInt("n"))
+    }
+
+    @Test fun aCommandNamesAccountTwoOnlyByExactlyTwo() {
+        assertEquals(2, PersonalAccounts.accountOf(2))
+        assertEquals(1, PersonalAccounts.accountOf(1))
+        assertEquals(1, PersonalAccounts.accountOf(0))
+        assertEquals(1, PersonalAccounts.accountOf(3))
+    }
 }

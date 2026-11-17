@@ -10,6 +10,7 @@ export interface WalletInfo {
   found: boolean;
   kind: "agent" | "personal"; // migration 065: an older app reports none, and those were all agent accounts
   app?: true; // a personal account signed in to the wallet's personal app on the phone (one per wallet; 2026-11-16)
+  n?: 1 | 2; // which personal account it is on the phone (1 or 2; 2026-11-17). Old builds send none.
 }
 
 export interface DeviceInfo {
@@ -124,6 +125,7 @@ export function cleanInfo(body: Record<string, unknown>, now: Date = new Date())
       if (provider && number && slot !== undefined) {
         const one: WalletInfo = { provider, number, slot, found: found === true, kind };
         if (kind === "personal" && asBool(o.app) === true) one.app = true;
+        if (kind === "personal" && (o.n === 1 || o.n === 2 || o.n === "1" || o.n === "2")) one.n = Number(o.n) as 1 | 2;
         wallets.push(one);
       }
     }
