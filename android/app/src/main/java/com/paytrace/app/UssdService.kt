@@ -53,7 +53,8 @@ object UssdText {
         "network_refused" -> "The provider answered that the service is not available right now. Try again a little later."
         "too_soon" -> "A check just finished. Wait about a minute and try again."
         "ussd_failed" -> "The wallet answered, but Android does not pass that kind of answer on to an app. PayTrace has moved this phone to the Dialer way, which reads the phone's own menu. Try the check again."
-        "timeout" -> "The phone did not answer in time. Try again."
+        "timeout" -> "The phone did not answer in time. The PIN was never typed, so nothing was sent. Try again."
+        "dialer_blocked" -> "The phone did not let PayTrace open its dialer, so nothing was typed and nothing was sent. On Xiaomi/Redmi/Poco: Settings, Apps, PayTrace, Other permissions, turn ON \"Display pop-up windows while running in the background\" (on HyperOS: \"Open new windows while running in the background\"), and also \"Show on Lock screen\"."
         "no_answer_after_pin" -> "The PIN was entered but no balance came back. PayTrace did not try the PIN again. Check the Nagad SMS, then try again later."
         "unexpected_screen" -> "The wallet's menu looked different from what PayTrace expects, so it stopped. Nothing was sent."
         "too_many_steps" -> "The menu took too many steps, so it stopped."
@@ -256,6 +257,10 @@ object UssdSession {
     private const val NO_SERVICE_MS = 6_000L
     /** How long the service may see nothing of the dialer before that is worth writing down. */
     private const val BLIND_MS = 5_000L
+    /** The dialer has been opened twice by now; if no window of it has been seen at all, the phone is not letting PayTrace
+     *  open it (Xiaomi/HyperOS: "Display pop-up windows / Open new windows while running in the background" is off). The run
+     *  stops here instead of sitting out ninety seconds. Nothing has been typed, so nothing can have been sent. */
+    const val DIALER_BLOCKED_MS = 12_000L
 
     private class Act(val text: String, val secret: Boolean, val sig: String) {
         var typed = false
@@ -283,6 +288,10 @@ object UssdSession {
     private var act: Act? = null
     private var simTries = 0
     private var pinSubmitted = false
+    // The PIN went into the box (Send may or may not have been pressed). A timeout after this is never called a plain timeout.
+    private var pinTyped = false
+    // A window of the dialer or the phone's call screens has been read at least once in this run.
+    private var dialerSeen = false
     private var startedAt = 0L
     private var unknownSig = ""
     private var unknownSince = 0L
@@ -304,6 +313,8 @@ object UssdSession {
         this.act = null
         this.simTries = 0
         this.pinSubmitted = false
+        this.pinTyped = false
+        this.dialerSeen = false
         this.startedAt = SystemClock.elapsedRealtime()
         this.unknownSig = ""
         this.unknownSince = 0L
@@ -359,6 +370,10 @@ object UssdSession {
         } catch (e: Exception) {
             noteOnce("err" + e.javaClass.simpleName, "problem: " + e.javaClass.simpleName)
         }
+        if (phase == 0 && !dialerSeen && since > DIALER_BLOCKED_MS) {
+            note("the dialer never came on screen" + (if (ScreenWake.miui()) "; Xiaomi's pop-up permission is " + ScreenWake.popupWord(service) else ""))
+            finish(UssdOutcome(false, null, "dialer_blocked"))
+        }
     }
 
     /** Every window on the screen that belongs to the phone's own call or menu apps, not only the one Android calls "active":
@@ -381,6 +396,9 @@ object UssdSession {
         var bestScore = -1
         for (r in roots) {
             val pkg = r.packageName?.toString() ?: continue
+            // Never PayTrace's own screens: its Settings card asks "which SIM is your bKash in?", and a run once tapped
+            // SIM 1 there (2026-11-17) because that question looked like the dialer's SIM chooser.
+            if (pkg == svc.packageName) continue
             val c = Collector()
             c.root = r
             walk(r, c, 0)
@@ -391,7 +409,7 @@ object UssdSession {
             // come from another part of the phone on some brands, so a window that IS that question is read as well: it is
             // the one thing a run cannot get past on its own, and nothing is done with it but tapping the chosen SIM.
             if (!allowedPackage(pkg) && !asksSim) continue
-            if (!allowedPackage(pkg)) noteOnce("simpkg", "the SIM question belongs to " + pkg)
+            if (!allowedPackage(pkg)) { noteOnce("simpkg", "the SIM question belongs to " + pkg) } else { dialerSeen = true }
             val score = (if (f != null && f.recognises(w.text)) 9000 else 0) +
                 (if (asksSim) 9000 else 0) +
                 (if (w.edit != null) 1000 else 0) + w.text.length.coerceAtMost(900)
@@ -558,6 +576,7 @@ object UssdSession {
             val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, a.text) }
             if (edit != null && edit.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
                 a.typed = true; a.typedAt = now; lastActionAt = now
+                if (a.secret) pinTyped = true
             } else if (++a.tries >= MAX_TRIES) {
                 note("could not type"); finish(UssdOutcome(false, null, "no_input_box"))
             }
@@ -586,7 +605,7 @@ object UssdSession {
             flow = null
             cb = onFinish
             onFinish = null
-            sent = pinSubmitted
+            sent = pinSubmitted || pinTyped
             timeout?.let { main.removeCallbacks(it) }
             timeout = null
             main.removeCallbacks(tickRunnable)

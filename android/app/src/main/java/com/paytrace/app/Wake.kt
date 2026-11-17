@@ -78,6 +78,28 @@ object ScreenWake {
     fun miui(): Boolean =
         (Build.MANUFACTURER + " " + Build.BRAND).lowercase().let { it.contains("xiaomi") || it.contains("redmi") || it.contains("poco") }
 
+    /** MIUI/HyperOS keeps that switch as its own app-ops entry, number 10021. Android has no public way to read it, so it is
+     *  read through the hidden checkOpNoThrow: true = allowed, false = off, null = this phone does not say (not a Xiaomi,
+     *  or the hidden call is refused). Only ever shown and reported, never used to stop a run, because it is a guess at
+     *  a hidden setting. */
+    fun popupAllowed(ctx: Context?): Boolean? {
+        if (ctx == null || !miui()) return null
+        return try {
+            val ops = ctx.getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+            val m = android.app.AppOpsManager::class.java.getMethod(
+                "checkOpNoThrow", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType, String::class.java,
+            )
+            val mode = m.invoke(ops, MIUI_OP_BACKGROUND_START, android.os.Process.myUid(), ctx.packageName) as Int
+            mode == android.app.AppOpsManager.MODE_ALLOWED
+        } catch (e: Throwable) {
+            null
+        }
+    }
+
+    fun popupWord(ctx: Context?): String = when (popupAllowed(ctx)) { true -> "ON"; false -> "OFF"; null -> "unknown" }
+
+    private const val MIUI_OP_BACKGROUND_START = 10021
+
     fun openPopupSetting(ctx: Context): Boolean {
         val tries = listOf(
             Intent().setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")

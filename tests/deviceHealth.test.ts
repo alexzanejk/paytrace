@@ -83,6 +83,8 @@ check("none of the guarded switches is a red-banner problem or an infoProblem", 
 
 check("wallet lines name the wallet, the number, the SIM and how it was chosen", JSON.stringify(walletLines({ wallets: [{ provider: "bkash", number: "01712345678", slot: 0, found: true }, { provider: "nagad", number: "01812345678", slot: 1, found: false }] })) === JSON.stringify(["bKash 01712345678 · SIM 1 (found by the app)", "Nagad 01812345678 · SIM 2 (picked by hand)"]));
 check("the personal account in the wallet's app says so", walletLines({ wallets: [{ provider: "bkash", number: "01712345678", slot: 1, found: false, kind: "personal", app: true }] })[0] === "bKash personal 01712345678 · SIM 2 (picked by hand) · signed in to the bKash app");
+check("Xiaomi pop-up permission off is said", texts({ bg_popup: false }).some((t) => t.startsWith("Xiaomi pop-up permission OFF")));
+check("pop-up permission on or unknown says nothing", texts({ bg_popup: true }).length === 0 && texts({}).length === 0);
 check("no wallets reported (older build) = no lines", walletLines({}).length === 0 && walletLines(null).length === 0);
 
 console.log(`\n${pass} passed, ${fail} failed`);

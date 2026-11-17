@@ -134,6 +134,9 @@ object Sender {
         o.put("accessibility_on", UssdSetup.accessibilityOn(ctx))
         o.put("accessibility_running", UssdSession.connected())
         o.put("accessibility_repairs", s.a11yRepairs)
+        // Xiaomi/Redmi/Poco only: whether MIUI/HyperOS lets PayTrace open the dialer from the background ("Display pop-up
+        // windows while running in the background"). Without it every dashboard menu command stops before anything is typed.
+        ScreenWake.popupAllowed(ctx)?.let { o.put("bg_popup", it) }
         // The wallet numbers saved on this phone and which SIM each was found in (-1 = not found, the chosen slot is sent too),
         // so the dashboard can say which number is bKash, Nagad and Rocket on this phone (owner 2026-11-03).
         // Each says whether it is the agent or a personal account (owner 2026-11-08), so the server files its SMS under the right one.
