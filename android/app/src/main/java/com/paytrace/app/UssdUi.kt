@@ -246,11 +246,21 @@ fun UssdCard(settings: AppSettings, tick: Int) {
             // owner's Redmi stopped on 2026-11-02: the screen came on and nothing else happened.
             if (ScreenWake.miui()) {
                 Text("Xiaomi/Redmi: one more switch", style = MaterialTheme.typography.bodyMedium)
+                when (ScreenWake.popupAllowed(ctx)) {
+                    true -> Text("✓ The phone says it is ON.", style = MaterialTheme.typography.bodySmall)
+                    false -> Text(
+                        "It is OFF on this phone: every dashboard command (balance, Cash In, Send Money) will stop before the dialer opens.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    null -> Unit
+                }
                 Text(
-                    "Open \"Other permissions\" and turn ON \"Display pop-up windows while running in the background\". " +
+                    "Open \"Other permissions\" and turn ON \"Display pop-up windows while running in the background\" " +
+                        "(on HyperOS it is called \"Open new windows while running in the background\"), and \"Show on Lock screen\". " +
                         "Without it this phone lights its screen for a dashboard command and then stops, because MIUI will " +
                         "not let PayTrace open the dialer while nothing of ours is on screen. Android cannot report this " +
-                        "one, so there is nothing to tick: check it by eye.",
+                        "one for certain, so check it by eye too.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

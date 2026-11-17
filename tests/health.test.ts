@@ -96,6 +96,7 @@ check("a personal account keeps its number 1 or 2; anything else, or an agent ac
   JSON.stringify((i.wallets ?? []).map((w) => w.n ?? null)) === JSON.stringify([1, 2, null, null]), i.wallets);
 i = cleanInfo({ accessibility_on: true, accessibility_running: "false", accessibility_repairs: "3" }, at);
 check("the accessibility service's real state is kept: on, not running, 3 repairs", i.accessibility_on === true && i.accessibility_running === false && i.accessibility_repairs === 3, i);
+check("the Xiaomi pop-up permission is kept, and junk is dropped", cleanInfo({ bg_popup: false }, at).bg_popup === false && cleanInfo({ bg_popup: "true" }, at).bg_popup === true && cleanInfo({ bg_popup: 1 }, at).bg_popup === undefined);
 i = cleanInfo({ accessibility_on: "yes", accessibility_running: 2, accessibility_repairs: -1 }, at);
 check("an unclear accessibility state is left unknown", i.accessibility_on === undefined && i.accessibility_running === undefined && i.accessibility_repairs === undefined, i);
 i = cleanInfo({ ussd_allowed: "maybe", cashin_allowed: 1, admin_code_set: null }, at);

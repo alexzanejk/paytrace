@@ -32,6 +32,9 @@ export interface DeviceInfo {
   accessibility_running?: boolean;
   /** How often the phone has switched that dead service off and on by itself (needs the one-time adb grant). */
   accessibility_repairs?: number;
+  /** Xiaomi/Redmi/Poco only: may PayTrace open the dialer from the background ("Display pop-up windows while running in
+   *  the background", HyperOS "Open new windows ..."). Read from a hidden MIUI setting, so absent when the phone cannot say. */
+  bg_popup?: boolean;
   /** Wallet numbers saved on the phone: which number is bKash, Nagad, Rocket, and which SIM each is in. */
   wallets?: { provider: string; number: string; slot: number; found: boolean; kind?: "agent" | "personal"; app?: boolean }[];
   sim_keys?: string; // the names on the last SMS broadcast whose SIM the phone could not read (names only, never values)
@@ -126,6 +129,16 @@ export function settingsLines(info: DeviceInfo | null | undefined): SettingsLine
   } else if (info.accessibility_on === true && info.accessibility_running === true) {
     const n = info.accessibility_repairs ?? 0;
     out.push({ text: n > 0 ? `Accessibility service running (self-repaired ${n}×)` : "Accessibility service running", tone: "ok", hint: n > 0 ? "The phone has switched the service off and on by itself after being killed, this many times. Many repairs mean the phone's battery settings still let it kill PayTrace." : "The dialer way is ready: PayTrace can read the wallet's menu on this phone." });
+  }
+  if (info.bg_popup === false) {
+    out.push({
+      text: "Xiaomi pop-up permission OFF: dashboard commands cannot open the dialer",
+      tone: "warn",
+      hint:
+        "Balance checks, Cash In and Send Money from the dashboard stop before anything is typed (\"The phone did not let PayTrace open its dialer\"). " +
+        "On the phone: Settings, Apps, PayTrace, Other permissions, turn ON \"Display pop-up windows while running in the background\" " +
+        "(HyperOS: \"Open new windows while running in the background\") and \"Show on Lock screen\".",
+    });
   }
   if (info.sim_keys) {
     out.push({

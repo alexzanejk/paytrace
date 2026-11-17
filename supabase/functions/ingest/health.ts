@@ -37,6 +37,7 @@ export interface DeviceInfo {
   admin_code_set?: boolean; // an admin code protects those switches (the code itself is never sent)
   accessibility_on?: boolean; // PayTrace's balance-check service is switched on in the phone's Accessibility settings
   accessibility_running?: boolean; // ...and Android has really started it (a killed app leaves it on but dead: "malfunctioning")
+  bg_popup?: boolean; // Xiaomi only: MIUI/HyperOS lets PayTrace open the dialer from the background (pop-up windows permission)
   accessibility_repairs?: number; // times the phone switched that dead service off and on by itself (needs the adb grant)
   wallets?: WalletInfo[]; // the wallet numbers saved on the phone and which SIM each is in
   sim_keys?: string; // the extra names (never values) on the last SMS broadcast whose SIM the app could not read
@@ -110,6 +111,8 @@ export function cleanInfo(body: Record<string, unknown>, now: Date = new Date())
   if (a11yRunning !== undefined) info.accessibility_running = a11yRunning;
   const a11yRepairs = asCount(body.accessibility_repairs, 1_000_000);
   if (a11yRepairs !== undefined) info.accessibility_repairs = a11yRepairs;
+  const bgPopup = asBool(body.bg_popup);
+  if (bgPopup !== undefined) info.bg_popup = bgPopup;
   if (Array.isArray(body.wallets)) {
     const wallets: WalletInfo[] = [];
     // Up to 3 agent accounts and 2 personal accounts each for bKash and Nagad (2026-11-16: two personal accounts per wallet).

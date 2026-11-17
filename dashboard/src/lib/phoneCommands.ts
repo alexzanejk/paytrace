@@ -73,7 +73,9 @@ const ERROR_TEXT: Record<string, string> = {
   network_refused: "The wallet answered that its service is not available right now. Try again a little later.",
   too_soon: "That phone had just finished a check. Wait about a minute and try again.",
   ussd_failed: "The network did not answer the code. The phone did not try again. Check the Nagad SMS, then try again later.",
-  timeout: "The phone did not answer in time.",
+  timeout: "The phone did not answer in time. The PIN was never typed, so nothing was sent.",
+  dialer_blocked:
+    "The phone did not let PayTrace open its dialer, so nothing was typed and nothing was sent. On Xiaomi/Redmi/Poco: Settings, Apps, PayTrace, Other permissions, turn ON \"Display pop-up windows while running in the background\" (HyperOS: \"Open new windows while running in the background\") and \"Show on Lock screen\". Keep the phone unlocked with no screen lock.",
   no_answer_after_pin: "The PIN was entered but no balance came back. The phone did not try the PIN again. Check the Nagad SMS, then try again later.",
   unexpected_screen: "The wallet's menu looked different from what PayTrace expects, so it stopped. Nothing was sent.",
   too_many_steps: "The Nagad menu took too many steps, so it stopped.",
