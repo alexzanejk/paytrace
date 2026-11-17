@@ -274,13 +274,36 @@ export function payoutLine(p: PayoutRow, phoneName: (id: string | null) => strin
 export const UNSURE_HELP =
   "The phone stopped after typing the PIN, so PayTrace cannot tell whether the money went. Check the wallet (its statement on the phone card, or the SMS), then say which. The transactions stay taken until you do, so they can never be paid twice.";
 
-export interface WalletAccount { provider: string; number: string; slot: number; found: boolean; kind?: "agent" | "personal"; app?: boolean }
+export interface WalletAccount { provider: string; number: string; slot: number; found: boolean; kind?: "agent" | "personal"; app?: boolean; n?: number }
+
+/** The personal accounts a phone reports, each with its number on the phone (1 or 2; owner 2026-11-17: "phone name, bKash 1,
+ *  bKash 2"). A newer app says which is which (`n`); an older one lists account 1 first, so the order is used and the account
+ *  is marked unconfirmed (an older app can only ever send from account 1). */
+export function personalAccounts<T extends { provider: string; kind?: string; n?: number }>(wallets: T[] | null | undefined): Array<T & { n: number; confirmed: boolean }> {
+  const seen: Record<string, number> = {};
+  const out: Array<T & { n: number; confirmed: boolean }> = [];
+  for (const w of wallets ?? []) {
+    if (w.kind !== "personal") continue;
+    seen[w.provider] = (seen[w.provider] ?? 0) + 1;
+    const confirmed = w.n === 1 || w.n === 2;
+    out.push({ ...w, n: confirmed ? (w.n as number) : seen[w.provider], confirmed });
+  }
+  return out;
+}
+
+/** How an account is named everywhere: "bKash 1" / "bKash 2" for personal accounts, "bKash agent" for the agent wallet. */
+export function accountName(provider: string, account: "agent" | "personal", n?: number): string {
+  const w = WALLET[provider] ?? provider;
+  return account === "personal" ? `${w} ${n ?? 1}` : `${w} agent`;
+}
 
 export interface SenderOption {
   key: string;
   deviceId: string;
   provider: string;
   account: "agent" | "personal";
+  /** Which personal account on the phone (1 or 2); unset for an agent wallet. */
+  personalN?: number;
   label: string;
   /** Empty when this sender can send now; otherwise why not, in words. */
   why: string;
@@ -303,12 +326,13 @@ export function senderOptions(
   for (const d of phones) {
     if (d.status !== "approved") continue;
     const listed = new Set<string>();
+    const numbered = personalAccounts(d.info?.wallets);
     for (const w of d.info?.wallets ?? []) {
       if (!SENDS.includes(w.provider)) continue;
       const account = w.kind === "personal" ? "personal" : "agent";
-      // A phone may hold two personal accounts of one wallet; the phone sends Send Money from personal account 1,
-      // which it always lists first, so only that one is offered.
-      const one = `${w.provider}:${account}`;
+      // Each personal account is its own sender, "bKash 1" / "bKash 2" (owner 2026-11-17).
+      const p = account === "personal" ? numbered.find((x) => x === w || (x.number === w.number && x.provider === w.provider)) : undefined;
+      const one = `${w.provider}:${account}:${p?.n ?? 0}`;
       if (listed.has(one)) continue;
       listed.add(one);
       const why = !d.allow_cashin
@@ -317,13 +341,16 @@ export function senderOptions(
           ? `Sending from a personal ${WALLET[w.provider]} account is not built yet: it needs your recording of its Send Money menu.`
           : account === "personal" && !d.allow_personal
             ? "Personal accounts are switched off for this phone (Phones page)."
-            : "";
+            : p && p.n === 2 && !p.confirmed
+              ? "Update this phone's PayTrace app first: its current version can only send from bKash 1."
+              : "";
       out.push({
-        key: `${d.id}:${w.provider}:${account}`,
+        key: `${d.id}:${w.provider}:${account}${p ? `:${p.n}` : ""}`,
         deviceId: d.id,
         provider: w.provider,
         account,
-        label: `${d.name || "Unnamed phone"} · ${WALLET[w.provider]} ${account === "personal" ? "personal" : "agent"} · ${w.number}`,
+        ...(p ? { personalN: p.n } : {}),
+        label: `${d.name || "Unnamed phone"} · ${accountName(w.provider, account, p?.n)}${account === "personal" ? " (personal)" : ""} · ${w.number}`,
         why,
       });
     }

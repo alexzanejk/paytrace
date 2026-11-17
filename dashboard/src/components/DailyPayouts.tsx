@@ -155,9 +155,9 @@ function PartnerDays({
         const r = await sb.rpc("manual_commission_pay", { p_device: partnerId, p_days: days, p_trx: trx || null, p_note: note || null });
         if (r.error) throw r.error;
       } else if (option) {
-        const r = await sb.rpc("create_commission_pay_via", {
+        const r = await sb.rpc("create_commission_pay_via_account", {
           p_device: partnerId, p_days: days, p_method: option.method, p_from_device: option.fromDevice, p_provider: option.provider, p_note: note || null,
-          p_via: way,
+          p_via: way, p_account: option.method === "send_money" ? option.personalN ?? 1 : null,
         });
         if (r.error) throw r.error;
         nudgePhone(option.fromDevice);

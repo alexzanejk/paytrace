@@ -488,7 +488,7 @@ async function handle(req: Request): Promise<Response> {
     const { data: cmdData, error: cmdError } = await db.rpc("device_next_command", { p_device: device.id });
     const cmd = cmdError
       ? null
-      : (cmdData as { id?: string; kind?: string; provider?: string; amount?: number | string | null; to_number?: string | null; item?: number | null; via?: string | null; look?: unknown } | null);
+      : (cmdData as { id?: string; kind?: string; provider?: string; amount?: number | string | null; to_number?: string | null; item?: number | null; via?: string | null; account?: number | null; look?: unknown } | null);
     const command = cmd && cmd.id
       ? {
         id: cmd.id,
@@ -500,6 +500,8 @@ async function handle(req: Request): Promise<Response> {
         // migration 082: a bKash Cash In may be told to go through the bKash app instead of USSD (old builds ignore it, and the
         // database only lets a phone that reported app_cashin be given one).
         ...(cmd.via === "app" ? { via: "app" } : {}),
+        // migration 103: which personal account a Send Money or personal balance check is for (1 or 2; absent = the old way).
+        ...(cmd.account === 1 || cmd.account === 2 ? { account: cmd.account } : {}),
         // What an app read should look for: how far back, and which rows to open for their TrxID (migration 086);
         // for the owner's own search (migration 090), the TrxID or number to search the bKash app's Statement for.
         // The Nagad agent app's own read and search (migration 093) carry the same kind of look.

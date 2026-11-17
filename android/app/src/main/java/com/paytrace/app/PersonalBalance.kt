@@ -104,12 +104,13 @@ object PersonalBalance {
         if (number.isEmpty() || slot !in 0..1) null else Account(n, number, slot)
     }
 
-    fun runAll(ctx: Context, onFinish: (UssdOutcome) -> Unit) {
+    /** [only] = 1 or 2 checks just that account; 0 checks every one. */
+    fun runAll(ctx: Context, only: Int = 0, onFinish: (UssdOutcome) -> Unit) {
         val app = ctx.applicationContext
         val s = AppSettings(app)
         if (!s.ussdAllowed) return onFinish(UssdOutcome(false, null, "not_allowed"))
         if (!s.personalAllowed) return onFinish(UssdOutcome(false, null, "personal_off"))
-        val list = accounts(s)
+        val list = accounts(s).filter { only == 0 || it.n == only }
         if (list.isEmpty()) return onFinish(UssdOutcome(false, null, "no_personal"))
         val lines = ArrayList<String>()
         val traces = ArrayList<String>()

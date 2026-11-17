@@ -725,7 +725,9 @@ object UssdRunner {
      *  the dialer way only, never tried again by itself, and only when the dashboard allows sending money AND personal
      *  accounts on this phone. [SendMoneyFlow] stops on the agent menu (wrong SIM) and types the PIN only on the wallet's
      *  confirmation of this number and this amount. */
-    fun runSendMoney(ctx: Context, order: CashInOrder, onFinish: (UssdOutcome) -> Unit) {
+    /** Send Money from personal account [n] (1 or 2, owner 2026-11-17: the dashboard chooses which), on its own SIM with
+     *  its own PIN. */
+    fun runSendMoney(ctx: Context, order: CashInOrder, n: Int = 1, onFinish: (UssdOutcome) -> Unit) {
         val app = ctx.applicationContext
         val s = AppSettings(app)
         fun fail(e: String) = onFinish(UssdOutcome(false, null, e))
@@ -734,10 +736,10 @@ object UssdRunner {
         if (!s.ussdAllowed) return fail("not_allowed")
         if (!s.cashInAllowed) return fail("cash_in_off")
         if (!s.personalAllowed) return fail("personal_off")
-        val slot = s.personalSlotOf(order.provider)
-        if (s.personalNumberOf(order.provider).isEmpty() || slot !in 0..1) return fail("no_personal")
+        val slot = s.personalSlotOf(order.provider, n)
+        if (s.personalNumberOf(order.provider, n).isEmpty() || slot !in 0..1) return fail("no_personal")
         if (!UssdSetup.callPermission(app)) return fail("no_call_permission")
-        val pin = PersonalAccounts.pinStore(app, order.provider).get()
+        val pin = PersonalAccounts.pinStore(app, order.provider, n).get()
         if (pin.isEmpty()) return fail("no_pin")
         if (UssdSession.active() || UssdApi.active() || AppReader.active()) return fail("busy")
         AccessibilityHeal.prepare(app) { note ->
@@ -985,7 +987,9 @@ object UssdCommands {
         }
         // The balance of every personal bKash account on this phone (owner 2026-11-17). Names no wallet on the server.
         if (kind == PersonalBalance.KIND) {
-            Handler(Looper.getMainLooper()).post { PersonalBalance.runAll(ctx) { outcome -> report(ctx, id, outcome, kind) } }
+            // migration 103: the dashboard may ask for one account (1 or 2); absent = every account, as before.
+            val only = cmd.optInt("account", 0).let { if (it == 1 || it == 2) it else 0 }
+            Handler(Looper.getMainLooper()).post { PersonalBalance.runAll(ctx, only) { outcome -> report(ctx, id, outcome, kind) } }
             return
         }
         if (PhoneActions.isAction(kind)) {
@@ -1024,7 +1028,8 @@ object UssdCommands {
             }
             "sendmoney" -> {
                 val order = CashInOrder(provider, cmd.optString("to_number"), cmd.optDouble("amount", -1.0))
-                UssdRunner.runSendMoney(ctx, order) { outcome ->
+                // migration 103: which personal account to send from (absent = account 1, as before).
+                UssdRunner.runSendMoney(ctx, order, PersonalAccounts.accountOf(cmd.optInt("account", 1))) { outcome ->
                     report(ctx, id, outcome, "sendmoney")
                 }
             }

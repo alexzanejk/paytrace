@@ -5,7 +5,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /** One personal account as the heartbeat reports it. [inApp] = it is the one signed in to the wallet's personal app. */
-data class PersonalEntry(val provider: String, val number: String, val slot: Int, val inApp: Boolean = false)
+/** [n] = which personal account of that wallet it is on this phone (1 or 2); the dashboard names it in a command. */
+data class PersonalEntry(val provider: String, val number: String, val slot: Int, val inApp: Boolean = false, val n: Int = 1)
 
 /** Personal accounts (owner 2026-11-08): a phone may hold personal bKash or Nagad accounts beside its agent one. The app
  *  shows their setup only while the owner has switched "Personal accounts on this phone" on in the dashboard (it arrives
@@ -42,7 +43,7 @@ object PersonalAccounts {
         if (personalAllowed) {
             for (e in personal) {
                 if (e.number.isEmpty() || e.slot !in 0..1) continue
-                val o = JSONObject().put("provider", e.provider).put("number", e.number).put("slot", e.slot).put("found", false).put("kind", "personal")
+                val o = JSONObject().put("provider", e.provider).put("number", e.number).put("slot", e.slot).put("found", false).put("kind", "personal").put("n", e.n)
                 if (e.inApp) o.put("app", true)
                 a.put(o)
             }
@@ -56,6 +57,9 @@ object PersonalAccounts {
 
     /** Every personal account the phone holds, for the heartbeat. */
     fun entries(s: AppSettings): List<PersonalEntry> = providers.flatMap { prov ->
-        slots.map { n -> PersonalEntry(prov, s.personalNumberOf(prov, n), s.personalSlotOf(prov, n), s.personalAppOf(prov) == n) }
+        slots.map { n -> PersonalEntry(prov, s.personalNumberOf(prov, n), s.personalSlotOf(prov, n), s.personalAppOf(prov) == n, n) }
     }
+
+    /** The account a dashboard command names: 2 only when it says exactly 2; anything else is account 1 (the old way). */
+    fun accountOf(v: Int): Int = if (v == 2) 2 else 1
 }

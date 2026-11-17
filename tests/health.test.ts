@@ -86,6 +86,14 @@ i = cleanInfo({ wallets: [
 check("two personal accounts of one wallet are both kept; only a personal one can say it is in the app",
   JSON.stringify((i.wallets ?? []).map((w) => [w.number, w.kind, w.app ?? false])) ===
     JSON.stringify([["01711111111", "personal", true], ["01722222222", "personal", false], ["01733333333", "agent", false]]), i.wallets);
+i = cleanInfo({ wallets: [
+  { provider: "bkash", number: "01711111111", slot: 0, kind: "personal", n: 1 },
+  { provider: "bkash", number: "01722222222", slot: 1, kind: "personal", n: "2" },
+  { provider: "bkash", number: "01744444444", slot: 0, kind: "personal", n: 3 },
+  { provider: "bkash", number: "01733333333", slot: 0, n: 2 },
+] }, at);
+check("a personal account keeps its number 1 or 2; anything else, or an agent account, has none",
+  JSON.stringify((i.wallets ?? []).map((w) => w.n ?? null)) === JSON.stringify([1, 2, null, null]), i.wallets);
 i = cleanInfo({ accessibility_on: true, accessibility_running: "false", accessibility_repairs: "3" }, at);
 check("the accessibility service's real state is kept: on, not running, 3 repairs", i.accessibility_on === true && i.accessibility_running === false && i.accessibility_repairs === 3, i);
 i = cleanInfo({ accessibility_on: "yes", accessibility_running: 2, accessibility_repairs: -1 }, at);

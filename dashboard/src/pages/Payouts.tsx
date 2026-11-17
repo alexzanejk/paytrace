@@ -414,9 +414,10 @@ function PayoutPanel({
         });
         if (r.error) throw r.error;
       } else if (sender) {
-        const r = await sb.rpc("create_payout_via", {
+        const r = await sb.rpc("create_payout_via_account", {
           p_payments: chosen.map((r) => r.id), p_device: sender.deviceId, p_provider: sender.provider, p_to_number: nums.number,
           p_keep_pct: pct, p_from_account: sender.account, p_note: note || null, p_via: way,
+          p_account: sender.account === "personal" ? sender.personalN ?? 1 : null,
         });
         if (r.error) throw r.error;
         nudgePhone(sender.deviceId);

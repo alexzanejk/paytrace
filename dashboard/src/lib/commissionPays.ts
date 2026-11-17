@@ -116,11 +116,15 @@ const SENDS = ["bkash", "nagad", "rocket"];
 const WALLET_NAME: Record<string, string> = { bkash: "bKash", nagad: "Nagad", rocket: "Rocket" };
 
 /** Sending options for a partner: Cash In from their own agent wallets, Send Money from any personal bKash. */
-export interface SendOption { key: string; method: "cash_in" | "send_money"; fromDevice: string; provider: string; label: string; why: string }
+export interface SendOption {
+  key: string; method: "cash_in" | "send_money"; fromDevice: string; provider: string; label: string; why: string;
+  /** For Send Money: which personal bKash account on that phone (1 or 2). */
+  personalN?: number;
+}
 
 export function sendOptions(
   partnerId: string,
-  phones: Array<{ id: string; name: string; status: string; allow_cashin?: boolean; allow_personal?: boolean; info: { wallets?: Array<{ provider: string; number: string; kind?: string }> } | null }>,
+  phones: Array<{ id: string; name: string; status: string; allow_cashin?: boolean; allow_personal?: boolean; info: { wallets?: Array<{ provider: string; number: string; kind?: string; n?: number }> } | null }>,
 ): SendOption[] {
   const out: SendOption[] = [];
   // Cash In from any of our agent wallets (owner 2026-11-11: "we should be able to pay from our preferred one"): the
@@ -140,12 +144,21 @@ export function sendOptions(
   }
   for (const d of phones) {
     if (d.status !== "approved") continue;
-    for (const w of d.info?.wallets ?? []) {
-      if (w.kind !== "personal" || w.provider !== "bkash") continue;
+    // Each personal bKash account is its own choice, "bKash 1" / "bKash 2" (owner 2026-11-17). A newer app says which is
+    // which (n); an older one lists account 1 first (same rule as personalAccounts in payouts.ts, which this file cannot
+    // import: its tests load it on its own).
+    let count = 0;
+    for (const raw of d.info?.wallets ?? []) {
+      if (raw.kind !== "personal" || raw.provider !== "bkash") continue;
+      count += 1;
+      const confirmed = raw.n === 1 || raw.n === 2;
+      const w = { ...raw, n: confirmed ? (raw.n as number) : count, confirmed };
       out.push({
-        key: `send_money:${d.id}`, method: "send_money", fromDevice: d.id, provider: "bkash",
-        label: `Send Money from ${d.name}'s personal bKash · ${w.number} (fee taken off the commission)`,
-        why: !d.allow_cashin ? "Sending money is switched off for that phone." : !d.allow_personal ? "Personal accounts are switched off for that phone." : "",
+        key: `send_money:${d.id}:${w.n}`, method: "send_money", fromDevice: d.id, provider: "bkash", personalN: w.n,
+        label: `Send Money from ${d.name} · bKash ${w.n} (personal) · ${w.number} (fee taken off the commission)`,
+        why: !d.allow_cashin ? "Sending money is switched off for that phone."
+          : !d.allow_personal ? "Personal accounts are switched off for that phone."
+          : w.n === 2 && !w.confirmed ? "Update that phone's PayTrace app first: its current version can only send from bKash 1." : "",
       });
     }
   }

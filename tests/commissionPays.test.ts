@@ -49,5 +49,15 @@ check("another phone's agent wallet can pay (owner 2026-11-11)", o.some((x) => x
 check("a phone with sending switched off says so", o.some((x) => x.fromDevice === "S" && x.why.includes("switched off")));
 check("a Rocket agent wallet is offered by Cash In (owner 2026-11-09)", o.some((x) => x.provider === "rocket" && x.method === "cash_in" && x.label.includes("Rocket agent wallet")));
 
+const two = sendOptions("A", [{ id: "X", name: "Xiaomi", status: "approved", allow_cashin: true, allow_personal: true, info: { wallets: [
+  { provider: "bkash", number: "01811111111", kind: "personal", n: 1 }, { provider: "bkash", number: "01822222222", kind: "personal", n: 2 },
+] } }]);
+check("each personal bKash account is its own Send Money choice, bKash 1 and bKash 2 (owner 2026-11-17)",
+  two.length === 2 && two.map((x) => x.personalN).join(",") === "1,2" && two[1]!.label.includes("bKash 2 (personal)") && two.every((x) => x.why === ""), two);
+const oldApp = sendOptions("A", [{ id: "X", name: "Xiaomi", status: "approved", allow_cashin: true, allow_personal: true, info: { wallets: [
+  { provider: "bkash", number: "01811111111", kind: "personal" }, { provider: "bkash", number: "01822222222", kind: "personal" },
+] } }]);
+check("an older app can only send from bKash 1", oldApp[0]!.why === "" && oldApp[1]!.why.includes("Update"), oldApp);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
