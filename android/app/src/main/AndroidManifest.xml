@@ -20,6 +20,8 @@
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <!-- Declines a call that rings during a dashboard task (owner 2026-11-19; these phones are used for nothing else). -->
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+    <!-- A stuck wallet app is closed fully before a task starts over (ForceStop); this asks Android to end its process (Android 13 and older). -->
+    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
     <!-- Lets the balance check pick the right SIM (SIM 1 or SIM 2) on a dual-SIM phone. -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <!-- Lets the app read each SIM's own number, when Android knows it, to work out which SIM holds a wallet's number (SimFinder). -->

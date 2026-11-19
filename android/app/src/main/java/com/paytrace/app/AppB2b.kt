@@ -193,13 +193,17 @@ object AppB2b {
             if (finished) return
             finished = true
             running = false
-            TaskShield.lower()
+            TaskShield.lower { note(it) }
             note("end: $why")
             val log = (trace + "screen: $screenText").joinToString("\n").take(1900)
             done(o.copy(trace = log, pinSent = held))
         }
         fun stop(error: String, why: String) =
             finish(UssdOutcome(false, null, if (held) "no_answer_after_hold" else error), why)
+        /** Stuck or cut off before any money step (the B2B PIN or the hold), and not with a login PIN half typed:
+         *  close the app fully and start over once. After the money PIN nothing is ever started again. */
+        fun stuckCode(fallback: String) =
+            if (!held && result == null && b2bPin.typed == 0 && !b2bPin.pressed && (loginPin.typed == 0 && !loginPin.pressed || loginPin.submittedAt > 0) && ForceStop.canTry()) AppRestart.CODE else fallback
         fun succeed(why: String) {
             val r = result ?: return stop("no_answer_after_hold", "no result")
             val summary = "bKash app B2B\nto DSO: ${dso ?: "?"}\namount: ${order.amount}\nTrxID: ${r.trx ?: "?"}\nnew balance: ${r.newBalance ?: "?"}" +
@@ -332,7 +336,7 @@ object AppB2b {
                     val root = AppReader.bkashRoot(svc)
                     if (root == null) {
                         if (seenApp == 0L && OpenRetry.due(false, now - started, reopens)) { reopens++; note("the app is not on screen yet: opening it again ($reopens)"); AppReader.openBkash(svc, app, pkg, woke) { note(it) } }
-                        if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) return stop("app_not_opened", "the app did not open (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
+                        if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) return stop(stuckCode("app_not_opened"), "the app did not open (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
                         if (seenApp > 0) {
                             // Brought back only before the login PIN is touched, or once a screen past the login was
                             // reached; never once the money PIN started or after the hold.
@@ -341,9 +345,9 @@ object AppB2b {
                             val loginHalf = loginStarted && !pastLogin
                             val may = result == null && !held && b2bPin.typed == 0 && !b2bPin.pressed && !loginHalf
                             TaskGuard.onGone(svc, app, pkg, "bKash", now - seenApp, reclaims, may, { reclaims++; seenApp = now; nextActAt = now + pace.settle() }) { note(it) }
-                                ?.let { return stop("app_stopped_before_send", it) }
+                                ?.let { return stop(stuckCode("app_stopped_before_send"), it) }
                         }
-                        if (seenApp > 0 && now - seenApp > 20_000) return if (result != null) succeed("the app closed after the result") else stop("app_stopped_before_send", "the app left the screen (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
+                        if (seenApp > 0 && now - seenApp > 20_000) return if (result != null) succeed("the app closed after the result") else stop(stuckCode("app_stopped_before_send"), "the app left the screen (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
                     } else {
                         if (seenApp == 0L) nextActAt = now + pace.settle()
                         seenApp = now
@@ -523,7 +527,7 @@ object AppB2b {
                                     svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
                                     nextActAt = now + pace.settle()
                                 } else if (now - progressAt > STUCK_MS) {
-                                    return stop(if (loginPin.typed == 0 && !loginPin.pressed && b2bPin.typed == 0 && !held && ForceStop.canTry()) AppRestart.CODE else "app_stopped_before_send", "a screen PayTrace does not know")
+                                    return stop(stuckCode("app_stopped_before_send"), "a screen PayTrace does not know")
                                 }
                             }
                         }

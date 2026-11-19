@@ -67,7 +67,7 @@ object AppReader {
 
     @Volatile private var running = false
     /** True while the reader OR an app cash-in drives the bKash app: USSD runs and each other wait. */
-    fun active(): Boolean = running || AppCashIn.running || AppB2b.running || AppBalance.running || AppRecorder.recording() || NagadApp.running
+    fun active(): Boolean = running || AppCashIn.running || AppB2b.running || AppBalance.running || AppRecorder.recording() || NagadApp.running || ForceStop.running
 
     internal val LOGIN = setOf("লগ ইন", "log in", "login")
     private val INBOX = setOf("ইনবক্স", "inbox")
@@ -270,12 +270,16 @@ object AppReader {
 
         AppReader.holdScreen(app, RUN_MS + 5_000, "appread")
         fun launch() = AppReader.openBkash(svc, app, pkg, woke) { note(it) }
+        /** A run stuck or cut off with nothing read yet: the app is closed fully and the run started again once (AppRestart).
+         *  Reading moves no money, so this is safe at any step; the one stuck-on-login case (PIN sent, still on the login
+         *  screen) never gets here: it ends above as login_failed / pin_not_entered / app_error and is never typed again. */
+        fun stuckCode(fallback: String) = if (rows.isEmpty() && fullRows.isEmpty() && ForceStop.canTry()) AppRestart.CODE else fallback
 
         fun finish(ok: Boolean, error: String?, why: String) {
             if (finished) return
             finished = true
             running = false
-            TaskShield.lower()
+            TaskShield.lower { note(it) }
             note("end: $why, ${rows.size} rows")
             // A details sheet this run opened is closed before leaving, so the next run never finds the app covered by it.
             val left = try { bkashRoot(svc)?.let { r -> ArrayList<AccessibilityNodeInfo>().also { collect(r, it, 0) } } } catch (e: Exception) { null }
@@ -326,7 +330,7 @@ object AppReader {
                             if (OpenRetry.viaWindow(reopens)) AppReader.openBkash(svc, app, pkg, true) { note(it) } else launch()
                         }
                         if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) {
-                            return finish(false, "app_not_opened", "the app did not open (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
+                            return finish(false, stuckCode("app_not_opened"), "the app did not open (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
                         }
                         if (seenApp > 0) {
                             // Something else took the screen: put it aside and bring bKash back (TaskGuard). A PIN half
@@ -336,9 +340,9 @@ object AppReader {
                                 if (pinTypedAt == 0L && (pinTyped > 0 || keyPressed)) { retyping = true; pinTyped = 0; keyPressed = false; keyRetries = 0 }
                                 seenApp = now
                             }) { note(it) }
-                            if (stop != null) return finish(rows.isNotEmpty() || fullRows.isNotEmpty(), "app_closed", stop)
+                            if (stop != null) return finish(rows.isNotEmpty() || fullRows.isNotEmpty(), stuckCode("app_closed"), stop)
                         }
-                        if (seenApp > 0 && now - seenApp > 20_000) return finish(rows.isNotEmpty() || fullRows.isNotEmpty(), "app_closed", "the app left the screen (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
+                        if (seenApp > 0 && now - seenApp > 20_000) return finish(rows.isNotEmpty() || fullRows.isNotEmpty(), stuckCode("app_closed"), "the app left the screen (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
                     } else {
                         if (seenApp == 0L) nextActAt = now + pace.settle()
                         seenApp = now
@@ -664,7 +668,7 @@ object AppReader {
                                     backs++
                                     note("a screen PayTrace does not know (${lastScreen.take(70)}): ${wayBack(svc, nodes, backs)}")
                                     nextActAt = now + pace.settle()
-                                } else if (now - progressAt > STUCK_MS + backs * 3_000L) return finish(rows.isNotEmpty(), if (rows.isEmpty() && pinTypedAt == 0L && pinTyped == 0 && ForceStop.canTry()) AppRestart.CODE else "unexpected_screen", "a screen PayTrace does not know")
+                                } else if (now - progressAt > STUCK_MS + backs * 3_000L) return finish(rows.isNotEmpty(), stuckCode("unexpected_screen"), "a screen PayTrace does not know")
                             }
                         }
                     }

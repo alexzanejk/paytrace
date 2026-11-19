@@ -624,7 +624,7 @@ object UssdSession {
     fun abort(error: String) = finish(UssdOutcome(false, null, error))
 
     private fun finish(outcome0: UssdOutcome) {
-        TaskShield.lower()
+        TaskShield.lower { note(it) }
         // So a failed run can be read later: what was last on the screen, with every long number hidden.
         if (!outcome0.ok && lastText.isNotBlank()) noteOnce("last", "last screen: " + UssdRedact.snippet(lastText))
         val cb: ((UssdOutcome) -> Unit)?
@@ -1028,6 +1028,20 @@ object UssdCommands {
         if (id.isBlank()) return
         // The same command twice (two heartbeats at once): run it once, and say nothing for the copy.
         if (!seen.firstTime(id)) return
+        waitThenDispatch(ctx, cmd, id, 0)
+    }
+
+    /** A full close of a wallet app (ForceStop) takes up to 15 s; a command that arrives meanwhile waits for it instead
+     *  of answering "busy" (which, for a payout, would release its transactions as a safe error). */
+    private fun waitThenDispatch(ctx: Context, cmd: JSONObject, id: String, waited: Int) {
+        if (ForceStop.running && waited < 30) {
+            Handler(Looper.getMainLooper()).postDelayed({ waitThenDispatch(ctx, cmd, id, waited + 1) }, 1_000)
+            return
+        }
+        dispatch(ctx, cmd, id)
+    }
+
+    private fun dispatch(ctx: Context, cmd: JSONObject, id: String) {
         // Phone controls (restart, inbox, resend, screen, ring) name no wallet, so they are routed BEFORE the wallet
         // check below, which would otherwise answer "unsupported" to every one of them.
         val kind = cmd.optString("kind")
