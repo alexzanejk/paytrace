@@ -461,6 +461,7 @@ object NagadApp {
             ScreenGate.State.READY -> false
         }
         running = true
+        TaskShield.raise(svc, "Nagad app task")
         val pace = AppReader.pace
         val main = Handler(Looper.getMainLooper())
         val started = SystemClock.elapsedRealtime()
@@ -512,6 +513,7 @@ object NagadApp {
             if (finished) return
             finished = true
             running = false
+            TaskShield.lower()
             note("end: $why")
             done(o.copy(trace = (trace + "screen: $screenText").joinToString("\n").take(1900)))
             main.postDelayed({ try { svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME) } catch (e: Exception) { } }, pace.readPause())
@@ -752,6 +754,7 @@ object NagadApp {
         val tick = object : Runnable {
             override fun run() {
                 if (finished) return
+                if (CallDecline.declineRinging(app)) note("an incoming call was declined")
                 val now = SystemClock.elapsedRealtime()
                 if (now - started > RUN_MS) {
                     return when {
@@ -1208,10 +1211,11 @@ object NagadApp {
                                 progressAt = now
                                 nextActAt = now + pace.settle()
                             } else if (now - progressAt > STUCK_MS) {
+                                val fresh = loginAt == 0L && pinWay == 0 && ForceStop.canTry()
                                 return when (task) {
-                                    is NagadTask.Read -> if (seen.isNotEmpty()) { finishRead("a screen PayTrace does not know") } else stop("unexpected_screen", "a screen PayTrace does not know")
+                                    is NagadTask.Read -> if (seen.isNotEmpty()) { finishRead("a screen PayTrace does not know") } else stop(if (fresh) AppRestart.CODE else "unexpected_screen", "a screen PayTrace does not know")
                                     is NagadTask.CashIn -> stop("app_stopped_before_send", "a screen PayTrace does not know; nothing sent")
-                                    else -> stop("unexpected_screen", "a screen PayTrace does not know")
+                                    else -> stop(if (fresh) AppRestart.CODE else "unexpected_screen", "a screen PayTrace does not know")
                                 }
                             }
                         }

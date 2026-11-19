@@ -196,6 +196,7 @@ object AppCashIn {
         }
         val own = s.walletNumberOf(UssdProviders.BKASH).takeIf { it.isNotBlank() }
         running = true
+        TaskShield.raise(svc, "Cash In")
         val pace = AppReader.pace
         val main = Handler(Looper.getMainLooper())
         val started = SystemClock.elapsedRealtime()
@@ -232,6 +233,7 @@ object AppCashIn {
             if (finished) return
             finished = true
             running = false
+            TaskShield.lower()
             note("end: $why")
             val log = (trace + "screen: $screenText").joinToString("\n").take(1900)
             done(o.copy(trace = log, pinSent = held))
@@ -319,7 +321,7 @@ object AppCashIn {
             val (x, y) = pace.pointIn(r.left, r.top, r.right, r.bottom)
             val path = Path().apply { moveTo(x, y); lineTo(x + 1f, y) }
             return try {
-                svc.dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, pace.holdPressMs())).build(), null, null)
+                Gestures.send(svc, GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, pace.holdPressMs())).build())
             } catch (e: Exception) { false }
         }
 
@@ -361,6 +363,7 @@ object AppCashIn {
         val tick = object : Runnable {
             override fun run() {
                 if (finished) return
+                if (CallDecline.declineRinging(app)) note("an incoming call was declined")
                 val now = SystemClock.elapsedRealtime()
                 if (now - started > RUN_MS) return stop("app_stopped_before_send", "time limit")
                 try {
@@ -568,7 +571,7 @@ object AppCashIn {
                                     svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
                                     nextActAt = now + pace.settle()
                                 } else if (now - progressAt > STUCK_MS) {
-                                    return stop("app_stopped_before_send", "a screen PayTrace does not know")
+                                    return stop(if (loginPin.typed == 0 && !loginPin.pressed && cashPin.typed == 0 && !held && ForceStop.canTry()) AppRestart.CODE else "app_stopped_before_send", "a screen PayTrace does not know")
                                 }
                             }
                         }

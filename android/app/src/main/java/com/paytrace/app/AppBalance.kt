@@ -80,6 +80,7 @@ object AppBalance {
             ScreenGate.State.READY -> false
         }
         running = true
+        TaskShield.raise(svc, "bKash balance check")
         val pace = AppReader.pace
         val main = Handler(Looper.getMainLooper())
         val started = SystemClock.elapsedRealtime()
@@ -105,6 +106,7 @@ object AppBalance {
             if (finished) return
             finished = true
             running = false
+            TaskShield.lower()
             note("end: $why")
             val log = (trace + "screen: $screenText").joinToString("\n").take(1900)
             done(o.copy(trace = log))
@@ -116,6 +118,7 @@ object AppBalance {
         val tick = object : Runnable {
             override fun run() {
                 if (finished) return
+                if (CallDecline.declineRinging(app)) note("an incoming call was declined")
                 val now = SystemClock.elapsedRealtime()
                 if (now - started > RUN_MS) return stop(if (homeAt > 0) "balance_not_shown" else "app_closed", "time limit")
                 try {
@@ -234,7 +237,7 @@ object AppBalance {
                             progressAt = now
                             nextActAt = now + pace.settle()
                         } else if (now - progressAt > STUCK_MS) {
-                            return stop("unexpected_screen", "a screen PayTrace does not know")
+                            return stop(if (typed == 0 && !pressed && ForceStop.canTry()) AppRestart.CODE else "unexpected_screen", "a screen PayTrace does not know")
                         }
                     }
                 } catch (e: Exception) {

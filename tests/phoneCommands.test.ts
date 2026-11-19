@@ -126,6 +126,8 @@ check("without a takeover the run's own end line is the reason", reasonOf(tr([" 
 check("a USSD run's last step is the reason, never its last-screen line", reasonOf(tr(["0.0s start, dialer way", "12.1s the dialer never came on screen; Xiaomi's pop-up permission is OFF", "last screen: ..."])) === "the dialer never came on screen; Xiaomi's pop-up permission is OFF");
 check("no step log, no reason", reasonOf(["Balance: Tk 5"]) === null && reasonOf(null) === null);
 
+check("a stuck run's reason names the screen it was stuck on", reasonOf(tr(["  2.0s logged in", " 30.0s end: a screen PayTrace does not know, 0 rows", "screen: Offer / Get a loan today / Later"])) === "a screen PayTrace does not know (screen: Offer / Get a loan today / Later)");
+
 // The total and the exit come LAST: they used to sit in the middle of this file, so nothing written below them ever ran.
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exitCode = 1;

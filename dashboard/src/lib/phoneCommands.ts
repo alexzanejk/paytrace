@@ -79,6 +79,7 @@ const ERROR_TEXT: Record<string, string> = {
     "The phone did not let PayTrace open its dialer, so nothing was typed and nothing was sent. On Xiaomi/Redmi/Poco: Settings, Apps, PayTrace, Other permissions, turn ON \"Display pop-up windows while running in the background\" (HyperOS: \"Open new windows while running in the background\") and \"Show on Lock screen\". Keep the phone unlocked with no screen lock.",
   no_answer_after_pin: "The PIN was entered but no balance came back. The phone did not try the PIN again. Check the Nagad SMS, then try again later.",
   unexpected_screen: "The wallet's menu looked different from what PayTrace expects, so it stopped. Nothing was sent.",
+  app_restart: "The app was stuck on a screen PayTrace does not know; it was closed fully and opened again. Nothing was sent.",
   too_many_steps: "The Nagad menu took too many steps, so it stopped.",
   no_input_box: "PayTrace could not use the phone's menu box.",
   no_send_button: "PayTrace could not use the phone's menu box.",
@@ -129,7 +130,12 @@ export function reasonOf(screens: string[] | null | undefined): string | null {
   const taken = [...lines].reverse().find((l) => /took the screen|kept taking the screen|in front: (?!nothing)/i.test(l) && !skip(l));
   if (taken) return clean(taken);
   const end = [...lines].reverse().find((l) => l.startsWith("end:"));
-  if (end) return clean(end);
+  if (end) {
+    // "stuck on a screen PayTrace does not know" says nothing without the screen: add its words.
+    const screen = [...lines].reverse().find((l) => /^(end screen|screen):/i.test(l))?.replace(/^(end screen|screen):\s*/i, "").trim();
+    const stuck = /does not know|did not open|left the screen|timeout|time limit|looked different/i.test(end);
+    return clean(end) + (stuck && screen ? ` (screen: ${screen.slice(0, 160)})` : "");
+  }
   const last = [...lines].reverse().find((l) => !skip(l));
   return last ? clean(last) : null;
 }

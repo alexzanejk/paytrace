@@ -176,7 +176,7 @@ private fun tapOnScreen(svc: AccessibilityService?, node: AccessibilityNodeInfo?
         if (box.width() <= 0 || box.height() <= 0) return false
         val path = android.graphics.Path().apply { moveTo(box.exactCenterX(), box.exactCenterY()) }
         val stroke = android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 60)
-        svc.dispatchGesture(android.accessibilityservice.GestureDescription.Builder().addStroke(stroke).build(), null, null)
+        Gestures.send(svc, android.accessibilityservice.GestureDescription.Builder().addStroke(stroke).build())
     } catch (e: Exception) {
         false
     }
@@ -329,6 +329,7 @@ object UssdSession {
         trace.clear()
         noted.clear()
         if (earlier.isNotBlank()) trace.addAll(earlier.lines().take(40))
+        TaskShield.raise(service, "a wallet menu (USSD) task")
         val t = Runnable { finish(UssdOutcome(false, null, "timeout")) }
         timeout = t
         main.postDelayed(t, timeoutMs)
@@ -372,6 +373,7 @@ object UssdSession {
             return
         }
         noteOnce("svc", "accessibility service connected")
+        service?.let { if (CallDecline.declineRinging(it)) note("an incoming call was declined") }
         try {
             step()
         } catch (e: Exception) {
@@ -622,6 +624,7 @@ object UssdSession {
     fun abort(error: String) = finish(UssdOutcome(false, null, error))
 
     private fun finish(outcome0: UssdOutcome) {
+        TaskShield.lower()
         // So a failed run can be read later: what was last on the screen, with every long number hidden.
         if (!outcome0.ok && lastText.isNotBlank()) noteOnce("last", "last screen: " + UssdRedact.snippet(lastText))
         val cb: ((UssdOutcome) -> Unit)?
@@ -665,7 +668,11 @@ class UssdAccessibilityService : AccessibilityService() {
         UssdSession.attach(this)
     }
 
+    override fun onKeyEvent(event: android.view.KeyEvent?): Boolean =
+        event != null && TaskShield.swallows(event.keyCode)
+
     override fun onUnbind(intent: android.content.Intent?): Boolean {
+        TaskShield.lower()
         UssdSession.attach(null)
         return super.onUnbind(intent)
     }
@@ -1008,6 +1015,10 @@ class SeenIds(private val max: Int = 64) {
 object UssdCommands {
     private val seen = SeenIds()
 
+    /** An app run that may be force-stopped and started again once when it is stuck before any PIN (AppRestart). */
+    private fun restartable(app: Context, nagad: Boolean, launch: ((UssdOutcome) -> Unit) -> Unit, back: (UssdOutcome) -> Unit) =
+        AppRestart.run(UssdSession.launchContext() as? AccessibilityService, { if (nagad) NagadApp.findApp(app) else AppRecorder.findApp(app) }, launch, back)
+
     fun onReply(ctx: Context, body: String?) {
         if (body == null) return
         // What the owner allowed on the dashboard is applied first, so a command that arrives in the same reply is judged by it.
@@ -1030,13 +1041,13 @@ object UssdCommands {
                 when (kind) {
                     NagadApp.RECORD_KIND -> AppRecorder.start(app, id, NagadRead.APP, back)
                     NagadApp.SEARCH_KIND ->
-                        if (look?.query == null) back(UssdOutcome(false, null, "bad_search")) else NagadApp.start(app, NagadTask.Search(look.query), back)
+                        if (look?.query == null) back(UssdOutcome(false, null, "bad_search")) else restartable(app, true, { cb -> NagadApp.start(app, NagadTask.Search(look.query), cb) }, back)
                     else -> {
                         val now = System.currentTimeMillis()
                         // Back far enough for any held payment the server names, never more than 7 days.
                         val asked = look?.backTo?.let { maxOf(it - 600_000L, now - 7 * 86_400_000L) }
                         val cut = NagadApp.cutoff(app, now).let { c -> if (asked != null) minOf(c, asked) else c }
-                        NagadApp.start(app, NagadTask.Read(cut), back)
+                        restartable(app, true, { cb -> NagadApp.start(app, NagadTask.Read(cut), cb) }, back)
                     }
                 }
             }
@@ -1046,7 +1057,7 @@ object UssdCommands {
         if (kind == AppReader.SEARCH_KIND) {
             val look = AppLook.parse(cmd.optJSONObject("look"))
             if (look?.query == null) { report(ctx, id, UssdOutcome(false, null, "bad_search"), kind); return }
-            Handler(Looper.getMainLooper()).post { AppReader.start(ctx.applicationContext, look) { outcome -> report(ctx, id, outcome, kind) } }
+            Handler(Looper.getMainLooper()).post { restartable(ctx.applicationContext, false, { cb -> AppReader.start(ctx.applicationContext, look, cb) }) { outcome -> report(ctx, id, outcome, kind) } }
             return
         }
         // The balance of every personal bKash account on this phone (owner 2026-11-17). Names no wallet on the server.
@@ -1074,8 +1085,8 @@ object UssdCommands {
                 }
                 // migration 089: the dashboard chose the bKash app for this balance check instead of *247#.
                 if (cmd.optString("via") == "app") {
-                    if (provider == UssdProviders.NAGAD) Handler(Looper.getMainLooper()).post { NagadApp.start(ctx, NagadTask.Balance, finish) }
-                    else AppBalance.start(ctx, provider, finish)
+                    if (provider == UssdProviders.NAGAD) Handler(Looper.getMainLooper()).post { restartable(ctx, true, { cb -> NagadApp.start(ctx, NagadTask.Balance, cb) }, finish) }
+                    else restartable(ctx, false, { cb -> AppBalance.start(ctx, provider, cb) }, finish)
                 } else UssdRunner.run(ctx, provider, finish)
             }
             "cashin" -> {
@@ -1087,7 +1098,7 @@ object UssdCommands {
                 // migration 082: the dashboard chose the bKash app for this one instead of USSD.
                 if (cmd.optString("via") == "app") {
                     if (provider == UssdProviders.NAGAD) Handler(Looper.getMainLooper()).post { NagadApp.start(ctx, NagadTask.CashIn(order), finish) }
-                    else AppCashIn.start(ctx, order, finish)
+                    else restartable(ctx, false, { cb -> AppCashIn.start(ctx, order, cb) }, finish)
                 } else UssdRunner.runCashIn(ctx, order, finish)
             }
             "sendmoney" -> {
@@ -1101,7 +1112,7 @@ object UssdCommands {
                 // migration 083: a B2B transfer to the wallet's DSO, only ever through the bKash app ("btob": the server's
                 // command names are letters only).
                 if (provider != UssdProviders.BKASH) report(ctx, id, UssdOutcome(false, null, "unsupported"), "btob")
-                else AppB2b.start(ctx, B2bOrder(cmd.optString("to_number").takeIf { it.isNotBlank() && it != "null" }, cmd.optDouble("amount", -1.0))) { outcome ->
+                else restartable(ctx, false, { cb -> AppB2b.start(ctx, B2bOrder(cmd.optString("to_number").takeIf { it.isNotBlank() && it != "null" }, cmd.optDouble("amount", -1.0)), cb) }) { outcome ->
                     remember(ctx, provider, outcome)
                     report(ctx, id, outcome, "btob")
                 }
