@@ -235,7 +235,6 @@ object AppReader {
         val main = Handler(Looper.getMainLooper())
         val rows = LinkedHashMap<String, Long>()
         var seenApp = 0L
-        var lastAct = 0L
         var nextActAt = 0L
         var progressAt = SystemClock.elapsedRealtime()
         var pinTypedAt = 0L      // when Log in was pressed
@@ -248,6 +247,7 @@ object AppReader {
         var allTypedAt = 0L      // when the last digit was counted as typed
         var retyping = false     // the app left the screen while the PIN was being typed and was opened again
         var relaunches = 0
+        var reopens = 0          // opens again while the app has never been on screen (OpenRetry)
         var netHits = 0
         var statusHits = 0
         var backs = 0
@@ -320,8 +320,15 @@ object AppReader {
                 try {
                     val root = bkashRoot(svc)
                     if (root == null) {
-                        if (seenApp == 0L && now - started > 6_000 && lastAct == 0L) { lastAct = now; note("opening the app again"); launch() }
-                        if (seenApp == 0L && now - started > 20_000) return finish(false, "app_not_opened", "the app did not open")
+                        if (seenApp == 0L && OpenRetry.due(false, now - started, reopens)) {
+                            reopens++
+                            note("the app is not on screen yet (in front: ${AppReader.frontApps(svc)}); opening it again ($reopens)")
+                            if (OpenRetry.viaWindow(reopens)) AppReader.openBkash(svc, app, pkg, true) { note(it) } else launch()
+                        }
+                        if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) {
+                            note("in front at the end: ${AppReader.frontApps(svc)}")
+                            return finish(false, "app_not_opened", "the app did not open")
+                        }
                         if (seenApp > 0 && now - seenApp > LEFT_MS && relaunches < MAX_RELAUNCHES) {
                             relaunches++
                             val front = try { svc.rootInActiveWindow?.packageName?.toString() } catch (e: Exception) { null }
@@ -685,7 +692,7 @@ object AppReader {
         val open = app.packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             ?: return note("could not open the app")
         if (woke) {
-            note("phone was asleep: opening the bKash app through the wake window")
+            note("opening the app through PayTrace's wake window")
             ScreenWake.wakeUp(svc, open)
         } else {
             // Whatever the person was doing on the phone is put aside first (owner 2026-11-11: "close or minimize
@@ -695,6 +702,11 @@ object AppReader {
             if (home) Handler(Looper.getMainLooper()).postDelayed(go, HOME_FIRST_MS) else go.run()
         }
     }
+
+    /** Which apps' windows are on screen, for the run's log when the wallet app does not come up (never their words). */
+    internal fun frontApps(svc: AccessibilityService): String = try {
+        svc.windows.mapNotNull { w -> w.root?.packageName?.toString()?.substringAfterLast('.') }.distinct().joinToString(", ").ifBlank { "nothing readable" }
+    } catch (e: Exception) { "nothing readable" }
 
     internal fun bkashRoot(svc: AccessibilityService): AccessibilityNodeInfo? {
         svc.rootInActiveWindow?.let { if (AppRecorder.isBkash(it.packageName?.toString())) return it }
@@ -1065,6 +1077,9 @@ object OpenRetry {
     const val GIVE_UP_MS = 25_000L
     fun due(seen: Boolean, sinceStart: Long, opensDone: Int): Boolean =
         !seen && opensDone < EXTRA && sinceStart > EVERY_MS * (opensDone + 1)
+    /** The last open goes another way: through PayTrace's own wake window, which then opens the wallet app (rubel's
+     *  Xiaomi, 2026-11-19: four searches in a row gave up with the plain open done twice). Used by the bKash reader. */
+    fun viaWindow(opensDone: Int): Boolean = opensDone >= EXTRA
 }
 
 /** What a run that is still on the sign-in screen after the PIN reports. Only when the wallet said nothing but showed the
