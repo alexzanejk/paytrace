@@ -71,16 +71,40 @@ export const SEARCH_RPC: Record<SearchApp, string> = { bkash: "queue_app_search"
 /** Every approved phone, each marked whether its app build can search that wallet app (heartbeat `app_search`, or
  *  `app_nagad` for the Nagad app). Online ones first. The owner may pick any of them; one that cannot search is shown
  *  but cannot be chosen (owner 2026-11-12: "let me select any phone I want"). */
-export function phoneChoices(devices: DeviceLike[], now = Date.now(), app: SearchApp = "bkash"): (SearchPhone & { canSearch: boolean })[] {
+export function phoneChoices(devices: DeviceLike[], now = Date.now(), app: SearchApp = "bkash"): (SearchPhone & { canSearch: boolean; blocked: string | null })[] {
   return devices
     .filter((d) => d.status === "approved")
-    .map((d) => ({
-      id: d.id,
-      name: d.name || d.pair_code || "Phone",
-      online: !!d.last_seen_at && now - new Date(d.last_seen_at).getTime() < 90_000,
-      canSearch: (d.info as Record<string, unknown> | null | undefined)?.[SEARCH_FLAG[app]] === true,
-    }))
+    .map((d) => {
+      const info = (d.info ?? null) as Record<string, unknown> | null;
+      const blocked = info?.[SEARCH_FLAG[app]] !== true ? "update app to search"
+        : !hasAgentWallet(info, app) ? `no ${app === "nagad" ? "Nagad" : "bKash"} agent wallet set up on this phone` : null;
+      return {
+        id: d.id,
+        name: d.name || d.pair_code || "Phone",
+        online: !!d.last_seen_at && now - new Date(d.last_seen_at).getTime() < 90_000,
+        canSearch: blocked === null,
+        blocked,
+      };
+    })
     .sort((a, b) => Number(b.canSearch) - Number(a.canSearch) || Number(b.online) - Number(a.online));
+}
+
+/** Does the phone's app list an AGENT wallet of that kind (owner 2026-11-19: a Nagad search went to rubel's Xiaomi,
+ *  which has no Nagad set up)? A phone that reports no wallets at all (an old build) is not judged. */
+export function hasAgentWallet(info: Record<string, unknown> | null | undefined, app: SearchApp): boolean {
+  const ws = info?.wallets;
+  if (!Array.isArray(ws)) return true;
+  return ws.some((w) => {
+    const x = w as { provider?: unknown; kind?: unknown };
+    return x.provider === app && (x.kind ?? "agent") === "agent";
+  });
+}
+
+/** Which wallet app is searched. A TrxID lives in one wallet, so the wallet whose SMS carried it decides; a NUMBER can
+ *  have used both bKash and Nagad, so the owner's own choice stands (owner 2026-11-19: a number searched "on bKash"
+ *  went to the Nagad app because that number's newest SMS was a Nagad one, on another phone). */
+export function searchAppFor(kind: SearchKind, chosen: SearchApp, found: SearchApp | null): SearchApp {
+  return kind === "trx" && found ? found : chosen;
 }
 
 /** Phones that can search that wallet app, online ones first. */
