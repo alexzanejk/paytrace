@@ -445,12 +445,12 @@ async function handle(req: Request): Promise<Response> {
   if (req.method === "POST" && body.action === "reparse") return await reparse(authHeader, body);
   const deviceKey = authHeader.match(/^Device\s+(\S{32,200})$/i)?.[1];
   let deviceId: string | null = null;
-  let device: { id: string; name: string; pair_code: string; info: DeviceInfo | null; allow_balance: boolean; allow_cashin: boolean; allow_personal: boolean } | null = null;
+  let device: { id: string; name: string; pair_code: string; info: DeviceInfo | null; allow_balance: boolean; allow_cashin: boolean; allow_personal: boolean; allow_shield: boolean } | null = null;
   if (deviceKey) {
     const hash = await sha256hex(deviceKey);
     const { data: dev } = await db
       .from("devices")
-      .select("id,status,name,pair_code,info,silent_alerted_at,allow_balance,allow_cashin,allow_personal")
+      .select("id,status,name,pair_code,info,silent_alerted_at,allow_balance,allow_cashin,allow_personal,allow_shield")
       .eq("token_hash", hash)
       .maybeSingle();
     if (!dev) return json({ success: false, message: "this phone is not paired", device_status: "unknown" }, 401);
@@ -459,7 +459,7 @@ async function handle(req: Request): Promise<Response> {
     }
     if (dev.status !== "approved") return json({ success: false, message: "this phone was removed in the dashboard", device_status: dev.status }, 403);
     deviceId = dev.id;
-    device = { id: dev.id, name: dev.name, pair_code: dev.pair_code, info: dev.info, allow_balance: dev.allow_balance !== false, allow_cashin: dev.allow_cashin === true, allow_personal: dev.allow_personal === true };
+    device = { id: dev.id, name: dev.name, pair_code: dev.pair_code, info: dev.info, allow_balance: dev.allow_balance !== false, allow_cashin: dev.allow_cashin === true, allow_personal: dev.allow_personal === true, allow_shield: dev.allow_shield === true };
     // Any word from the phone counts as proof of life.
     const wasSilent = !!dev.silent_alerted_at;
     await db
@@ -535,7 +535,8 @@ async function handle(req: Request): Promise<Response> {
       ...(command ? { command } : {}),
       // What the owner has allowed this phone to do, set on the dashboard. The phone follows it; sending money is off unless switched on.
       // personal (migration 065): the phone shows its Personal accounts section only while this is on.
-      allow: { balance: device.allow_balance, cashin: device.allow_cashin, personal: device.allow_personal },
+      // shield (migration 110): the touch freeze during tasks, per phone.
+      allow: { balance: device.allow_balance, cashin: device.allow_cashin, personal: device.allow_personal, shield: device.allow_shield },
     });
   }
 

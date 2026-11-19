@@ -11,6 +11,8 @@ import { CRYPTO_STYLE_NAMES } from "@/pay/CryptoPanel";
 import { Confirm } from "@/components/Confirm";
 import { CopyButton } from "@/components/CopyButton";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { STRICT_WORDS } from "@/lib/siteNumbers";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -31,6 +33,8 @@ export interface SiteKey {
   redirect_failed_url: string | null;
   /** The smallest deposit this site may ask for (500 unless lowered; never under 100). */
   min_deposit: number;
+  /** Only ticked deposit numbers may show on this site (migration 111; off = a wallet type with no tick gets any main number). */
+  strict_numbers?: boolean;
 }
 
 const AUTO = "auto";
@@ -149,7 +153,7 @@ function MinDeposit({ site, onSaved }: { site: SiteKey; onSaved: () => void }) {
   );
 }
 
-export function SiteCard({ site, outbox = [], numbers, onChanged, onRevoke }: { site: SiteKey; outbox?: OutboxRow[]; numbers?: { lines: string[]; unchosen: number }; onChanged: () => void; onRevoke: () => void }) {
+export function SiteCard({ site, outbox = [], numbers, onChanged, onRevoke }: { site: SiteKey; outbox?: OutboxRow[]; numbers?: { lines: string[]; unchosen: number; refused: number }; onChanged: () => void; onRevoke: () => void }) {
   const [url, setUrl] = useState("");
   const [hookBusy, setHookBusy] = useState(false);
   const [hookNote, setHookNote] = useState("");
@@ -375,13 +379,14 @@ export function SiteCard({ site, outbox = [], numbers, onChanged, onRevoke }: { 
         <h4 className="text-sm font-semibold">4. Which deposit numbers this site shows</h4>
         {numbers && numbers.lines.length ? (
           <ul className="grid gap-1 text-sm">
-            {numbers.lines.map((l) => <li key={l} className={l.includes("not chosen") ? "text-status-warn" : ""}>{l}</li>)}
+            {numbers.lines.map((l) => <li key={l} className={l.includes("REFUSED") ? "text-status-bad" : l.includes("not chosen") ? "text-status-warn" : ""}>{l}</li>)}
           </ul>
         ) : (
           <p className="text-sm text-status-warn">No main phone has a deposit number yet.</p>
         )}
+        <StrictNumbers site={site} onSaved={onChanged} />
         <p className="text-xs text-muted-foreground">
-          Choose them on the <a href="#/numbers" className="underline">Numbers by site</a> page. A wallet type with nothing chosen is given any main number, in turn.
+          Choose them on the <a href="#/numbers" className="underline">Numbers by site</a> page.
         </p>
       </section>
 
@@ -400,5 +405,32 @@ export function SiteCard({ site, outbox = [], numbers, onChanged, onRevoke }: { 
         </Confirm>
       </section>
     </Card>
+  );
+}
+
+/** The per-site switch of migration 111: only ticked numbers, or the day-one fallback to any main number. */
+function StrictNumbers({ site, onSaved }: { site: SiteKey; onSaved: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const strict = site.strict_numbers === true;
+  async function save(on: boolean) {
+    setBusy(true);
+    setNote("");
+    const { error } = await sb.rpc("set_key_strict_numbers", { p_id: site.id, p_on: on });
+    setBusy(false);
+    if (error) return setNote(error.message);
+    onSaved();
+  }
+  return (
+    <div className="grid gap-1">
+      <label className="flex items-start justify-between gap-3">
+        <span className="min-w-0 text-sm">
+          {STRICT_WORDS.label}
+          <span className="block text-xs text-muted-foreground">{strict ? STRICT_WORDS.on : STRICT_WORDS.off}</span>
+        </span>
+        <Switch checked={strict} disabled={busy} aria-label={`${STRICT_WORDS.label} (${site.name})`} onCheckedChange={(on) => void save(on)} />
+      </label>
+      {note ? <p className="text-xs text-status-bad">{note}</p> : null}
+    </div>
   );
 }

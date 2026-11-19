@@ -14,6 +14,7 @@ export function PhonePermissions({ device, onChanged }: { device: Device; onChan
   const balance = device.allow_balance !== false;
   const cashin = device.allow_cashin === true;
   const personal = device.allow_personal === true;
+  const shield = device.allow_shield === true;
   const info = device.info;
   const personalSaved = (info?.wallets ?? []).filter((w) => w.kind === "personal").length;
 
@@ -34,6 +35,15 @@ export function PhonePermissions({ device, onChanged }: { device: Device; onChan
     setProblem("");
     setBusy(true);
     const { error } = await sb.rpc("set_device_personal", { p_device: device.id, p_on: on });
+    setBusy(false);
+    if (error) return setProblem(error.message);
+    onChanged();
+  }
+
+  async function saveShield(on: boolean) {
+    setProblem("");
+    setBusy(true);
+    const { error } = await sb.rpc("set_device_shield", { p_device: device.id, p_on: on });
     setBusy(false);
     if (error) return setProblem(error.message);
     onChanged();
@@ -77,6 +87,17 @@ export function PhonePermissions({ device, onChanged }: { device: Device; onChan
             </span>
           </span>
           <Switch checked={personal} disabled={busy} aria-label={`Show personal accounts in ${device.name}'s app`} onCheckedChange={(on) => void savePersonal(on)} />
+        </label>
+        <label className="flex items-start justify-between gap-3">
+          <span className="min-w-0 text-sm">
+            Freeze the screen during tasks
+            <span className="block text-xs text-muted-foreground">
+              While a dashboard task runs, the phone ignores every touch and shows "PayTrace is working" until the task ends
+              (3 minutes at most). It cannot stop the Home swipe on gesture-navigation phones or the power button. Needs app
+              1.0.261 or newer; try it on one phone first. {state(shield, info?.shield)}
+            </span>
+          </span>
+          <Switch checked={shield} disabled={busy} aria-label={`Freeze ${device.name}'s screen during tasks`} onCheckedChange={(on) => void saveShield(on)} />
         </label>
       </div>
       {problem ? <p className="mt-2 text-xs text-destructive">{problem}</p> : null}

@@ -189,6 +189,7 @@ object AppReader {
             ScreenGate.State.READY -> false
         }
         running = true
+        TaskShield.raise(svc, if (look?.query != null) "bKash app search" else "bKash app read")
         // A search the owner typed (AppLook.query): log in, search the Statement for it, report what came up. No list read.
         val query = look?.query
         val byPhone = query != null && AppLook.isPhone(query)
@@ -274,6 +275,7 @@ object AppReader {
             if (finished) return
             finished = true
             running = false
+            TaskShield.lower()
             note("end: $why, ${rows.size} rows")
             // A details sheet this run opened is closed before leaving, so the next run never finds the app covered by it.
             val left = try { bkashRoot(svc)?.let { r -> ArrayList<AccessibilityNodeInfo>().also { collect(r, it, 0) } } } catch (e: Exception) { null }
@@ -312,6 +314,7 @@ object AppReader {
         val tick = object : Runnable {
             override fun run() {
                 if (finished) return
+                if (CallDecline.declineRinging(app)) note("an incoming call was declined")
                 val now = SystemClock.elapsedRealtime()
                 if (now - started > RUN_MS) return finish(rows.isNotEmpty(), "timeout", "time limit")
                 try {
@@ -661,7 +664,7 @@ object AppReader {
                                     backs++
                                     note("a screen PayTrace does not know (${lastScreen.take(70)}): ${wayBack(svc, nodes, backs)}")
                                     nextActAt = now + pace.settle()
-                                } else if (now - progressAt > STUCK_MS + backs * 3_000L) return finish(rows.isNotEmpty(), "unexpected_screen", "a screen PayTrace does not know")
+                                } else if (now - progressAt > STUCK_MS + backs * 3_000L) return finish(rows.isNotEmpty(), if (rows.isEmpty() && pinTypedAt == 0L && pinTyped == 0 && ForceStop.canTry()) AppRestart.CODE else "unexpected_screen", "a screen PayTrace does not know")
                             }
                         }
                     }
@@ -963,7 +966,7 @@ object AppReader {
         val (x, y) = pace.pointIn(r.left, r.top, r.right, r.bottom)
         val path = Path().apply { moveTo(x, y) }
         return try {
-            svc.dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, pace.tapMs())).build(), null, null)
+            Gestures.send(svc, GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, pace.tapMs())).build())
         } catch (e: Exception) { false }
     }
 
@@ -988,13 +991,13 @@ object AppReader {
         val hold = Path().apply { moveTo(x1, y1); lineTo(x1 + 1f, y1) }
         try {
             val move = GestureDescription.StrokeDescription(path, 0, pace.swipeMs(), true)
-            svc.dispatchGesture(GestureDescription.Builder().addStroke(move).build(), object : AccessibilityService.GestureResultCallback() {
+            Gestures.send(svc, GestureDescription.Builder().addStroke(move).build(), object : AccessibilityService.GestureResultCallback() {
                 override fun onCompleted(gestureDescription: GestureDescription?) {
                     try {
-                        svc.dispatchGesture(GestureDescription.Builder().addStroke(move.continueStroke(hold, 0, pace.holdMs(), false)).build(), null, null)
+                        Gestures.send(svc, GestureDescription.Builder().addStroke(move.continueStroke(hold, 0, pace.holdMs(), false)).build())
                     } catch (e: Exception) { }
                 }
-            }, null)
+            })
         } catch (e: Exception) { }
     }
 }
@@ -1005,7 +1008,7 @@ internal fun AppReader.edgeSwipe(svc: AccessibilityService) {
     val dm = svc.resources.displayMetrics
     val y = dm.heightPixels * 0.4f
     val path = Path().apply { moveTo(4f, y); lineTo(dm.widthPixels * 0.65f, y + 10f) }
-    try { svc.dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, pace.swipeMs())).build(), null, null) } catch (e: Exception) { }
+    try { Gestures.send(svc, GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, pace.swipeMs())).build()) } catch (e: Exception) { }
 }
 
 /** Human pacing for driving the bKash app (owner 2026-11-10: "perform humanly, not too fast, smooth like a human"):
@@ -1017,8 +1020,8 @@ class HumanPace(private val rnd: java.util.Random = java.util.Random()) {
     /** Between PIN digits, after the box has shown the last one (owner 2026-11-10: the app lagged at 0.3-0.65 s with no check;
      *  owner 2026-11-11: 0.8-1.4 s + 1.6 s per blind digit was "slower than a human", so 0.45-0.8 s + 0.9 s; the lit Log in
      *  button still decides). */
-    fun keyGap(): Long = between(450L, 800L)
-    fun afterKeys(): Long = between(700L, 1_100L)
+    fun keyGap(): Long = between(150L, 300L)
+    fun afterKeys(): Long = between(450L, 750L)
     fun settle(): Long = between(1_800L, 3_200L)
     fun readPause(): Long = between(1_300L, 2_600L)
     fun tapMs(): Long = between(55L, 120L)
@@ -1108,7 +1111,7 @@ object PinTyping {
     /** A digit not shown after this long is pressed again (at most [RETRIES] times); with no box to read, a digit
      *  counts as typed after [BLIND_MS]. */
     const val SHOW_MS = 1_800L
-    const val BLIND_MS = 900L
+    const val BLIND_MS = 350L
     const val RETRIES = 2
 
     /** Digits in the box: 0 when empty or showing its hint, else its length without spaces. */
@@ -1140,6 +1143,6 @@ object PinTyping {
 internal fun AppReader.tapAt(svc: AccessibilityService, x: Int, y: Int): Boolean {
     val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
     return try {
-        svc.dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, pace.tapMs())).build(), null, null)
+        Gestures.send(svc, GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, pace.tapMs())).build())
     } catch (e: Exception) { false }
 }

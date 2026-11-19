@@ -18,6 +18,12 @@ class RemoteSwitchesTest {
         assertEquals(Switches(true, false, null), RemoteSwitches.parse("""{"allow":{"balance":true,"cashin":false,"personal":"yes"}}"""))
     }
 
+    @Test fun theTouchFreezeSwitchIsOptional() {
+        assertEquals(Switches(true, false, null, true), RemoteSwitches.parse("""{"allow":{"balance":true,"cashin":false,"shield":true}}"""))
+        assertEquals(Switches(true, false, true, false), RemoteSwitches.parse("""{"allow":{"balance":true,"cashin":false,"personal":true,"shield":false}}"""))
+        assertEquals(Switches(true, false, null, null), RemoteSwitches.parse("""{"allow":{"balance":true,"cashin":false,"shield":"on"}}"""))
+    }
+
     @Test fun anythingUnclearChangesNothing() {
         assertNull(RemoteSwitches.parse(null))
         assertNull(RemoteSwitches.parse(""))

@@ -159,7 +159,7 @@ fun UssdCard(settings: AppSettings, tick: Int) {
             }
 
             Text((if (call) "✓ " else "1. ") + "Allow phone access (needed to send the check and to see your SIMs)", style = MaterialTheme.typography.bodyMedium)
-            if (!call) OutlinedButton(onClick = { permission.launch(arrayOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_PHONE_NUMBERS)) }) { Text("Allow") }
+            if (!call) OutlinedButton(onClick = { permission.launch(arrayOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_PHONE_NUMBERS, Manifest.permission.ANSWER_PHONE_CALLS)) }) { Text("Allow") }
 
             Text("2. Your wallets. Tap one: save its number, find or choose its SIM, and save its PIN.", style = MaterialTheme.typography.bodyMedium)
             val sims = remember(tick, call) { SimNames.list(ctx) }

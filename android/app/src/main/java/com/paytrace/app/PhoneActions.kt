@@ -68,7 +68,9 @@ object PhoneActions {
                 if (!AppSettings(app).ussdAllowed) return done(UssdOutcome(false, null, "not_allowed"))
                 Handler(Looper.getMainLooper()).post { AppRecorder.start(app, commandId, done) }
             }
-            APP_READ -> Handler(Looper.getMainLooper()).post { AppReader.start(app, look, done) }
+            APP_READ -> Handler(Looper.getMainLooper()).post {
+                AppRestart.run(UssdSession.launchContext() as? android.accessibilityservice.AccessibilityService, { AppRecorder.findApp(app) }, { cb -> AppReader.start(app, look, cb) }, done)
+            }
             else -> done(UssdOutcome(false, null, "unsupported"))
         }
     }

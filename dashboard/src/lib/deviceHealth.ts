@@ -35,6 +35,7 @@ export interface DeviceInfo {
   /** Xiaomi/Redmi/Poco only: may PayTrace open the dialer from the background ("Display pop-up windows while running in
    *  the background", HyperOS "Open new windows ..."). Read from a hidden MIUI setting, so absent when the phone cannot say. */
   bg_popup?: boolean;
+  shield?: boolean;
   /** Wallet numbers saved on the phone: which number is bKash, Nagad, Rocket, and which SIM each is in. */
   wallets?: { provider: string; number: string; slot: number; found: boolean; kind?: "agent" | "personal"; app?: boolean }[];
   sim_keys?: string; // the names on the last SMS broadcast whose SIM the phone could not read (names only, never values)
@@ -129,6 +130,9 @@ export function settingsLines(info: DeviceInfo | null | undefined): SettingsLine
   } else if (info.accessibility_on === true && info.accessibility_running === true) {
     const n = info.accessibility_repairs ?? 0;
     out.push({ text: n > 0 ? `Accessibility service running (self-repaired ${n}×)` : "Accessibility service running", tone: "ok", hint: n > 0 ? "The phone has switched the service off and on by itself after being killed, this many times. Many repairs mean the phone's battery settings still let it kill PayTrace." : "The dialer way is ready: PayTrace can read the wallet's menu on this phone." });
+  }
+  if (info.shield === true) {
+    out.push({ text: "Screen freeze during tasks ON", tone: "idle", hint: "While a dashboard task runs, the phone swallows every touch and shows a notice; it is lifted only for PayTrace's own taps and comes down when the task ends (3 minutes at most)." });
   }
   if (info.bg_popup === false) {
     out.push({

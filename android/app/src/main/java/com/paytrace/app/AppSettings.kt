@@ -350,6 +350,10 @@ class AppSettings(ctx: Context) {
         get() = p.getBoolean("cash_in_allowed", false)
         set(v) { p.edit().putBoolean("cash_in_allowed", v).apply() }
 
+    /** The touch freeze during dashboard tasks (TaskShield; dashboard switch `allow.shield`, off by default). */
+    var taskShield: Boolean
+        get() = p.getBoolean("task_shield", false)
+        set(v) { p.edit().putBoolean("task_shield", v).apply() }
     /** Whether the owner lets this phone show its Personal accounts section (dashboard switch, migration 065; off by default). */
     var personalAllowed: Boolean
         get() = p.getBoolean("personal_allowed", false)

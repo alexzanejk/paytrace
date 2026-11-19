@@ -119,6 +119,8 @@ object Sender {
         o.put("ussd_allowed", s.ussdAllowed)
         o.put("cashin_allowed", s.cashInAllowed)
         o.put("admin_code_set", AdminLock.isSet(ctx))
+        // The touch freeze during tasks (TaskShield), as the phone has it; the dashboard's switch sets it.
+        o.put("shield", s.taskShield)
         // This build can do a bKash Cash In through the bKash app (migration 082); the server gives the app way only to such phones.
         o.put("app_cashin", true)
         // This build opens bKash app rows to read their TrxID (AppLook), so the server may hold out for an exact TrxID.
