@@ -49,7 +49,7 @@ function savedView(): View {
 export function Payments() {
   const preset = useMemo(() => takePaymentsPreset(), []);
   // Coming from the search box at the top with a TrxID: the full list is the one that has every transaction.
-  const [view, setView] = useState<View>(() => (preset?.search ? "all" : savedView()));
+  const [view, setView] = useState<View>(() => (preset?.search || preset?.origin ? "all" : savedView()));
   const choose = (v: View) => {
     setView(v);
     try { localStorage.setItem(VIEW_KEY, v); } catch { /* the choice is only a convenience */ }

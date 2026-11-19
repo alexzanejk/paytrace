@@ -23,6 +23,53 @@ export interface Movement {
   seen: "sms" | "both" | "wallet" | "paytrace" | string;
   payment_id: string | null;
   raw: string | null;
+  /** Who started a Cash In / Send Money (migration 105); null for every other kind. */
+  mkey?: string;
+  origin?: Origin | null;
+  /** What on the dashboard sent it: payout | commission | cashin (the phone card's Cash In). */
+  origin_ref?: string | null;
+  /** The amount matches a job the partner reported (shown, but still not the dashboard's). */
+  partner_job?: boolean | null;
+  /** The owner's note when they marked it "I know about this". */
+  ack_note?: string | null;
+}
+
+export type Origin = "dashboard" | "dashboard_likely" | "acked" | "unexpected";
+
+/** "Started by", in words. */
+export function originLabel(m: Pick<Movement, "origin" | "origin_ref" | "partner_job">): string {
+  const what = m.origin_ref === "payout" ? "payout" : m.origin_ref === "commission" ? "commission payout" : m.origin_ref === "cashin" ? "Cash In button" : "";
+  switch (m.origin) {
+    case "dashboard": return what ? `Dashboard (${what})` : "Dashboard";
+    case "dashboard_likely": return what ? `Dashboard, likely (${what})` : "Dashboard, likely";
+    case "acked": return "Marked OK by you";
+    case "unexpected": return m.partner_job ? "NOT from dashboard · partner job" : "NOT from dashboard";
+    default: return "";
+  }
+}
+
+/** The short form for the badge in a table cell (the full words are in its tooltip and in the row's details). */
+export function originShort(m: Pick<Movement, "origin">): string {
+  switch (m.origin) {
+    case "dashboard": return "Dashboard";
+    case "dashboard_likely": return "Dashboard?";
+    case "acked": return "OK by you";
+    case "unexpected": return "NOT dashboard";
+    default: return "";
+  }
+}
+
+/** What the "Started by" filter offers. */
+export const ORIGIN_FILTER: { value: string; label: string }[] = [
+  { value: "unexpected", label: "Not from the dashboard" },
+  { value: "dashboard", label: "Started by the dashboard" },
+  { value: "acked", label: "Marked OK by you" },
+];
+
+export function matchesOrigin(m: Pick<Movement, "origin">, f: string | undefined): boolean {
+  if (!f || f === "all") return true;
+  if (f === "dashboard") return m.origin === "dashboard" || m.origin === "dashboard_likely";
+  return m.origin === f;
 }
 
 /** The kind in words. Rocket calls a customer's cash-out at the agent "B2C Cash-Out". */
@@ -72,6 +119,7 @@ export interface MovementFilter {
   group?: string;       // a GROUPS id, or "all"
   direction?: "in" | "out" | "all";
   seen?: string;        // a SEEN_LABEL key, or "all"
+  origin?: string;      // an ORIGIN_FILTER value, or "all"
   term?: string;        // TrxID or number, any part
 }
 
@@ -102,6 +150,7 @@ export function filterMovements(rows: Movement[], f: MovementFilter): Movement[]
     (!f.group || f.group === "all" || groupOf(m.kind) === f.group) &&
     (!f.direction || f.direction === "all" || (f.direction === "in" ? m.amount > 0 : m.amount < 0)) &&
     (!f.seen || f.seen === "all" || m.seen === f.seen) &&
+    matchesOrigin(m, f.origin) &&
     matchesTerm(m, f.term ?? ""));
 }
 

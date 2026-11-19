@@ -8,7 +8,7 @@ import { periodRange, rangeLabel } from "@/lib/period";
 import { downloadText, toCsv } from "@/lib/csv";
 import { reviewReasonText } from "@/lib/reasons";
 import { PAYMENT_STATUS } from "@/lib/words";
-import { clampRange, filterMovements, GROUPS, kindLabel, SEEN_LABEL, totals, type Movement } from "@/lib/movements";
+import { clampRange, filterMovements, GROUPS, kindLabel, ORIGIN_FILTER, originLabel, originShort, SEEN_LABEL, totals, type Movement } from "@/lib/movements";
 import { useQuery } from "@/hooks/useQuery";
 import { useDevices } from "@/hooks/useDevices";
 import { Screen } from "@/components/Screen";
@@ -37,6 +37,7 @@ export function AllMovements({ preset }: { preset?: PaymentsPreset | null }) {
   const [group, setGroup] = useState(ALL);
   const [direction, setDirection] = useState(ALL);
   const [seen, setSeen] = useState(ALL);
+  const [origin, setOrigin] = useState<string>(preset?.origin ?? ALL);
   const [term, setTerm] = useState(preset?.search ?? "");
   const [limit, setLimit] = useState(PAGE);
   const [open, setOpen] = useState<number | null>(null);
@@ -44,9 +45,10 @@ export function AllMovements({ preset }: { preset?: PaymentsPreset | null }) {
   const asked = periodRange(period.id, period.custom);
   const range = clampRange(asked.from, asked.to);
 
-  const { data, error, loading } = useQuery(
+  const { data, error, loading, refresh } = useQuery(
     async () => {
-      const r = await sb.rpc("all_movements", { p_from: range.from, p_to: range.to });
+      // all_movements2 = all_movements plus who started each Cash In / Send Money (migration 105).
+      const r = await sb.rpc("all_movements2", { p_from: range.from, p_to: range.to });
       if (r.error) throw new Error(r.error.message);
       return (r.data ?? []) as Movement[];
     },
@@ -55,19 +57,21 @@ export function AllMovements({ preset }: { preset?: PaymentsPreset | null }) {
   );
 
   const shown = useMemo(
-    () => filterMovements(data ?? [], { device, provider, group, direction: direction as "in" | "out" | "all", seen, term }),
-    [data, device, provider, group, direction, seen, term],
+    () => filterMovements(data ?? [], { device, provider, group, direction: direction as "in" | "out" | "all", seen, origin, term }),
+    [data, device, provider, group, direction, seen, origin, term],
   );
   const sum = totals(shown);
+  // Cash In / Send Money in the period that no dashboard command explains (all filters but this one ignored).
+  const unexpectedAll = (data ?? []).filter((m) => m.origin === "unexpected");
   const rows = shown.slice(0, limit);
 
   function exportCsv() {
     const csv = toCsv(
-      ["Time (BD)", "Exact time", "Phone", "Wallet", "Account", "Type", "Amount", "Commission", "Balance after", "TrxID", "Number", "Seen in", "Status"],
+      ["Time (BD)", "Exact time", "Phone", "Wallet", "Account", "Type", "Amount", "Commission", "Balance after", "TrxID", "Number", "Seen in", "Status", "Started by"],
       shown.map((m) => [
         when(m.at), m.exact_time ? "yes" : "date only", devices.nameOf(m.device_id), PROVIDER_LABEL[m.provider] ?? m.provider,
         m.account ?? "", kindLabel(m.kind, m.provider), m.amount, m.commission ?? "", m.balance ?? "", m.trx_id ?? "",
-        m.counterparty ?? "", SEEN_LABEL[m.seen] ?? m.seen, statusWord(m),
+        m.counterparty ?? "", SEEN_LABEL[m.seen] ?? m.seen, statusWord(m), originLabel(m),
       ]),
     );
     downloadText(`paytrace-all-${range.from}_${range.to}.csv`, csv);
@@ -91,6 +95,7 @@ export function AllMovements({ preset }: { preset?: PaymentsPreset | null }) {
         <FilterSelect label="All types" value={group} onChange={setGroup} options={GROUPS.map((g) => ({ value: g.id, label: g.label }))} className="w-[calc(50%-0.25rem)] sm:w-56" />
         <FilterSelect label="In and out" value={direction} onChange={setDirection} options={[{ value: "in", label: "Money in" }, { value: "out", label: "Money out" }]} />
         <FilterSelect label="Seen anywhere" value={seen} onChange={setSeen} options={Object.entries(SEEN_LABEL).map(([value, label]) => ({ value, label }))} className="w-[calc(50%-0.25rem)] sm:w-52" />
+        <FilterSelect label="Started by anyone" value={origin} onChange={setOrigin} options={ORIGIN_FILTER} className="w-[calc(50%-0.25rem)] sm:w-56" />
         <div className="relative w-full sm:w-64">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
           <Input className="pl-9" placeholder="Search TrxID or number" aria-label="Search" value={term} onChange={(e) => setTerm(e.target.value)} />
@@ -99,6 +104,17 @@ export function AllMovements({ preset }: { preset?: PaymentsPreset | null }) {
           <Download aria-hidden /> Download CSV
         </Button>
       </div>
+
+      {unexpectedAll.length > 0 && origin !== "unexpected" ? (
+        <Card className="mb-4 flex flex-wrap items-center justify-between gap-2 border-status-bad/40 bg-status-bad-bg p-3 text-sm text-status-bad">
+          <span>
+            <strong>{unexpectedAll.length} Cash In / Send Money not started by the dashboard</strong> in this period
+            ({tk(unexpectedAll.reduce((s, m) => s + Math.abs(m.amount), 0))}). Someone did {unexpectedAll.length === 1 ? "it" : "them"} by hand on the phone.
+          </span>
+          <Button size="sm" variant="outline" onClick={() => setOrigin("unexpected")}>Show them</Button>
+        </Card>
+      ) : null}
+      {origin === "unexpected" && shown.length > 0 ? <KnowAll rows={shown} onDone={refresh} /> : null}
 
       <div className={`mb-5 ${STAT_GRID}`}>
         <StatCard label="Money in" value={tk(sum.moneyIn)} sub="everything that came into these wallets" tone="green" />
@@ -121,7 +137,7 @@ export function AllMovements({ preset }: { preset?: PaymentsPreset | null }) {
               <TableHead>Type</TableHead>
               <TableHead className="text-right">Amount</TableHead>
               <TableHead>TrxID / number</TableHead>
-              <TableHead title="SMS = the wallet's SMS; No SMS = only in the wallet's own list (app read or statement); PayTrace = sent by PayTrace itself">Seen in</TableHead>
+              <TableHead title="SMS = the wallet's SMS; No SMS = only in the wallet's own list (app read or statement); PayTrace = sent by PayTrace itself. Below it, for a Cash In or Send Money: was it started from this dashboard?">Seen in</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -138,7 +154,7 @@ export function AllMovements({ preset }: { preset?: PaymentsPreset | null }) {
                   </TableCell>
                   <TableCell>
                     {kindLabel(m.kind, m.provider)}
-                    {open === i ? <More m={m} /> : null}
+                    {open === i ? <More m={m} onDone={refresh} /> : null}
                   </TableCell>
                   <TableCell className={`text-right font-medium tabular ${m.amount < 0 ? "text-status-bad" : "text-status-ok"}`}>
                     {m.amount < 0 ? "−" : "+"}{tk(Math.abs(m.amount))}
@@ -147,7 +163,9 @@ export function AllMovements({ preset }: { preset?: PaymentsPreset | null }) {
                     {m.trx_id ?? ""}
                     {m.counterparty ? <span className="block text-muted-foreground">{m.counterparty}</span> : null}
                   </TableCell>
-                  <TableCell><SeenBadge m={m} /></TableCell>
+                  <TableCell>
+                    <span className="flex flex-col items-start gap-1"><SeenBadge m={m} /><OriginBadge m={m} /></span>
+                  </TableCell>
                 </TableRow>
               ))
             )}
@@ -175,10 +193,10 @@ export function AllMovements({ preset }: { preset?: PaymentsPreset | null }) {
               </div>
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                 <span className="break-all font-mono text-xs">{m.trx_id ?? m.counterparty ?? ""}</span>
-                <SeenBadge m={m} />
+                <span className="flex flex-wrap gap-1"><OriginBadge m={m} /><SeenBadge m={m} /></span>
               </div>
             </button>
-            {open === i ? <More m={m} /> : null}
+            {open === i ? <More m={m} onDone={refresh} /> : null}
           </Card>
         ))}
       </div>
@@ -212,10 +230,88 @@ function SeenBadge({ m }: { m: Movement }) {
   return <Badge tone={tone} title={SEEN_LABEL[m.seen] ?? m.seen} className="whitespace-nowrap">{SEEN_SHORT[m.seen] ?? m.seen}</Badge>;
 }
 
+function OriginBadge({ m }: { m: Movement }) {
+  if (!m.origin) return null;
+  const tone = m.origin === "unexpected" ? "bad" : m.origin === "acked" ? "idle" : "ok";
+  return <Badge tone={tone} title={m.ack_note ? `${originLabel(m)}. Your note: ${m.ack_note}` : originLabel(m)} className="whitespace-nowrap">{originShort(m)}</Badge>;
+}
+
+/** "I know about this": a short note, then the row stops being red. An empty note on a marked row takes the mark back. */
+function MarkKnown({ m, onDone }: { m: Movement; onDone: () => void }) {
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState("");
+  if (!m.mkey || (m.origin !== "unexpected" && m.origin !== "acked")) return null;
+  async function save(text: string) {
+    setBusy(true);
+    setProblem("");
+    const r = await sb.rpc("ack_cashin", { p_key: m.mkey, p_note: text });
+    setBusy(false);
+    if (r.error) setProblem(r.error.message);
+    else onDone();
+  }
+  if (m.origin === "acked") {
+    return (
+      <div className="flex flex-wrap items-center gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
+        <span>Marked OK by you{m.ack_note ? `: ${m.ack_note}` : ""}</span>
+        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void save("")}>Take the mark back</Button>
+        {problem ? <span className="text-status-bad">{problem}</span> : null}
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-1 pt-1" onClick={(e) => e.stopPropagation()}>
+      <p className="text-status-bad">
+        No payout, commission payout or Cash In on this dashboard explains this. If you or your partner did it by hand and you
+        know about it, say what it was:
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Input className="h-8 w-64 max-w-full text-xs" placeholder="What was it? (e.g. paid Rahim by hand)" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} aria-label="Note" />
+        <Button size="sm" disabled={busy || !note.trim()} onClick={() => void save(note)}>I know about this</Button>
+      </div>
+      {problem ? <p className="text-status-bad">{problem}</p> : null}
+    </div>
+  );
+}
+
+/** Mark every row shown under "Not from the dashboard" at once, with one note (at most 200 at a time). */
+function KnowAll({ rows, onDone }: { rows: Movement[]; onDone: () => void }) {
+  const keys = rows.filter((m) => m.origin === "unexpected" && m.mkey).map((m) => m.mkey!).slice(0, 200);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState("");
+  if (!keys.length) return null;
+  async function save() {
+    setBusy(true);
+    setProblem("");
+    const r = await sb.rpc("ack_cashins", { p_keys: keys, p_note: note });
+    setBusy(false);
+    if (r.error) setProblem(r.error.message);
+    else { setNote(""); onDone(); }
+  }
+  return (
+    <Card className="mb-4 space-y-2 p-3 text-sm">
+      <p>
+        Showing only Cash In / Send Money that the dashboard did not start. Check each one; if you know about all{" "}
+        {keys.length === 1 ? "of it" : `${keys.length} of them`} (for example the days you paid by hand), mark them in one go:
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Input className="h-8 w-72 max-w-full text-xs" placeholder="What were they? (e.g. paid by hand on 15-16 Nov)" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} aria-label="Note for all" />
+        <Button size="sm" variant="outline" disabled={busy || !note.trim()} onClick={() => void save()}>
+          I know about all {keys.length}
+        </Button>
+      </div>
+      {problem ? <p className="text-status-bad">{problem}</p> : null}
+    </Card>
+  );
+}
+
 /** The rest of one row. SMS text is shown as plain text, never as HTML. */
-function More({ m }: { m: Movement }) {
+function More({ m, onDone }: { m: Movement; onDone: () => void }) {
   return (
     <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+      {m.origin ? <p>Started by: {originLabel(m)}</p> : null}
+      <MarkKnown m={m} onDone={onDone} />
       {m.commission ? <p>Commission {tk(m.commission)}</p> : null}
       {m.balance != null ? <p>Balance after {tk(m.balance)}</p> : null}
       {m.counterparty ? <p>Number {m.counterparty}</p> : null}

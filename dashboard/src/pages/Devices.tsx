@@ -106,12 +106,15 @@ export function Devices() {
       // The newest build on the download link (GitHub release), so an outdated phone is seen without anyone typing the
       // number (owner 2026-11-08). The typed number stays as the fallback; the higher of the two wins.
       const fromLink = await latestReleaseBuild();
+      // Cash Ins no dashboard command explains, last 7 days (migration 105). A failure never stops the page.
+      const unexpRes = await sb.rpc("unexpected_cashins", { p_days: 7 });
+      const unexpected = new Map(((unexpRes.data ?? []) as { device_id: string | null; n: number }[]).map((r) => [r.device_id ?? "", Number(r.n) || 0]));
       const newestBuild = newestOf(release?.version_code, fromLink);
       if (fromLink && (!release || fromLink > release.version_code)) {
         // Keep the database in step, quietly: the phone's own update check does not read it, but other pages may.
         await sb.rpc("set_app_release", { p_version_code: fromLink, p_notes: release?.notes ?? null }).then(() => undefined, () => undefined);
       }
-      return { devices, totals, balances, floats, floatsError, dayMoney, dayMoneyError, dayChecks, dayCheckError, gaps, notOurs, wallets, walletStats, rates, commission, groups, release, newestBuild, fromLink };
+      return { devices, totals, balances, floats, floatsError, dayMoney, dayMoneyError, dayChecks, dayCheckError, gaps, notOurs, wallets, walletStats, rates, commission, groups, release, newestBuild, fromLink, unexpected };
     },
     [day],
     { refreshMs: 10000 },
@@ -196,6 +199,7 @@ export function Devices() {
       otherProblems: Math.max(0, infoProblems(d.info).length - blocking.length),
       buildsBehind: build !== null && data?.newestBuild ? Math.max(0, data.newestBuild - build) : null,
       openGaps: (data?.gaps ?? []).filter((g) => g.device_id === d.id).length,
+      unexpected: data?.unexpected.get(d.id) ?? 0,
     });
   };
   /** A phone's money for the day: every movement counted once when that could be loaded, else the SMS totals. */

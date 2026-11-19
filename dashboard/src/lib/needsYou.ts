@@ -25,10 +25,12 @@ export interface NeedCounts {
   webhooksFailed: number | null;
   /** USDT transfers that matched no order. */
   cryptoReview: number | null;
+  /** Cash In / Send Money of the last 7 days that no dashboard command explains (migration 105). */
+  unexpectedCashins?: { n: number; amount: number } | null;
 }
 
 /** The page ids used here are the stable ones in lib/nav.ts (a test checks every one exists). */
-export type NeedPage = "review" | "jobs" | "payout" | "commission" | "devices" | "api" | "crypto";
+export type NeedPage = "review" | "jobs" | "payout" | "commission" | "devices" | "api" | "crypto" | "payments";
 
 export interface Need {
   id: string;
@@ -58,6 +60,14 @@ export function needs(c: NeedCounts): Need[] {
       id: "offline", tone: "bad", page: "devices", action: "Open Phones",
       title: `${plural(c.phonesOffline.length, "phone")} offline`,
       detail: `${nameList(c.phonesOffline)}: payments to ${c.phonesOffline.length === 1 ? "its" : "their"} numbers are not seen until ${c.phonesOffline.length === 1 ? "it is" : "they are"} back.`,
+    });
+  }
+  if (c.unexpectedCashins && c.unexpectedCashins.n > 0) {
+    const u = c.unexpectedCashins;
+    out.push({
+      id: "unexpected", tone: "bad", page: "payments", action: "Check them",
+      title: `${plural(u.n, "Cash In")} not started by the dashboard`,
+      detail: `${taka(u.amount)} in the last 7 days that no payout, commission payout or Cash In button sent. Check them, or mark the ones you know about.`,
     });
   }
   const unsure = (c.payoutsUnsure ?? 0) + (c.commissionUnsure ?? 0);
@@ -127,6 +137,7 @@ const CHECK_NAMES: Record<keyof NeedCounts, string> = {
   held: "held payments", jobsWaiting: "jobs", payoutsUnsure: "payouts", commissionUnsure: "commission payments",
   commissionDue: "commission due", phonesOffline: "phones", phonesOutdated: "app versions", numbersMissing: "deposit numbers",
   numbersInvalid: "deposit numbers", webhooksFailed: "website results", cryptoReview: "USDT transfers",
+  unexpectedCashins: "Cash Ins not from the dashboard",
 };
 
 /** What could not be checked this time, in words, each named once. */
