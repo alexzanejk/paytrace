@@ -8,6 +8,7 @@ import { depositCoverage } from "@/lib/walletNumbers";
 import { partnersOwed, type CommissionDayRow } from "@/lib/commissionPays";
 import { needs, unchecked, type NeedCounts } from "@/lib/needsYou";
 import { openPage } from "@/lib/nav";
+import { openPaymentsWith } from "@/lib/filters";
 import type { Device, DeviceWallet } from "@/lib/types";
 import { useQuery } from "@/hooks/useQuery";
 import { useNow } from "@/hooks/useNow";
@@ -42,6 +43,11 @@ async function load(devices: Device[], now: number): Promise<NeedCounts> {
     sb.from("app_release").select("version_code").limit(1).then((r) => (r.error ? null : ((r.data?.[0]?.version_code as number | undefined) ?? 0)), () => null),
     latestReleaseBuild().catch(() => null),
   ]);
+  // Cash Ins no dashboard command explains (migration 105). null = could not be checked, never a silent 0.
+  const unexpectedCashins = await sb.rpc("unexpected_cashins", { p_days: 7 }).then(
+    (r) => (r.error ? null : ((r.data ?? []) as { n: number; amount: number }[]).reduce((t, x) => ({ n: t.n + Number(x.n), amount: t.amount + Number(x.amount) }), { n: 0, amount: 0 })),
+    () => null,
+  );
   const coverage = wallets ? depositCoverage(wallets, devices.map((d) => ({ id: d.id, name: d.name || d.pair_code, status: d.status }))) : null;
   const owed = days ? partnersOwed(days) : null;
   const newest = release === null && fromLink === null ? null : newestOf(release, fromLink);
@@ -58,6 +64,7 @@ async function load(devices: Device[], now: number): Promise<NeedCounts> {
     numbersInvalid: coverage ? coverage.invalid.length : null,
     webhooksFailed,
     cryptoReview,
+    unexpectedCashins,
   };
 }
 
@@ -95,7 +102,10 @@ export function NeedsYou({ devices }: { devices: Device[] }) {
             <button
               key={n.id}
               type="button"
-              onClick={() => openPage(n.page)}
+              onClick={() =>
+                n.id === "unexpected"
+                  ? openPaymentsWith({ origin: "unexpected", from: addDays(dhakaDay(), -7), to: dhakaDay() })
+                  : openPage(n.page)}
               className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/60 focus-visible:bg-muted/60"
             >
               <span

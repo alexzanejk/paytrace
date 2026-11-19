@@ -32,6 +32,8 @@ export interface PhoneFacts {
   buildsBehind: number | null;
   /** Balance changes on this phone's wallets that no SMS or statement explains yet. */
   openGaps: number;
+  /** Cash Ins / Send Money of the last 7 days that no dashboard command explains (migration 105). Optional: 0 when unknown. */
+  unexpected?: number;
 }
 
 export interface PhoneProblem {
@@ -49,6 +51,7 @@ export function phoneProblems(f: PhoneFacts): PhoneProblem[] {
   const out: PhoneProblem[] = [];
   if (!f.online) out.push({ tone: "bad", text: `Offline, last heard ${f.lastHeard}`, tab: "tools" });
   for (const b of f.blocking) out.push({ tone: "bad", text: b.replace(/^./, (c) => c.toUpperCase()), tab: "tools" });
+  if ((f.unexpected ?? 0) > 0) out.push({ tone: "bad", text: `${plural(f.unexpected!, "Cash In")} not started by the dashboard (7 days)`, tab: "today" });
   if (f.openGaps > 0) out.push({ tone: "warn", text: `${plural(f.openGaps, "balance change")} to explain`, tab: "wallets" });
   if (f.buildsBehind && f.buildsBehind > 0) out.push({ tone: "warn", text: `Old app (${plural(f.buildsBehind, "build")} behind)`, tab: "tools" });
   if (f.otherProblems > 0) out.push({ tone: "warn", text: `${plural(f.otherProblems, "setting")} to fix on the phone`, tab: "tools" });

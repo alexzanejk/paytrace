@@ -13,7 +13,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import { parseSms, senderMatchesProvider, type Provider } from "./parser.ts";
 import { cleanInfo, healthProblem, type DeviceInfo } from "./health.ts";
-import { b2bMessage, confirmedMessage, gapMessage, makeNotifier, notConfirmedMessage, notInAppMessage, problemMessage, recoveredMessage, reviewMessage, testMessage, unreadMessage } from "./notify.ts";
+import { b2bMessage, confirmedMessage, gapMessage, makeNotifier, notConfirmedMessage, notInAppMessage, problemMessage, recoveredMessage, reviewMessage, testMessage, unexpectedCashinMessage, unreadMessage } from "./notify.ts";
 import { readStatementLines } from "./statement.ts";
 import { runWatchdog } from "./watchdog.ts";
 import { runWake } from "./wake.ts";
@@ -137,7 +137,28 @@ async function watchdog(): Promise<Response> {
     pusher,
     { now: Date.now() },
   );
+  await tellUnexpectedCashins();
   return json({ success: true });
+}
+
+/** Cash Ins / Send Money that no dashboard command explains (migration 105), each told once on Telegram. Runs inside the
+ *  every-minute watchdog, so it costs no extra Edge call. Without Telegram nothing is claimed: they wait until it is set up. */
+async function tellUnexpectedCashins(): Promise<void> {
+  try {
+    if (!notify.enabled) return;
+    const { data, error } = await db.rpc("unexpected_cashin_claim");
+    if (error) { console.error("unexpected_cashin_claim failed", error.code); return; }
+    for (const r of (data ?? []) as Array<Record<string, unknown>>) {
+      await log("unexpected_cashin", String(r.provider ?? "") || null, { mkey: r.mkey, amount: r.amount, trx_id: r.trx_id, phone: r.device_name });
+      await notify.send(unexpectedCashinMessage({
+        provider: String(r.provider ?? ""), kind: String(r.kind ?? ""), amount: Number(r.amount) || 0,
+        phone: String(r.device_name ?? ""), account: (r.account as string | null) ?? null, to: (r.counterparty as string | null) ?? null,
+        trxId: (r.trx_id as string | null) ?? null, partnerJob: r.partner_job === true, seen: String(r.seen ?? ""), dashboardUrl: DASHBOARD_URL,
+      }));
+    }
+  } catch (e) {
+    console.error("unexpected cash-in check failed", e instanceof Error ? e.name : "error");
+  }
 }
 
 /** Checks that the caller is the signed-in dashboard admin. Returns an error response, or null when all is well. */

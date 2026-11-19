@@ -1,4 +1,4 @@
-import { clampRange, filterMovements, groupOf, kindLabel, matchesTerm, totals, type Movement } from "../dashboard/src/lib/movements.ts";
+import { clampRange, filterMovements, groupOf, kindLabel, matchesOrigin, matchesTerm, originLabel, originShort, totals, type Movement } from "../dashboard/src/lib/movements.ts";
 
 let failed = 0;
 const check = (name: string, ok: boolean, got?: unknown) => {
@@ -44,5 +44,20 @@ check("31 days or less is kept", !clampRange("2026-10-12", "2026-11-12").clamped
 const c = clampRange("2026-09-01", "2026-11-12");
 check("a longer period keeps its last 31 days", c.clamped && c.from === "2026-10-12" && c.to === "2026-11-12", c);
 
+// ---- who started a Cash In (migration 105) ----
+check("a dashboard payout says so", originLabel({ origin: "dashboard", origin_ref: "payout" }) === "Dashboard (payout)");
+check("a likely match says likely", originLabel({ origin: "dashboard_likely", origin_ref: "commission" }) === "Dashboard, likely (commission payout)");
+check("not from the dashboard, and a partner job is named but still red",
+  originLabel({ origin: "unexpected" }) === "NOT from dashboard" && originLabel({ origin: "unexpected", partner_job: true }) === "NOT from dashboard · partner job");
+check("other kinds say nothing", originLabel({ origin: null }) === "" && originShort({ origin: null }) === "");
+check("the badge is short", originShort({ origin: "unexpected" }) === "NOT dashboard" && originShort({ origin: "dashboard_likely" }) === "Dashboard?");
+check("the 'started by the dashboard' filter takes the likely ones too",
+  matchesOrigin({ origin: "dashboard_likely" }, "dashboard") && matchesOrigin({ origin: "dashboard" }, "dashboard") && !matchesOrigin({ origin: "unexpected" }, "dashboard"));
+check("the 'not from the dashboard' filter takes only those", matchesOrigin({ origin: "unexpected" }, "unexpected") && !matchesOrigin({ origin: "acked" }, "unexpected") && !matchesOrigin({ origin: null }, "unexpected"));
+{
+  const rows = [m({ kind: "cash_in_sent", amount: -425, origin: "unexpected" }), m({ kind: "cash_in_sent", amount: -850, origin: "dashboard" }), m({ kind: "cash_out", amount: 500, origin: null })];
+  check("filterMovements honours the origin filter", filterMovements(rows, { origin: "unexpected" }).length === 1 && filterMovements(rows, { origin: "all" }).length === 3);
+}
+
 if (failed) { console.error(`${failed} failed`); process.exit(1); }
-console.log(`\n${19} passed, 0 failed`);
+console.log(`\n${27} passed, 0 failed`);

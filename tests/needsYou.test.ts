@@ -52,5 +52,13 @@ check("a page knows its section", sectionOf("review").id === "transactions" && s
 check("tabs come in the section's order", pagesOf(sectionOf("orders")).map((p) => p.label).join() === "All transactions,Deposit orders,Review,Wallet ledger");
 check("the bottom bar holds four real sections", BOTTOM_BAR.length === 4 && BOTTOM_BAR.every((id) => SECTIONS.some((s) => s.id === id)));
 
+{
+  const list = needs({ ...quiet, phonesOffline: ["Vivo"], held: 1, unexpectedCashins: { n: 3, amount: 1290 } });
+  check("Cash In not from the dashboard comes right after offline phones", list.map((n) => n.id).join() === "offline,unexpected,held", list.map((n) => n.id));
+  check("it says how many and how much, and opens Transactions", list[1].title === "3 Cash Ins not started by the dashboard" && list[1].detail.startsWith("Tk 1,290.00") && list[1].page === "payments");
+  check("none of them = no line; unknown = said", needs({ ...quiet, unexpectedCashins: { n: 0, amount: 0 } }).length === 0 && unchecked({ ...quiet, unexpectedCashins: null }).includes("Cash Ins not from the dashboard"));
+  check("payments is a real page", TABS.some((t) => t.id === "payments"));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

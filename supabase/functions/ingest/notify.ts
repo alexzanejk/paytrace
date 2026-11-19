@@ -198,6 +198,25 @@ export function gapMessage(p: { provider: string; amount: number; phone: string;
   return lines.join("\n");
 }
 
+/** A Cash In / Send Money that no dashboard command explains (migration 105): someone did it by hand on the phone.
+ *  Sent once per movement, at least 10 minutes after it, so a dashboard send still finishing is never mistaken for one. */
+export function unexpectedCashinMessage(p: {
+  provider: string; kind: string; amount: number; phone: string; account: string | null; to: string | null;
+  trxId: string | null; partnerJob: boolean; seen: string; dashboardUrl: string;
+}): string {
+  const wallet = PROVIDER[p.provider] ?? clean(p.provider, 20);
+  const what = p.kind === "send_money_out" ? "Send Money" : "Cash In";
+  const lines = [
+    `\u{1F6A8} ${what} NOT started by the dashboard`,
+    `${taka(p.amount)} from ${clean(p.phone) || "a phone"}'s ${wallet}${p.account === "personal" ? " (personal)" : ""} wallet${p.to ? ` to ${clean(p.to, 20)}` : ""}.`,
+    `${p.trxId ? `TrxID ${clean(p.trxId, 30)} \u00b7 ` : ""}${p.seen === "wallet" ? "seen in the wallet's own list (no SMS)" : "from the SMS"}.`,
+    p.partnerJob ? "It matches a partner job the partner reported." : "No payout, commission payment or Cash In on the dashboard matches it.",
+    "If you know about it, mark it on the Transactions page; if not, check that phone now.",
+    `${p.dashboardUrl}/#/payments`,
+  ];
+  return lines.join("\n");
+}
+
 export const testMessage = () =>
   [
     "✅ PayTrace test message",

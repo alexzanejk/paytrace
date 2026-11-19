@@ -27,6 +27,8 @@ check("a healthy phone has nothing wrong", phoneProblems(fine).length === 0 && p
 }
 check("singular words", phoneProblems({ ...fine, openGaps: 1 })[0].text === "1 balance change to explain" && phoneProblems({ ...fine, buildsBehind: 1 })[0].text === "Old app (1 build behind)");
 check("an unknown app version is not a problem", phoneProblems({ ...fine, buildsBehind: null }).length === 0);
+check("Cash Ins not from the dashboard are a red problem on the Today tab",
+  phoneProblems({ ...fine, unexpected: 2 })[0].text === "2 Cash Ins not started by the dashboard (7 days)" && phoneProblems({ ...fine, unexpected: 2 })[0].tab === "today" && phoneProblems({ ...fine, unexpected: 2 })[0].tone === "bad");
 check("one problem has no '+more'", problemLine(phoneProblems({ ...fine, otherProblems: 2 })) === "2 settings to fix on the phone");
 
 console.log(`\n${pass} passed, ${fail} failed`);
