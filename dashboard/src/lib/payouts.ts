@@ -36,6 +36,10 @@ export interface PayoutRow {
   paid_at: string | null;
   /** A payout recorded by hand for money that is not on the Payout list (migration 099); it has no payout_items. */
   extra?: boolean;
+  /** A "failed" answer being checked against the wallet's own list (migration 108). */
+  check_since?: string | null;
+  check_done_at?: string | null;
+  check_note?: string | null;
   for_trx?: string | null;
   for_device?: string | null;
   for_provider?: string | null;
@@ -268,6 +272,25 @@ export function payoutLine(p: PayoutRow, phoneName: (id: string | null) => strin
   const kept = ` · kept ${taka(num(p.keep_amount))} (${num(p.keep_pct)}%) of ${taka(num(p.total_amount))}`;
   const fee = feeLine(num(p.fee_reserved), p.fee_actual == null ? null : num(p.fee_actual));
   return `${taka(num(p.send_amount))}${to}${how}${from}${trx}${kept}${fee ? " · " + fee : ""}`;
+}
+
+/** A payout the phone called failed although the wallet's SMS shows it went, after which the same transactions were
+ *  paid again (migration 106: the server once handed one order to the phone twice). `again` is the payout that now
+ *  holds the transactions. */
+export function paidTwiceLine(first: PayoutRow, again: PayoutRow | undefined, phoneName: (id: string | null) => string): string {
+  const one = `${taka(num(first.send_amount))}${first.trx_id ? ` (TrxID ${first.trx_id})` : ""} from ${phoneName(first.device_id)}`;
+  const two = again
+    ? `${taka(num(again.send_amount))}${again.trx_id ? ` (TrxID ${again.trx_id})` : ""} from ${phoneName(again.device_id)}`
+    : "a second payout";
+  const to = first.to_number ? ` to ${groupDigits(first.to_number)}` : "";
+  return `Paid twice${to}: ${one}, then ${two} for the same transactions. ${taka(num(first.send_amount))} too much went out.`;
+}
+
+/** The word for a payout's state. A payout the phone called failed is first checked against the wallet's own list
+ *  (migration 108); while that runs it stays taken and reads "Checking the wallet". */
+export function payoutWord(p: { status: PayoutStatus; check_since?: string | null; check_done_at?: string | null }): { label: string; tone: "ok" | "warn" | "bad" | "idle" } {
+  if (p.status === "sending" && p.check_since && !p.check_done_at) return { label: "Checking the wallet…", tone: "warn" };
+  return PAYOUT_WORDS[p.status];
 }
 
 /** What an unsure payout needs from the owner. */

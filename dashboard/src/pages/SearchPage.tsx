@@ -4,7 +4,7 @@ import { sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { PROVIDER_LABEL, TYPE_LABEL, type DeviceWallet, type Order, type Payment } from "@/lib/types";
 import { canAskWalletApp, isFullMatch, queryLine, readQuery, type SearchQuery } from "@/lib/globalSearch";
-import { PAYOUT_WORDS, payoutLine, type PayoutItemRow, type PayoutRow } from "@/lib/payouts";
+import { payoutLine, payoutWord, type PayoutItemRow, type PayoutRow } from "@/lib/payouts";
 import { payLine, type CommissionPayRow } from "@/lib/commissionPays";
 import { reviewReasonText } from "@/lib/reasons";
 import { hubView } from "@/lib/words";
@@ -210,7 +210,7 @@ export function SearchPage({ typed }: { typed: string }) {
             {data.payouts.rows.map((p) => (
               <Row key={p.id}>
                 <div className="min-w-0 text-sm">
-                  <Badge tone={PAYOUT_WORDS[p.status].tone}>{PAYOUT_WORDS[p.status].label}</Badge> <span className="ml-1">{payoutLine(p, devices.nameOf)}</span>
+                  <Badge tone={payoutWord(p).tone}>{payoutWord(p).label}</Badge> <span className="ml-1">{payoutLine(p, devices.nameOf)}</span>
                   <p className="mt-1 text-xs text-muted-foreground">Started {when(p.created_at)}{p.note ? ` · ${p.note}` : ""}</p>
                 </div>
                 <Open onClick={() => openPage("payout")}>Open Payout</Open>
@@ -219,7 +219,7 @@ export function SearchPage({ typed }: { typed: string }) {
             {data.commission.rows.map((p) => (
               <Row key={p.id}>
                 <div className="min-w-0 text-sm">
-                  <Badge tone={PAYOUT_WORDS[p.status].tone}>{PAYOUT_WORDS[p.status].label}</Badge> <span className="ml-1">Commission to {devices.nameOf(p.device_id)}: {payLine(p, devices.nameOf)}</span>
+                  <Badge tone={payoutWord(p).tone}>{payoutWord(p).label}</Badge> <span className="ml-1">Commission to {devices.nameOf(p.device_id)}: {payLine(p, devices.nameOf)}</span>
                   <p className="mt-1 text-xs text-muted-foreground">Started {when(p.created_at)}{p.note ? ` · ${p.note}` : ""}</p>
                 </div>
                 <Open onClick={() => openPage("commission")}>Open Commission</Open>
@@ -307,7 +307,7 @@ function PaymentRow({ p, phone, payout, nameOf, note }: { p: Payment; phone: str
       </div>
       {reason ? <p className="mt-2 text-sm text-status-warn">{reason}</p> : null}
       <p className="mt-2 text-sm">
-        {payout ? <>Payout: <Badge tone={PAYOUT_WORDS[payout.status].tone}>{PAYOUT_WORDS[payout.status].label}</Badge> <span className="ml-1">{payoutLine(payout, nameOf)}</span></> : <span className="text-muted-foreground">Not in any payout.</span>}
+        {payout ? <>Payout: <Badge tone={payoutWord(payout).tone}>{payoutWord(payout).label}</Badge> <span className="ml-1">{payoutLine(payout, nameOf)}</span></> : <span className="text-muted-foreground">Not in any payout.</span>}
       </p>
       {open ? <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-3 text-xs">{p.raw_message}</pre> : null}
       <span className="sr-only">{PROVIDER_LABEL[p.provider] ?? p.provider}</span>

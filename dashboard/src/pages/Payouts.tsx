@@ -8,7 +8,7 @@ import { tk, when } from "@/lib/format";
 import { PROVIDERS, PROVIDER_LABEL, type Payment } from "@/lib/types";
 import { rangeBounds, rangeLabel, periodRange } from "@/lib/period";
 import {
-  PAYOUT_WORDS, UNSURE_HELP, SENT_WARNING, NOT_SENT_WARNING, MOST_TICKS, droppedLine, settleTicks, tickedRows, toggleShown, checkNumbers, groupDigits, liveItemsByPayment, parsePct, parseSendAmount, keepPctFor, payoutLine, payoutRefusal, recentNumbers, tickableRefusal, HELD_REFUSAL,
+  payoutWord, UNSURE_HELP, SENT_WARNING, NOT_SENT_WARNING, MOST_TICKS, droppedLine, settleTicks, tickedRows, toggleShown, checkNumbers, groupDigits, liveItemsByPayment, parsePct, parseSendAmount, keepPctFor, payoutLine, payoutRefusal, recentNumbers, tickableRefusal, HELD_REFUSAL,
   parseFee, sendMethod, sendProblem, senderOptions, splitPayout, ROCKET_NOTE, METHOD_WORDS, type PayoutItemRow, type PayoutRow,
 } from "@/lib/payouts";
 import { nudgePhone } from "@/lib/wake";
@@ -28,7 +28,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SendWayChoice } from "@/components/SendWayChoice";
 import { type SendWay, wayWords } from "@/lib/sendWay";
-import { DefaultShare, ExtraPayoutForm, ExtraPayoutList } from "@/components/PayoutExtras";
+import { DefaultShare, ExtraPayoutForm, ExtraPayoutList, PaidTwiceCard } from "@/components/PayoutExtras";
 
 /** Only money RECEIVED can be paid out (the database's payout_refusal says the same). */
 const PAYABLE_TYPES = ["cash_out", "send_money_received", "payment_received"];
@@ -177,6 +177,8 @@ export function Payouts() {
         help={<><p>Tick the received transactions, then send from a phone or mark them paid by hand.</p><p>A transaction can be in one payout only, so it is never paid twice.</p><p>Days run 12:00 AM to 11:59 PM Bangladesh time.</p></>}
       />
 
+      <PaidTwiceCard nameOf={devices.nameOf} refreshKey={data} />
+
       <Card className="mb-4 flex flex-wrap items-center justify-between gap-3 p-3">
         <DefaultShare pct={data?.keepPct ?? 20} onSaved={reload} />
         {!adding ? (
@@ -295,9 +297,9 @@ export function Payouts() {
                       <span>{when(p.occurred_at ?? p.received_at)}</span>
                       <StatusBadge status={p.status} />
                       {payout ? (
-                        <Badge tone={PAYOUT_WORDS[payout.status].tone}>
+                        <Badge tone={payoutWord(payout).tone}>
                           {payout.status === "paid" ? <CheckCircle2 className="mr-1 inline h-3 w-3" aria-hidden /> : null}
-                          {PAYOUT_WORDS[payout.status].label}
+                          {payoutWord(payout).label}
                         </Badge>
                       ) : why === HELD_REFUSAL ? <span className="text-status-warn">Held: mark paid by hand only</span>
                         : why && why !== "Already paid out" ? <span className="text-status-warn">{why}</span> : null}
@@ -602,7 +604,7 @@ function PayoutPanel({
 
 /** A payout still under way (sending) or waiting for the owner's word (unsure), shown above the list. */
 function LivePayout({ p, nameOf, onDone }: { p: PayoutRow; nameOf: (id: string | null | undefined) => string; onDone: () => void }) {
-  const w = PAYOUT_WORDS[p.status];
+  const w = payoutWord(p);
   return (
     <Card className={`p-3 text-sm ${p.status === "unsure" ? "border-status-warn" : ""}`}>
       <div className="flex flex-wrap items-center gap-2">
@@ -610,6 +612,7 @@ function LivePayout({ p, nameOf, onDone }: { p: PayoutRow; nameOf: (id: string |
         <span>{payoutLine(p, nameOf)}</span>
         <span className="text-xs text-muted-foreground">started {when(p.created_at)}</span>
       </div>
+      {p.check_note ? <p className="mt-1 text-xs text-muted-foreground">{p.check_note}</p> : null}
       {p.status === "unsure" ? <UnsureControls p={p} onDone={onDone} /> : null}
     </Card>
   );
@@ -653,7 +656,8 @@ function PayoutDetails({ p, nameOf, onDone }: { p: PayoutRow; nameOf: (id: strin
   }
   return (
     <div className="space-y-1">
-      <p><Badge tone={PAYOUT_WORDS[p.status].tone}>{PAYOUT_WORDS[p.status].label}</Badge> <span className="ml-1">{payoutLine(p, nameOf)}</span></p>
+      <p><Badge tone={payoutWord(p).tone}>{payoutWord(p).label}</Badge> <span className="ml-1">{payoutLine(p, nameOf)}</span></p>
+      {p.check_note ? <p className="text-xs text-muted-foreground">{p.check_note}</p> : null}
       <p className="text-xs text-muted-foreground">
         Started {when(p.created_at)}{p.paid_at ? ` · paid ${when(p.paid_at)}` : ""}{p.balance_after != null ? ` · wallet balance after ${tk(Number(p.balance_after))}` : ""}{p.note ? ` · note: ${p.note}` : ""}
       </p>
@@ -674,7 +678,7 @@ function OldPayouts({ paymentId, items, byId, nameOf }: { paymentId: string; ite
   if (!old.length) return null;
   return (
     <ul className="space-y-1 text-xs text-muted-foreground">
-      {old.map((p) => <li key={p.id}>{PAYOUT_WORDS[p.status].label}: {payoutLine(p, nameOf)} ({when(p.created_at)}){p.error ? `, ${p.error}` : ""}</li>)}
+      {old.map((p) => <li key={p.id}>{payoutWord(p).label}: {payoutLine(p, nameOf)} ({when(p.created_at)}){p.error ? `, ${p.error}` : ""}{p.check_note ? ` · ${p.check_note}` : ""}</li>)}
     </ul>
   );
 }

@@ -48,6 +48,10 @@ async function load(devices: Device[], now: number): Promise<NeedCounts> {
     (r) => (r.error ? null : ((r.data ?? []) as { n: number; amount: number }[]).reduce((t, x) => ({ n: t.n + Number(x.n), amount: t.amount + Number(x.amount) }), { n: 0, amount: 0 })),
     () => null,
   );
+  const paidTwice = await sb.from("payouts").select("send_amount").eq("error", "paid_twice").then(
+    (r) => (r.error ? null : { n: (r.data ?? []).length, amount: (r.data ?? []).reduce((t, x) => t + Number(x.send_amount), 0) }),
+    () => null,
+  );
   const coverage = wallets ? depositCoverage(wallets, devices.map((d) => ({ id: d.id, name: d.name || d.pair_code, status: d.status }))) : null;
   const owed = days ? partnersOwed(days) : null;
   const newest = release === null && fromLink === null ? null : newestOf(release, fromLink);
@@ -65,6 +69,7 @@ async function load(devices: Device[], now: number): Promise<NeedCounts> {
     webhooksFailed,
     cryptoReview,
     unexpectedCashins,
+    paidTwice,
   };
 }
 

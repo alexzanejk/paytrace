@@ -38,6 +38,9 @@ export interface CommissionPayRow {
   note: string | null;
   created_at: string;
   paid_at: string | null;
+  check_since?: string | null;
+  check_done_at?: string | null;
+  check_note?: string | null;
 }
 
 export interface PayDayRow { pay_id: string; device_id: string; day: string; amount: number | string; live: boolean }

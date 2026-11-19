@@ -74,6 +74,7 @@ const ERROR_TEXT: Record<string, string> = {
   too_soon: "That phone had just finished a check. Wait about a minute and try again.",
   ussd_failed: "The network did not answer the code. The phone did not try again. Check the Nagad SMS, then try again later.",
   timeout: "The phone did not answer in time. The PIN was never typed, so nothing was sent.",
+  no_reply: "The phone did not report back within 3 minutes. The money may have gone: check the wallet before sending again.",
   dialer_blocked:
     "The phone did not let PayTrace open its dialer, so nothing was typed and nothing was sent. On Xiaomi/Redmi/Poco: Settings, Apps, PayTrace, Other permissions, turn ON \"Display pop-up windows while running in the background\" (HyperOS: \"Open new windows while running in the background\") and \"Show on Lock screen\". Keep the phone unlocked with no screen lock.",
   no_answer_after_pin: "The PIN was entered but no balance came back. The phone did not try the PIN again. Check the Nagad SMS, then try again later.",
