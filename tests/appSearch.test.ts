@@ -1,4 +1,4 @@
-import { searchQuery, maskNumber, nagadMask, readSearch, outcomeWords, searchPhones, searchTargets, queueErrorText, SEARCH_RPC, bestPhone, planSearch, phoneChoices } from "../dashboard/src/lib/appSearch.ts";
+import { searchQuery, maskNumber, nagadMask, readSearch, outcomeWords, searchPhones, searchTargets, queueErrorText, SEARCH_RPC, bestPhone, planSearch, phoneChoices, hasAgentWallet, searchAppFor } from "../dashboard/src/lib/appSearch.ts";
 
 let failed = 0;
 const check = (name: string, ok: boolean, got?: unknown) => {
@@ -77,6 +77,19 @@ check("refusals in words", queueErrorText("app_not_ready").includes("Update") &&
   ];
   const ch = phoneChoices(devs, Date.now(), "bkash");
   check("every approved phone is listed, the ones that can search marked", ch.map((x) => `${x.id}${x.canSearch ? "+" : "-"}`).join() === "a+,b-");
+}
+
+{
+  // Owner 2026-11-19: a NUMBER searched on rubel's Xiaomi "on bKash" went to the Nagad app, which that phone does not have.
+  check("a number keeps the owner's wallet choice", searchAppFor("phone", "bkash", "nagad") === "bkash");
+  check("a TrxID follows its own wallet", searchAppFor("trx", "bkash", "nagad") === "nagad" && searchAppFor("trx", "bkash", null) === "bkash");
+  const xiaomi = { app_search: true, app_nagad: true, wallets: [{ provider: "bkash", number: "01700000000", slot: 0, kind: "agent" }] };
+  check("a phone with only bKash cannot search the Nagad app", !hasAgentWallet(xiaomi, "nagad") && hasAgentWallet(xiaomi, "bkash"));
+  check("a personal Nagad account is not an agent wallet", !hasAgentWallet({ wallets: [{ provider: "nagad", kind: "personal" }] }, "nagad"));
+  check("an old build listing no wallets is not judged", hasAgentWallet({ app_nagad: true }, "nagad"));
+  const ch = phoneChoices([{ id: "x", name: "Xiaomi rubel", status: "approved", last_seen_at: new Date().toISOString(), info: xiaomi }], Date.now(), "nagad");
+  check("the phone list says why it cannot search", !ch[0].canSearch && (ch[0].blocked ?? "").includes("no Nagad agent wallet"));
+  check("the same phone can search bKash", phoneChoices([{ id: "x", name: "X", status: "approved", info: xiaomi }], Date.now(), "bkash")[0].canSearch);
 }
 
 if (failed) { console.error(`${failed} failed`); process.exit(1); }

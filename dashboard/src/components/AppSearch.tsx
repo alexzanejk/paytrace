@@ -3,7 +3,7 @@ import { Search } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { errorText, isLive, POLL_MS, type PhoneCommand } from "@/lib/phoneCommands";
-import { bestPhone, maskNumber, nagadMask, outcomeWords, phoneChoices, planSearch, queueErrorText, readSearch, SEARCH_APP_LABEL, SEARCH_RPC, searchPhones, searchQuery, type SearchApp, type SearchKind, type Seen } from "@/lib/appSearch";
+import { bestPhone, maskNumber, nagadMask, outcomeWords, phoneChoices, planSearch, queueErrorText, readSearch, SEARCH_APP_LABEL, SEARCH_RPC, searchAppFor, searchPhones, searchQuery, type SearchApp, type SearchKind, type Seen } from "@/lib/appSearch";
 import { nudgePhone } from "@/lib/wake";
 import { reviewReasonText } from "@/lib/reasons";
 import { useDevices } from "@/hooks/useDevices";
@@ -78,11 +78,15 @@ export function AppSearch({ initial }: { initial?: string } = {}) {
     const typed = q.kind === "trx"
       ? ((await sb.from("orders").select("device_id,provider").ilike("claimed_trx_id", q.query).order("created_at", { ascending: false }).limit(5)).data ?? []) as Seen[]
       : [];
-    const best = bestPhone(rows.map((r) => ({ device_id: r.device_id, provider: r.provider })), typed);
-    // The TrxID's own wallet decides which app is searched.
-    const inApp: SearchApp = best.app ?? app;
+    // For a number, only the SMS of the wallet the owner chose point to a phone (the number may use both wallets).
+    const seen = rows.filter((r) => q.kind === "trx" || r.provider === app).map((r) => ({ device_id: r.device_id, provider: r.provider }));
+    const best = bestPhone(seen, typed);
+    // A TrxID's own wallet decides which app is searched; for a number the owner's choice stands.
+    const inApp: SearchApp = searchAppFor(q.kind, app, best.app);
     const switched = inApp !== app;
     if (switched) setApp(inApp);
+    const blocked = choice !== "auto" && choice !== "all" ? phoneChoices(devices.list, Date.now(), inApp).find((p) => p.id === choice)?.blocked : null;
+    if (blocked) { setBusy(false); return setProblem(`${nameOf(choice)} cannot search the ${SEARCH_APP_LABEL[inApp]}: ${blocked}.`); }
     const plan = planSearch(choice, searchPhones(devices.list, Date.now(), inApp), best, nameOf);
     setNote([switched ? `This is a ${inApp === "nagad" ? "Nagad" : "bKash"} transaction, so the ${SEARCH_APP_LABEL[inApp]} is searched.` : "", plan.note].filter(Boolean).join(" "));
     if (plan.targets.length === 0) { setBusy(false); return setProblem(plan.problem); }
@@ -144,7 +148,7 @@ export function AppSearch({ initial }: { initial?: string } = {}) {
           <option value="all">All phones, one after another</option>
           {choices.map((p) => (
             <option key={p.id} value={p.id} disabled={!p.canSearch}>
-              {p.name}{!p.canSearch ? " (update app to search)" : p.online ? "" : " (offline)"}
+              {p.name}{p.blocked ? ` (${p.blocked})` : p.online ? "" : " (offline)"}
             </option>
           ))}
         </select>
