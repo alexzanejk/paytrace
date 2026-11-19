@@ -356,9 +356,11 @@ object NagadApp {
     fun cutoff(ctx: Context, now: Long): Long =
         AppReader.cutoff(ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(NEWEST, 0L).takeIf { it > 0 }, now)
 
-    private fun root(svc: AccessibilityService): AccessibilityNodeInfo? {
-        svc.rootInActiveWindow?.let { if (NagadRead.isNagad(it.packageName?.toString())) return it }
-        return try { svc.windows.mapNotNull { it.root }.firstOrNull { NagadRead.isNagad(it.packageName?.toString()) } } catch (e: Exception) { null }
+    /** The window of the agent app this run opened ([pkg]) only: the personal Nagad app on screen is something else in
+     *  front, never "the app" (owner 2026-11-19, the same fault on bKash typed the agent PIN's way into the personal app). */
+    private fun root(svc: AccessibilityService, pkg: String): AccessibilityNodeInfo? {
+        svc.rootInActiveWindow?.let { if (it.packageName?.toString() == pkg) return it }
+        return try { svc.windows.mapNotNull { it.root }.firstOrNull { it.packageName?.toString() == pkg } } catch (e: Exception) { null }
     }
 
     /** Every node, typing boxes included (the Cash In form is three of them), in screen order. A node lying wholly left or
@@ -760,7 +762,7 @@ object NagadApp {
                     }
                 }
                 try {
-                    val r = root(svc)
+                    val r = root(svc, pkg)
                     if (r == null) {
                         if (seenApp == 0L && OpenRetry.due(false, now - started, reopens)) { reopens++; note("the Nagad app is not on screen yet: opening it again ($reopens)"); AppReader.openBkash(svc, app, pkg, woke) { note(it) } }
                         if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) return stop("app_not_opened", "the Nagad app did not open (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")

@@ -44,6 +44,23 @@ object AppRecorder {
 
     fun isBkash(pkg: String?): Boolean = pkg != null && pkg.lowercase(Locale.ROOT).contains("bkash")
 
+    /** bKash's own customer (personal) app, and its merchant app: never driven by an agent task, whose PIN would be typed
+     *  into the wrong app (owner 2026-11-19: on a phone with the personal app too, "open the agent app" opened the
+     *  personal one, because the agent app's package, com.bkash.businessapp, has no "agent" in its name). */
+    fun isOtherBkash(pkg: String?): Boolean = pkg != null && pkg.lowercase(Locale.ROOT).let { "bkash" in it && ("customer" in it || "merchant" in it) }
+
+    /** The bKash AGENT app: a bKash package that is not the personal or merchant app. */
+    fun isAgentBkash(pkg: String?): Boolean = isBkash(pkg) && !isOtherBkash(pkg)
+
+    /** Of the bKash apps installed, the agent app: com.bkash.businessapp first, then a name with "agent"; never the
+     *  personal or merchant app (null when only those are installed). Pure, unit tested. */
+    fun pickAgent(pkgs: List<String>): String? {
+        val agents = pkgs.filter { isAgentBkash(it) }
+        return agents.firstOrNull { it.lowercase(Locale.ROOT) == "com.bkash.businessapp" }
+            ?: agents.firstOrNull { it.lowercase(Locale.ROOT).contains("agent") }
+            ?: agents.firstOrNull()
+    }
+
     /** One screen's lines with the PIN kept out: on a screen that asks for a PIN, a bare run of 4 to 6 digits is dropped
      *  (the keys of a keypad are single digits and stay). Blank lines go. */
     fun safeLines(lines: List<String>): List<String> {
@@ -94,14 +111,14 @@ object AppRecorder {
         return out
     }
 
-    /** The bKash app installed on this phone (the agent app if there are two), found among the launcher's apps. */
+    /** The bKash AGENT app installed on this phone, found among the launcher's apps; never the personal app. */
     fun findApp(ctx: Context): String? {
         val pm = ctx.packageManager
         val all = try {
             pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)
                 .map { it.activityInfo.packageName }.distinct().filter { isBkash(it) }
         } catch (e: Exception) { emptyList() }
-        return all.firstOrNull { it.lowercase(Locale.ROOT).contains("agent") } ?: all.firstOrNull()
+        return pickAgent(all)
     }
 
     /** How long one mapping session records (owner 2026-11-10: "we need to map it perfect"). The command is answered
