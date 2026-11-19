@@ -94,9 +94,6 @@ object AppReader {
     private const val BOX_SETTLE_MS = 1_400L
     /** Before opening bKash: press Home and wait this long, so whatever was in front is put aside. */
     const val HOME_FIRST_MS = 700L
-    /** bKash gone from the screen this long = another app came in front: open bKash again, up to [MAX_RELAUNCHES] times. */
-    private const val LEFT_MS = 3_000L
-    private const val MAX_RELAUNCHES = 3
     /** Steps back toward a page with the bottom tabs before giving up. */
     private const val MAX_WAY_BACK = 6
     private val HOME_BACK = setOf("back to home", "হোম-এ ফিরে যান", "হোম -এ ফিরে যান", "হোম-এ ফিরে যাই", "হোম -এ ফিরে যাই")
@@ -235,7 +232,6 @@ object AppReader {
         val main = Handler(Looper.getMainLooper())
         val rows = LinkedHashMap<String, Long>()
         var seenApp = 0L
-        var lastAct = 0L
         var nextActAt = 0L
         var progressAt = SystemClock.elapsedRealtime()
         var pinTypedAt = 0L      // when Log in was pressed
@@ -248,6 +244,7 @@ object AppReader {
         var allTypedAt = 0L      // when the last digit was counted as typed
         var retyping = false     // the app left the screen while the PIN was being typed and was opened again
         var relaunches = 0
+        var reopens = 0          // opens again while the app has never been on screen (OpenRetry)
         var netHits = 0
         var statusHits = 0
         var backs = 0
@@ -320,16 +317,25 @@ object AppReader {
                 try {
                     val root = bkashRoot(svc)
                     if (root == null) {
-                        if (seenApp == 0L && now - started > 6_000 && lastAct == 0L) { lastAct = now; note("opening the app again"); launch() }
-                        if (seenApp == 0L && now - started > 20_000) return finish(false, "app_not_opened", "the app did not open")
-                        if (seenApp > 0 && now - seenApp > LEFT_MS && relaunches < MAX_RELAUNCHES) {
-                            relaunches++
-                            val front = try { svc.rootInActiveWindow?.packageName?.toString() } catch (e: Exception) { null }
-                            note("the bKash app left the screen (in front: ${front ?: "nothing readable"}); opening it again")
-                            if (pinTypedAt == 0L && (pinTyped > 0 || keyPressed)) { retyping = true; pinTyped = 0; keyPressed = false; keyRetries = 0 }
-                            launch(); seenApp = now
+                        if (seenApp == 0L && OpenRetry.due(false, now - started, reopens)) {
+                            reopens++
+                            note("the app is not on screen yet (on screen instead: ${TaskGuard.whoTook(svc, setOf(pkg))}); opening it again ($reopens)")
+                            if (OpenRetry.viaWindow(reopens)) AppReader.openBkash(svc, app, pkg, true) { note(it) } else launch()
                         }
-                        if (seenApp > 0 && now - seenApp > 20_000) return finish(rows.isNotEmpty() || fullRows.isNotEmpty(), "app_closed", "the app left the screen")
+                        if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) {
+                            return finish(false, "app_not_opened", "the app did not open (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
+                        }
+                        if (seenApp > 0) {
+                            // Something else took the screen: put it aside and bring bKash back (TaskGuard). A PIN half
+                            // typed is started over (the box is checked empty first), never continued blind.
+                            val stop = TaskGuard.onGone(svc, app, pkg, "bKash", now - seenApp, relaunches, true, {
+                                relaunches++
+                                if (pinTypedAt == 0L && (pinTyped > 0 || keyPressed)) { retyping = true; pinTyped = 0; keyPressed = false; keyRetries = 0 }
+                                seenApp = now
+                            }) { note(it) }
+                            if (stop != null) return finish(rows.isNotEmpty() || fullRows.isNotEmpty(), "app_closed", stop)
+                        }
+                        if (seenApp > 0 && now - seenApp > 20_000) return finish(rows.isNotEmpty() || fullRows.isNotEmpty(), "app_closed", "the app left the screen (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
                     } else {
                         if (seenApp == 0L) nextActAt = now + pace.settle()
                         seenApp = now
@@ -684,8 +690,10 @@ object AppReader {
     internal fun openBkash(svc: Context, app: Context, pkg: String, woke: Boolean, note: (String) -> Unit) {
         val open = app.packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             ?: return note("could not open the app")
+        // The notification shade and system pop-ups are closed first, so nothing sits over the task (TaskGuard).
+        TaskGuard.clearScreen(svc)
         if (woke) {
-            note("phone was asleep: opening the bKash app through the wake window")
+            note("opening the app through PayTrace's wake window")
             ScreenWake.wakeUp(svc, open)
         } else {
             // Whatever the person was doing on the phone is put aside first (owner 2026-11-11: "close or minimize
@@ -1065,6 +1073,9 @@ object OpenRetry {
     const val GIVE_UP_MS = 25_000L
     fun due(seen: Boolean, sinceStart: Long, opensDone: Int): Boolean =
         !seen && opensDone < EXTRA && sinceStart > EVERY_MS * (opensDone + 1)
+    /** The last open goes another way: through PayTrace's own wake window, which then opens the wallet app (rubel's
+     *  Xiaomi, 2026-11-19: four searches in a row gave up with the plain open done twice). Used by the bKash reader. */
+    fun viaWindow(opensDone: Int): Boolean = opensDone >= EXTRA
 }
 
 /** What a run that is still on the sign-in screen after the PIN reports. Only when the wallet said nothing but showed the

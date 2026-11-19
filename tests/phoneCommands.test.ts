@@ -1,4 +1,4 @@
-import { commandLine, errorText, isLive, type PhoneCommand, cashInSummary, looksLikeANumber, CASH_IN_AMOUNTS, MOST_PER_CASH_IN, LEAST_PER_CASH_IN, parseCashInAmount, numberLabel, PHONE_ACTIONS, PHONE_ACTION_KINDS, isPhoneAction, actionLine, traceOf, walletScreens, recordingLine } from "../dashboard/src/lib/phoneCommands.ts";
+import { commandLine, errorText, isLive, type PhoneCommand, cashInSummary, looksLikeANumber, CASH_IN_AMOUNTS, MOST_PER_CASH_IN, LEAST_PER_CASH_IN, parseCashInAmount, numberLabel, PHONE_ACTIONS, PHONE_ACTION_KINDS, isPhoneAction, actionLine, traceOf, walletScreens, recordingLine, reasonOf } from "../dashboard/src/lib/phoneCommands.ts";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -116,6 +116,15 @@ check("a Nagad app balance being read says Nagad", commandLine({ ...base, via: "
 check("a failed sign-in does not claim the PIN was wrong for sure", errorText("login_failed").includes("either"));
 
 check("the Nagad keypad failure is explained and says nothing was sent", errorText("secure_keyboard", "Nagad").includes("keypad") && errorText("secure_keyboard", "Nagad").includes("Nothing was sent"));
+
+
+// The phone's own reason for stopping (owner 2026-11-19: "let us know the exact reason of failure").
+const tr = (lines: string[]) => ["What the phone saw:\n" + lines.join("\n")];
+check("what took the screen is the reason", reasonOf(tr(["  0.0s opening com.bkash.businessapp", "  4.2s com.whatsapp took the screen; putting it aside and bringing the bKash app back (1)", " 30.1s end: com.whatsapp kept taking the screen from the bKash app (5 times), 0 rows", "screen: Home"])) === "com.whatsapp kept taking the screen from the bKash app (5 times)", reasonOf(tr(["x"])));
+check("an app that never opened names what was in front", reasonOf(tr(["  0.0s opening com.bkash.businessapp", "  6.3s the app is not on screen yet (on screen instead: the home screen); opening it again (1)", " 25.1s end: the app did not open (in front: the home screen), 0 rows"])) === "the app did not open (in front: the home screen)");
+check("without a takeover the run's own end line is the reason", reasonOf(tr(["  2.0s login screen", " 20.0s end: bKash says the PIN is not correct", "screen: Log in"])) === "bKash says the PIN is not correct");
+check("a USSD run's last step is the reason, never its last-screen line", reasonOf(tr(["0.0s start, dialer way", "12.1s the dialer never came on screen; Xiaomi's pop-up permission is OFF", "last screen: ..."])) === "the dialer never came on screen; Xiaomi's pop-up permission is OFF");
+check("no step log, no reason", reasonOf(["Balance: Tk 5"]) === null && reasonOf(null) === null);
 
 // The total and the exit come LAST: they used to sit in the middle of this file, so nothing written below them ever ran.
 console.log(`\n${pass} passed, ${fail} failed`);

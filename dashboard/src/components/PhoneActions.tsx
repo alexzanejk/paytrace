@@ -75,7 +75,7 @@ export function PhoneActions({ deviceId }: { deviceId: string }) {
       </div>
       {line ? <p role="status" className="text-sm text-muted-foreground">{line}</p> : null}
       {last && APP_KINDS.has(last.kind) && !live ? (
-        <PhoneTrace screens={last.screens} label={last.status === "done" ? "How the phone did it (login and scrolling)" : undefined} />
+        <PhoneTrace screens={last.screens} failed={last.status !== "done"} label={last.status === "done" ? "How the phone did it (login and scrolling)" : undefined} />
       ) : null}
       {problem ? <p className="text-xs text-destructive">{problem}</p> : null}
     </div>

@@ -199,5 +199,7 @@ class AppReaderTest {
         assertFalse(OpenRetry.due(false, 19_000, 2))
         assertFalse(OpenRetry.due(true, 30_000, 0))
         assertTrue(OpenRetry.GIVE_UP_MS > OpenRetry.EVERY_MS * (OpenRetry.EXTRA + 1))
+        assertFalse(OpenRetry.viaWindow(1))
+        assertTrue(OpenRetry.viaWindow(2))
     }
 }

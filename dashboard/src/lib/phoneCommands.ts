@@ -118,6 +118,23 @@ export const traceOf = (screens: string[] | null | undefined): string | null => 
   const t = (screens ?? []).find((s) => s.startsWith(TRACE_MARK));
   return t ? t.slice(TRACE_MARK.length).trim() : null;
 };
+/** The phone's own reason for stopping, picked from its step log (owner 2026-11-19: "let us know the exact reason of
+ *  failure"): what took the screen if something did, else the run's own "end:" line, else its last step. Null when the
+ *  log says nothing useful. */
+export function reasonOf(screens: string[] | null | undefined): string | null {
+  const t = traceOf(screens);
+  if (!t) return null;
+  const lines = t.split("\n").map((l) => l.replace(/^\s*\d+(\.\d+)?s\s+/, "").trim()).filter(Boolean);
+  const skip = (l: string) => /^(last screen|screen|end screen):/i.test(l) || l.startsWith("--") || /^\(PIN/i.test(l);
+  const taken = [...lines].reverse().find((l) => /took the screen|kept taking the screen|in front: (?!nothing)/i.test(l) && !skip(l));
+  if (taken) return clean(taken);
+  const end = [...lines].reverse().find((l) => l.startsWith("end:"));
+  if (end) return clean(end);
+  const last = [...lines].reverse().find((l) => !skip(l));
+  return last ? clean(last) : null;
+}
+const clean = (l: string) => l.replace(/^end:\s*/, "").replace(/,\s*\d+ rows$/, "").trim();
+
 /** The wallet's screens without the step log. */
 export const walletScreens = (screens: string[] | null | undefined): string[] => (screens ?? []).filter((s) => !s.startsWith(TRACE_MARK));
 

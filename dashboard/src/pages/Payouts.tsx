@@ -28,6 +28,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SendWayChoice } from "@/components/SendWayChoice";
 import { type SendWay, wayWords } from "@/lib/sendWay";
+import { CommandWhy } from "@/components/CommandWhy";
 import { DefaultShare, ExtraPayoutForm, ExtraPayoutList, PaidTwiceCard } from "@/components/PayoutExtras";
 
 /** Only money RECEIVED can be paid out (the database's payout_refusal says the same). */
@@ -630,7 +631,8 @@ function UnsureControls({ p, onDone }: { p: PayoutRow; onDone: () => void }) {
   }
   return (
     <div className="mt-2 space-y-2">
-      <p className="text-xs text-muted-foreground">{UNSURE_HELP}{p.error ? ` (phone said: ${p.error})` : ""}</p>
+      <p className="text-xs text-muted-foreground">{UNSURE_HELP}</p>
+      <CommandWhy commandId={p.command_id} error={p.error} provider={p.provider} />
       <div className="flex flex-wrap items-center gap-2">
         <Input className="w-44" placeholder="TrxID, if you see it" value={trx} onChange={(e) => setTrx(e.target.value)} />
         <Confirm title="Record it as sent?" description={SENT_WARNING} confirmLabel="Yes, it was sent" onConfirm={() => say(true)}>
@@ -662,6 +664,7 @@ function PayoutDetails({ p, nameOf, onDone }: { p: PayoutRow; nameOf: (id: strin
         Started {when(p.created_at)}{p.paid_at ? ` · paid ${when(p.paid_at)}` : ""}{p.balance_after != null ? ` · wallet balance after ${tk(Number(p.balance_after))}` : ""}{p.note ? ` · note: ${p.note}` : ""}
       </p>
       {p.status === "unsure" ? <UnsureControls p={p} onDone={onDone} /> : null}
+      {p.status === "failed" ? <CommandWhy commandId={p.command_id} error={p.error} provider={p.provider} /> : null}
       {p.status === "paid" && p.method === "manual" ? (
         <Confirm title="Undo this payout recorded by hand?" description="Its transactions become payable again. Do this only if the money was not really paid." confirmLabel="Undo" onConfirm={undo}>
           <Button size="sm" variant="outline" disabled={busy}>Undo (it was not paid)</Button>

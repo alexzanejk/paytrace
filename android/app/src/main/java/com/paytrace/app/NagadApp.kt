@@ -763,15 +763,13 @@ object NagadApp {
                     val r = root(svc)
                     if (r == null) {
                         if (seenApp == 0L && OpenRetry.due(false, now - started, reopens)) { reopens++; note("the Nagad app is not on screen yet: opening it again ($reopens)"); AppReader.openBkash(svc, app, pkg, woke) { note(it) } }
-                        if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) return stop("app_not_opened", "the Nagad app did not open")
+                        if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) return stop("app_not_opened", "the Nagad app did not open (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
                         if (seenApp > 0) {
                             if (leftAt == 0L) leftAt = now
-                            if (now - leftAt > 3_000 && yesAt == 0L) {
-                                if (relaunches >= 3) return stop("app_closed", "the Nagad app kept leaving the screen")
-                                relaunches++; leftAt = 0L
-                                note("the Nagad app left the screen: opening it again ($relaunches)")
-                                AppReader.openBkash(svc, app, pkg, false) { note(it) }
-                                nextActAt = now + pace.settle()
+                            if (yesAt == 0L) {
+                                // Something else took the screen: put it aside and bring Nagad back (TaskGuard). Never after হ্যাঁ.
+                                TaskGuard.onGone(svc, app, pkg, "Nagad", now - leftAt, relaunches, true, { relaunches++; leftAt = 0L; nextActAt = now + pace.settle() }) { note(it) }
+                                    ?.let { return stop("app_closed", it) }
                             } else if (yesAt > 0 && now - yesAt > AFTER_YES_MS) {
                                 return stop("no_answer_after_confirm", "the app left the screen after হ্যাঁ")
                             }
