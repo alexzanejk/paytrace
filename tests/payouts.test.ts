@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import {
-  checkNumbers, droppedLine, settleTicks, tickedRows, toggleShown, MOST_TICKS, extraSplit, feeLine, parseMoney, keepPctFor, parseSendAmount, groupDigits, parseFee, liveItemsByPayment, paidTwiceLine, parsePct, payoutLine, payoutRefusal, tickableRefusal, recentNumbers, sendMethod, sendProblem, senderOptions, splitPayout, personalAccounts, accountName,
+  checkNumbers, droppedLine, settleTicks, tickedRows, toggleShown, MOST_TICKS, extraSplit, feeLine, parseMoney, keepPctFor, parseSendAmount, groupDigits, parseFee, liveItemsByPayment, paidTwiceLine, payoutWord, parsePct, payoutLine, payoutRefusal, tickableRefusal, recentNumbers, sendMethod, sendProblem, senderOptions, splitPayout, personalAccounts, accountName,
   type PayoutRow,
 } from "../dashboard/src/lib/payouts.ts";
 import { accountTitle, checkLine, figures, sourceLine, type DayMoneyRow } from "../dashboard/src/lib/dayMoney.ts";
@@ -212,6 +212,12 @@ check("a hand record names the transaction it paid on",
   const line = paidTwiceLine(base, again, name);
   check("paid twice names both sends and the extra amount", line === "Paid twice to 0132 099 5064: Tk 1,220 (TrxID DKJ5NYE2OX) from Xiaomi, then Tk 1,230 (TrxID DKJ6NYGXGE) from Realme for the same transactions. Tk 1,220 too much went out.", line);
   check("paid twice without the second payout still reads", paidTwiceLine(base, undefined, name).includes("then a second payout"));
+}
+
+{
+  check("a failed payout being checked reads 'Checking the wallet'", payoutWord({ status: "sending", check_since: "2026-11-19T06:00:00Z", check_done_at: null }).label === "Checking the wallet…");
+  check("a normal send still reads Sending", payoutWord({ status: "sending" }).label === "Sending…");
+  check("once the check is done the status speaks", payoutWord({ status: "failed", check_since: "x", check_done_at: "y" }).label === "Failed, not sent");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

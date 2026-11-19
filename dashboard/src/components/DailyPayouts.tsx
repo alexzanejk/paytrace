@@ -269,8 +269,9 @@ function LivePay({ p, nameOf, onDone }: { p: CommissionPayRow; nameOf: (id: stri
   }
   return (
     <div className={`rounded-lg border p-3 text-sm ${p.status === "unsure" ? "border-status-warn" : "border-border"}`}>
-      <p><Badge tone={p.status === "unsure" ? "bad" : "info"}>{p.status === "unsure" ? "Check the wallet" : "Sending…"}</Badge>{" "}
+      <p><Badge tone={p.status === "unsure" ? "bad" : p.check_since && !p.check_done_at ? "warn" : "info"}>{p.status === "unsure" ? "Check the wallet" : p.check_since && !p.check_done_at ? "Checking the wallet…" : "Sending…"}</Badge>{" "}
         <b>{nameOf(p.device_id)}</b>: {payLine(p, nameOf)} <span className="text-xs text-muted-foreground">({when(p.created_at)})</span></p>
+      {p.check_note ? <p className="mt-1 text-xs text-muted-foreground">{p.check_note}</p> : null}
       {p.status === "unsure" ? (
         <div className="mt-2 space-y-2">
           <p className="text-xs text-muted-foreground">{UNSURE_HELP}{p.error ? ` (phone said: ${p.error})` : ""}</p>
