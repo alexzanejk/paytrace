@@ -6,14 +6,15 @@ import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { EmptyRow } from "@/components/Empty";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
-  mainNumbers, methodLabel, planLine, providerLabel, sitePlan, isChosen, unchosenCount,
+  mainNumbers, methodLabel, planLine, providerLabel, sitePlan, isChosen, unchosenCount, refusedCount, STRICT_WORDS,
   type MainNumber, type NumberDevice, type NumberWallet, type SiteAssignment,
 } from "@/lib/siteNumbers";
 
-interface SiteRow { id: string; name: string }
+interface SiteRow { id: string; name: string; strict_numbers?: boolean }
 
 /** Which deposit numbers each website shows: every number on a main phone down the side, a tick per website.
  *  A website with no tick for a wallet type is given any main number, in turn, as before. */
@@ -24,7 +25,7 @@ export function SiteNumbers() {
   const { data, error, loading, refresh } = useQuery(
     async () => {
       const [sites, devices, wallets, assignments] = await Promise.all([
-        sb.from("api_keys").select("id,name").is("revoked_at", null).order("name"),
+        sb.from("api_keys").select("id,name,strict_numbers").is("revoked_at", null).order("name"),
         sb.from("devices").select("id,name,status,last_seen_at,default_group"),
         sb.from("device_wallets").select("id,device_id,provider,wallet_number,method,enabled,wallet_group"),
         sb.from("site_wallets").select("api_key_id,wallet_id,enabled"),
@@ -45,6 +46,16 @@ export function SiteNumbers() {
   const numbers: MainNumber[] = data ? mainNumbers(data.wallets, data.devices, now, OFFLINE_AFTER_SEC) : [];
   const assignments = data?.assignments ?? [];
   const partnerPhones = (data?.devices ?? []).filter((d) => d.status === "approved" && (d.default_group ?? "main") !== "main");
+
+  async function setStrict(site: SiteRow, on: boolean) {
+    setBusy(`strict:${site.id}`);
+    setNote("");
+    const { error: err } = await sb.rpc("set_key_strict_numbers", { p_id: site.id, p_on: on });
+    setBusy(null);
+    if (err) setNote(err.message);
+    else setNote(on ? `${site.name}: only ticked numbers may show now.` : `${site.name}: a wallet type with no tick is given any main number again.`);
+    refresh();
+  }
 
   async function toggle(site: SiteRow, n: MainNumber, on: boolean) {
     const key = `${site.id}:${n.id}`;
@@ -123,20 +134,29 @@ export function SiteNumbers() {
       <h2 className="mb-2 mt-6 text-base font-semibold">What each website shows right now</h2>
       <div className="grid gap-3 md:grid-cols-2">
         {sites.map((s) => {
-          const plan = sitePlan(s.id, numbers, assignments);
+          const strict = s.strict_numbers === true;
+          const plan = sitePlan(s.id, numbers, assignments, strict);
           const open = unchosenCount(plan);
+          const refused = refusedCount(plan);
           return (
             <Card key={s.id} className="p-4">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-semibold">{s.name}</h3>
-                {plan.length === 0 ? <Badge tone="bad">No numbers at all</Badge> : open ? <Badge tone="warn">{open} not chosen</Badge> : <Badge tone="ok">All chosen</Badge>}
+                {plan.length === 0 ? <Badge tone="bad">No numbers at all</Badge> : refused ? <Badge tone="bad">{refused} wallet type{refused === 1 ? "" : "s"} refused</Badge> : open ? <Badge tone="warn">{open} not chosen</Badge> : <Badge tone="ok">All chosen</Badge>}
               </div>
+              <label className="mb-2 flex items-start justify-between gap-3 rounded-md border border-border p-2">
+                <span className="min-w-0 text-sm">
+                  {STRICT_WORDS.label}
+                  <span className="block text-xs text-muted-foreground">{strict ? STRICT_WORDS.on : STRICT_WORDS.off}</span>
+                </span>
+                <Switch checked={strict} disabled={busy === `strict:${s.id}`} aria-label={`${STRICT_WORDS.label} (${s.name})`} onCheckedChange={(on) => void setStrict(s, on)} />
+              </label>
               {plan.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No main phone has a number yet, so this site's deposits are refused.</p>
               ) : (
                 <ul className="grid gap-1 text-sm">
                   {plan.map((e) => (
-                    <li key={`${e.provider}|${e.method}`} className={e.fallback ? "text-status-warn" : ""}>{planLine(e)}</li>
+                    <li key={`${e.provider}|${e.method}`} className={e.refused ? "text-status-bad" : e.fallback ? "text-status-warn" : ""}>{planLine(e)}</li>
                   ))}
                 </ul>
               )}

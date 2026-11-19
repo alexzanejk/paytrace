@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { OFFLINE_AFTER_SEC } from "@/lib/deviceHealth";
 import type { OutboxRow } from "@/lib/webhooks";
-import { mainNumbers, planLine, sitePlan, unchosenCount, type NumberDevice, type NumberWallet, type SiteAssignment } from "@/lib/siteNumbers";
+import { mainNumbers, planLine, sitePlan, unchosenCount, refusedCount, type NumberDevice, type NumberWallet, type SiteAssignment } from "@/lib/siteNumbers";
 import { BookOpen, ChevronDown, ExternalLink, KeyRound, Plus, ShieldAlert } from "lucide-react";
 import { must, sb } from "@/lib/supabase";
 import { when } from "@/lib/format";
@@ -35,7 +35,7 @@ export function ApiAccess() {
       must(
         await sb
           .from("api_keys")
-          .select("id,name,key_prefix,created_at,last_used_at,revoked_at,webhook_url,result_style,crypto_style,crypto_result_style,redirect_success_url,redirect_failed_url,min_deposit")
+          .select("id,name,key_prefix,created_at,last_used_at,revoked_at,webhook_url,result_style,crypto_style,crypto_result_style,redirect_success_url,redirect_failed_url,min_deposit,strict_numbers")
           .order("created_at", { ascending: false }),
       ) as SiteKey[],
     [],
@@ -70,10 +70,10 @@ export function ApiAccess() {
     [],
     { refreshMs: 30000 },
   );
-  const numbersFor = (keyId: string) => {
+  const numbersFor = (keyId: string, strict: boolean) => {
     if (!numberData) return undefined;
-    const plan = sitePlan(keyId, mainNumbers(numberData.wallets, numberData.devices, Date.now(), OFFLINE_AFTER_SEC), numberData.assignments);
-    return { lines: plan.map(planLine), unchosen: unchosenCount(plan) };
+    const plan = sitePlan(keyId, mainNumbers(numberData.wallets, numberData.devices, Date.now(), OFFLINE_AFTER_SEC), numberData.assignments, strict);
+    return { lines: plan.map(planLine), unchosen: unchosenCount(plan), refused: refusedCount(plan) };
   };
 
   const [name, setName] = useState("");
@@ -217,7 +217,7 @@ export function ApiAccess() {
           {active.length === 0 ? (
             <Card className="p-6 text-center text-sm text-muted-foreground">No website yet. Add one above.</Card>
           ) : (
-            active.map((k) => <SiteCard key={k.id} site={k} outbox={outbox ?? []} numbers={numbersFor(k.id)} onChanged={refresh} onRevoke={() => void revoke(k)} />)
+            active.map((k) => <SiteCard key={k.id} site={k} outbox={outbox ?? []} numbers={numbersFor(k.id, k.strict_numbers === true)} onChanged={refresh} onRevoke={() => void revoke(k)} />)
           )}
           {revokeError ? <p className="text-sm text-destructive">{revokeError}</p> : null}
           <p className="text-xs text-muted-foreground">

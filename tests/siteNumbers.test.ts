@@ -1,4 +1,4 @@
-import { DEFAULT_OFFLINE_AFTER_SEC, isChosen, mainNumbers, planLine, sitePlan, unchosenCount, type NumberDevice, type NumberWallet, type SiteAssignment } from "../dashboard/src/lib/siteNumbers.ts";
+import { DEFAULT_OFFLINE_AFTER_SEC, isChosen, mainNumbers, planLine, sitePlan, unchosenCount, refusedCount, STRICT_WORDS, type NumberDevice, type NumberWallet, type SiteAssignment } from "../dashboard/src/lib/siteNumbers.ts";
 
 let pass = 0, fail = 0;
 function check(name: string, cond: boolean, extra?: unknown) {
@@ -43,6 +43,16 @@ const p2 = sitePlan("S2", nums, asg);
 check("two chosen numbers rotate", planLine(p2[1]) === "Nagad · Cash Out (agent): 01711111111, 01722222222 (in turn)", planLine(p2[1]));
 check("default offline threshold matches the dashboard's", DEFAULT_OFFLINE_AFTER_SEC === 90);
 check("unchosen count", unchosenCount(p1) === 1 && unchosenCount(sitePlan("S9", nums, asg)) === 2);
+
+
+// Strict sites (migration 111): only ticked numbers; nothing ticked = refused, never somebody else's number.
+const s1 = sitePlan("S1", nums, asg, true);
+check("a strict site keeps its ticked numbers", s1[1].refused === false && s1[1].fallback === false && s1[1].numbers.map((n) => n.id).join() === "W2");
+check("a strict site with no tick for a wallet type is refused, not given any number", s1[0].refused === true && s1[0].fallback === false && s1[0].numbers.length === 0);
+check("the refused line says so plainly", planLine(s1[0]).includes("REFUSED") && planLine(s1[0]).startsWith("bKash · Send Money: no number ticked"));
+check("refused count and unchosen count are separate", refusedCount(s1) === 1 && unchosenCount(s1) === 0 && refusedCount(p1) === 0);
+check("a site with no ticks at all and strict on refuses every wallet type", refusedCount(sitePlan("S9", nums, asg, true)) === 2);
+check("the switch's words name both sides", STRICT_WORDS.on.includes("refused") && STRICT_WORDS.off.includes("any main number"));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
