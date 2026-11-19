@@ -99,6 +99,7 @@ object AppBalance {
         var banners = 0
         var sawWalletError = false
         var reopens = 0
+        var reclaims = 0
 
         fun finish(o: UssdOutcome, why: String) {
             if (finished) return
@@ -121,8 +122,14 @@ object AppBalance {
                     val root = AppReader.bkashRoot(svc)
                     if (root == null) {
                         if (seenApp == 0L && OpenRetry.due(false, now - started, reopens)) { reopens++; note("the app is not on screen yet: opening it again ($reopens)"); AppReader.openBkash(svc, app, pkg, woke) { note(it) } }
-                        if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) return stop("app_not_opened", "the app did not open")
-                        if (seenApp > 0 && now - seenApp > 20_000) return stop("app_closed", "the app left the screen")
+                        if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) return stop("app_not_opened", "the app did not open (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
+                        if (seenApp > 0) {
+                            // Brought back only before the PIN is touched or once Home was reached after it.
+                            val may = (typed == 0 && !pressed) || homeAt > 0
+                            TaskGuard.onGone(svc, app, pkg, "bKash", now - seenApp, reclaims, may, { reclaims++; seenApp = now; nextActAt = now + pace.settle() }) { note(it) }
+                                ?.let { return stop("app_closed", it) }
+                        }
+                        if (seenApp > 0 && now - seenApp > 20_000) return stop("app_closed", "the app left the screen while the PIN was being typed (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
                     } else {
                         if (seenApp == 0L) nextActAt = now + pace.settle()
                         seenApp = now

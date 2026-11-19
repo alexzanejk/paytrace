@@ -292,6 +292,8 @@ object UssdSession {
     private var pinTyped = false
     // A window of the dialer or the phone's call screens has been read at least once in this run.
     private var dialerSeen = false
+    /** When the wallet's menu, once seen, went off the screen (0 = it is on screen). */
+    private var lostSince = 0L
     private var startedAt = 0L
     private var unknownSig = ""
     private var unknownSince = 0L
@@ -315,6 +317,7 @@ object UssdSession {
         this.pinSubmitted = false
         this.pinTyped = false
         this.dialerSeen = false
+        this.lostSince = 0L
         this.startedAt = SystemClock.elapsedRealtime()
         this.unknownSig = ""
         this.unknownSince = 0L
@@ -421,6 +424,18 @@ object UssdSession {
     private fun step() {
         val svc = service ?: return
         val w = readScreen(svc)
+        if (w == null && dialerSeen) {
+            // The menu was on screen and now is not: something took the screen. The menu belongs to the phone and cannot be
+            // opened again, so the shade is closed if it was pulled down, and what took the screen goes in the log once.
+            val now = SystemClock.elapsedRealtime()
+            if (lostSince == 0L) lostSince = now
+            if (now - lostSince > TaskGuard.LEFT_MS) {
+                val front = TaskGuard.onScreen(svc).filter { it != svc.packageName && !allowedPackage(it) }
+                if (front.firstOrNull() == "com.android.systemui") TaskGuard.clearScreen(svc)
+                val who = TaskGuard.intruder(front, emptySet())
+                if (who != null) noteOnce("took:$who", "$who took the screen over the wallet's menu")
+            }
+        } else if (w != null) lostSince = 0L
         if (w == null) {
             if (SystemClock.elapsedRealtime() - startedAt > BLIND_MS) {
                 val seen = try { svc.windows.mapNotNull { it.root?.packageName?.toString() }.distinct().take(4).joinToString(", ") } catch (e: Exception) { "" }
@@ -916,6 +931,8 @@ object UssdRunner {
             // The call may still work with the screen on.
         }
         val opener = UssdSession.launchContext() ?: app
+        // Nothing may sit over the menu: the notification shade and system pop-ups are closed first (TaskGuard).
+        TaskGuard.clearScreen(opener)
         // NOT withSim: naming the SIM on the dialer turns the menu code into an ordinary call on the owner's phones
         // (video 2026-11-02: the dialer holds "*247#", the call goes out as "*247*", the hash gone, and no menu ever opens).
         val dial = Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(code))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

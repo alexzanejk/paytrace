@@ -35,6 +35,7 @@ export interface CommissionPayRow {
   fee_actual: number | string | null;
   trx_id: string | null;
   error: string | null;
+  command_id?: string | null;
   note: string | null;
   created_at: string;
   paid_at: string | null;

@@ -94,9 +94,6 @@ object AppReader {
     private const val BOX_SETTLE_MS = 1_400L
     /** Before opening bKash: press Home and wait this long, so whatever was in front is put aside. */
     const val HOME_FIRST_MS = 700L
-    /** bKash gone from the screen this long = another app came in front: open bKash again, up to [MAX_RELAUNCHES] times. */
-    private const val LEFT_MS = 3_000L
-    private const val MAX_RELAUNCHES = 3
     /** Steps back toward a page with the bottom tabs before giving up. */
     private const val MAX_WAY_BACK = 6
     private val HOME_BACK = setOf("back to home", "হোম-এ ফিরে যান", "হোম -এ ফিরে যান", "হোম-এ ফিরে যাই", "হোম -এ ফিরে যাই")
@@ -322,21 +319,23 @@ object AppReader {
                     if (root == null) {
                         if (seenApp == 0L && OpenRetry.due(false, now - started, reopens)) {
                             reopens++
-                            note("the app is not on screen yet (in front: ${AppReader.frontApps(svc)}); opening it again ($reopens)")
+                            note("the app is not on screen yet (on screen instead: ${TaskGuard.whoTook(svc, setOf(pkg))}); opening it again ($reopens)")
                             if (OpenRetry.viaWindow(reopens)) AppReader.openBkash(svc, app, pkg, true) { note(it) } else launch()
                         }
                         if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) {
-                            note("in front at the end: ${AppReader.frontApps(svc)}")
-                            return finish(false, "app_not_opened", "the app did not open")
+                            return finish(false, "app_not_opened", "the app did not open (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
                         }
-                        if (seenApp > 0 && now - seenApp > LEFT_MS && relaunches < MAX_RELAUNCHES) {
-                            relaunches++
-                            val front = try { svc.rootInActiveWindow?.packageName?.toString() } catch (e: Exception) { null }
-                            note("the bKash app left the screen (in front: ${front ?: "nothing readable"}); opening it again")
-                            if (pinTypedAt == 0L && (pinTyped > 0 || keyPressed)) { retyping = true; pinTyped = 0; keyPressed = false; keyRetries = 0 }
-                            launch(); seenApp = now
+                        if (seenApp > 0) {
+                            // Something else took the screen: put it aside and bring bKash back (TaskGuard). A PIN half
+                            // typed is started over (the box is checked empty first), never continued blind.
+                            val stop = TaskGuard.onGone(svc, app, pkg, "bKash", now - seenApp, relaunches, true, {
+                                relaunches++
+                                if (pinTypedAt == 0L && (pinTyped > 0 || keyPressed)) { retyping = true; pinTyped = 0; keyPressed = false; keyRetries = 0 }
+                                seenApp = now
+                            }) { note(it) }
+                            if (stop != null) return finish(rows.isNotEmpty() || fullRows.isNotEmpty(), "app_closed", stop)
                         }
-                        if (seenApp > 0 && now - seenApp > 20_000) return finish(rows.isNotEmpty() || fullRows.isNotEmpty(), "app_closed", "the app left the screen")
+                        if (seenApp > 0 && now - seenApp > 20_000) return finish(rows.isNotEmpty() || fullRows.isNotEmpty(), "app_closed", "the app left the screen (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
                     } else {
                         if (seenApp == 0L) nextActAt = now + pace.settle()
                         seenApp = now
@@ -691,6 +690,8 @@ object AppReader {
     internal fun openBkash(svc: Context, app: Context, pkg: String, woke: Boolean, note: (String) -> Unit) {
         val open = app.packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             ?: return note("could not open the app")
+        // The notification shade and system pop-ups are closed first, so nothing sits over the task (TaskGuard).
+        TaskGuard.clearScreen(svc)
         if (woke) {
             note("opening the app through PayTrace's wake window")
             ScreenWake.wakeUp(svc, open)
@@ -702,11 +703,6 @@ object AppReader {
             if (home) Handler(Looper.getMainLooper()).postDelayed(go, HOME_FIRST_MS) else go.run()
         }
     }
-
-    /** Which apps' windows are on screen, for the run's log when the wallet app does not come up (never their words). */
-    internal fun frontApps(svc: AccessibilityService): String = try {
-        svc.windows.mapNotNull { w -> w.root?.packageName?.toString()?.substringAfterLast('.') }.distinct().joinToString(", ").ifBlank { "nothing readable" }
-    } catch (e: Exception) { "nothing readable" }
 
     internal fun bkashRoot(svc: AccessibilityService): AccessibilityNodeInfo? {
         svc.rootInActiveWindow?.let { if (AppRecorder.isBkash(it.packageName?.toString())) return it }

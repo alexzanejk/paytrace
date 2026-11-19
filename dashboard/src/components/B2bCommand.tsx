@@ -139,7 +139,7 @@ export function B2bCommand({ deviceId }: { deviceId: string }) {
         {line ? <p className="text-sm text-muted-foreground">{line}</p> : null}
         {notes.map((n) => <p key={n} className="text-sm text-muted-foreground">{n}</p>)}
         {last && last.status !== "queued" && last.status !== "running" ? (
-          <PhoneTrace screens={last.screens} label="How the phone did it" />
+          <PhoneTrace screens={last.screens} failed={last.status !== "done"} label="How the phone did it" />
         ) : null}
         {problem ? <p className="text-sm text-status-bad">{problem}</p> : null}
       </div>

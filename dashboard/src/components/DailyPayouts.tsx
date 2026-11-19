@@ -1,3 +1,4 @@
+import { CommandWhy } from "@/components/CommandWhy";
 import { useMemo, useState } from "react";
 import { CheckCircle2, HandCoins } from "lucide-react";
 import { must, sb } from "@/lib/supabase";
@@ -274,7 +275,8 @@ function LivePay({ p, nameOf, onDone }: { p: CommissionPayRow; nameOf: (id: stri
       {p.check_note ? <p className="mt-1 text-xs text-muted-foreground">{p.check_note}</p> : null}
       {p.status === "unsure" ? (
         <div className="mt-2 space-y-2">
-          <p className="text-xs text-muted-foreground">{UNSURE_HELP}{p.error ? ` (phone said: ${p.error})` : ""}</p>
+          <p className="text-xs text-muted-foreground">{UNSURE_HELP}</p>
+          <CommandWhy commandId={p.command_id} error={p.error} provider={p.provider} />
           <div className="flex flex-wrap gap-2">
             <Input className="w-44" placeholder="TrxID, if you see it" value={trx} onChange={(e) => setTrx(e.target.value)} />
             <Confirm title="Record it as sent?" description={SENT_WARNING} confirmLabel="Yes, it was sent" onConfirm={() => say(true)}>

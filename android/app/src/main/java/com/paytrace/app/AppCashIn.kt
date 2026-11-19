@@ -222,6 +222,7 @@ object AppCashIn {
         var held = false
         var sawWalletError = false // bKash showed its own error during this run (not a wrong PIN)
         var reopens = 0
+        var reclaims = 0
         var statusHits = 0
         val opener = AgentOpener { note(it) }
         var heldAt = 0L
@@ -366,8 +367,18 @@ object AppCashIn {
                     val root = AppReader.bkashRoot(svc)
                     if (root == null) {
                         if (seenApp == 0L && OpenRetry.due(false, now - started, reopens)) { reopens++; note("the app is not on screen yet: opening it again ($reopens)"); launch() }
-                        if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) return stop("app_not_opened", "the app did not open")
-                        if (seenApp > 0 && now - seenApp > 20_000) return stop("app_stopped_before_send", "the app left the screen")
+                        if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) return stop("app_not_opened", "the app did not open (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
+                        if (seenApp > 0) {
+                            // Brought back only before the login PIN is touched, or once a screen past the login was
+                            // reached; never once the money PIN started or after the hold.
+                            val loginStarted = loginPin.typed > 0 || loginPin.pressed
+                            val pastLogin = loginPin.submittedAt > 0 && lastScreen != AppCashInRead.Screen.LOGIN && lastScreen != AppCashInRead.Screen.UNKNOWN
+                            val loginHalf = loginStarted && !pastLogin
+                            val may = !held && cashPin.typed == 0 && !cashPin.pressed && !loginHalf
+                            TaskGuard.onGone(svc, app, pkg, "bKash", now - seenApp, reclaims, may, { reclaims++; seenApp = now; nextActAt = now + pace.settle() }) { note(it) }
+                                ?.let { return stop("app_stopped_before_send", it) }
+                        }
+                        if (seenApp > 0 && now - seenApp > 20_000) return stop("app_stopped_before_send", "the app left the screen (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
                     } else {
                         if (seenApp == 0L) nextActAt = now + pace.settle()
                         seenApp = now
