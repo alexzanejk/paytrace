@@ -270,6 +270,18 @@ export function payoutLine(p: PayoutRow, phoneName: (id: string | null) => strin
   return `${taka(num(p.send_amount))}${to}${how}${from}${trx}${kept}${fee ? " · " + fee : ""}`;
 }
 
+/** A payout the phone called failed although the wallet's SMS shows it went, after which the same transactions were
+ *  paid again (migration 106: the server once handed one order to the phone twice). `again` is the payout that now
+ *  holds the transactions. */
+export function paidTwiceLine(first: PayoutRow, again: PayoutRow | undefined, phoneName: (id: string | null) => string): string {
+  const one = `${taka(num(first.send_amount))}${first.trx_id ? ` (TrxID ${first.trx_id})` : ""} from ${phoneName(first.device_id)}`;
+  const two = again
+    ? `${taka(num(again.send_amount))}${again.trx_id ? ` (TrxID ${again.trx_id})` : ""} from ${phoneName(again.device_id)}`
+    : "a second payout";
+  const to = first.to_number ? ` to ${groupDigits(first.to_number)}` : "";
+  return `Paid twice${to}: ${one}, then ${two} for the same transactions. ${taka(num(first.send_amount))} too much went out.`;
+}
+
 /** What an unsure payout needs from the owner. */
 export const UNSURE_HELP =
   "The phone stopped after typing the PIN, so PayTrace cannot tell whether the money went. Check the wallet (its statement on the phone card, or the SMS), then say which. The transactions stay taken until you do, so they can never be paid twice.";

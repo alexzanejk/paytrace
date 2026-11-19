@@ -963,8 +963,23 @@ object UssdRunner {
     }
 }
 
+/** Command ids this phone has already taken (owner 2026-11-19). The server once handed the same Cash In to two
+ *  heartbeats at the same moment: one copy sent the money and the other answered "busy", and that answer marked the
+ *  payout failed although it had gone. The server now hands a command out once (migration 106); this is the second
+ *  lock: a repeat of an id seen in this process is ignored, never answered. */
+class SeenIds(private val max: Int = 64) {
+    private val ids = LinkedHashSet<String>()
+    @Synchronized fun firstTime(id: String): Boolean {
+        if (!ids.add(id)) return false
+        while (ids.size > max) ids.remove(ids.first())
+        return true
+    }
+}
+
 /** A command from the dashboard, delivered on the heartbeat reply. Runs it and reports the answer back. */
 object UssdCommands {
+    private val seen = SeenIds()
+
     fun onReply(ctx: Context, body: String?) {
         if (body == null) return
         // What the owner allowed on the dashboard is applied first, so a command that arrives in the same reply is judged by it.
@@ -972,6 +987,8 @@ object UssdCommands {
         val cmd = try { JSONObject(body).optJSONObject("command") } catch (e: Exception) { null } ?: return
         val id = cmd.optString("id")
         if (id.isBlank()) return
+        // The same command twice (two heartbeats at once): run it once, and say nothing for the copy.
+        if (!seen.firstTime(id)) return
         // Phone controls (restart, inbox, resend, screen, ring) name no wallet, so they are routed BEFORE the wallet
         // check below, which would otherwise answer "unsupported" to every one of them.
         val kind = cmd.optString("kind")

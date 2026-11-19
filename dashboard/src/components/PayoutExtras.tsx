@@ -4,7 +4,8 @@ import { Confirm } from "@/components/Confirm";
 import { sb } from "@/lib/supabase";
 import { tk, when } from "@/lib/format";
 import { PROVIDERS, PROVIDER_LABEL } from "@/lib/types";
-import { extraSplit, parsePct, payoutLine, type PayoutRow } from "@/lib/payouts";
+import { extraSplit, paidTwiceLine, parsePct, payoutLine, type PayoutRow } from "@/lib/payouts";
+import { useQuery } from "@/hooks/useQuery";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -223,6 +224,67 @@ export function ExtraPayoutList({ rows, nameOf, onDone, onAdd }: {
               onConfirm={() => undo(p)}
             >
               <Button size="sm" variant="outline" disabled={busy === p.id}>Undo</Button>
+            </Confirm>
+          </li>
+        ))}
+      </ul>
+      {problem ? <p className="px-4 pb-3 text-xs text-status-bad">{problem}</p> : null}
+    </Card>
+  );
+}
+
+/** Payouts that went out twice (migration 106): the phone said "failed" although the wallet's SMS shows the money went,
+ *  and the same transactions were then paid again. Each stays here until the owner marks it dealt with. */
+export function PaidTwiceCard({ nameOf, refreshKey }: { nameOf: (id: string | null | undefined) => string; refreshKey: unknown }) {
+  const [busy, setBusy] = useState("");
+  const [problem, setProblem] = useState("");
+  const { data, refresh: reload } = useQuery(async () => {
+    const first = (await sb.from("payouts").select("*").eq("error", "paid_twice").order("created_at", { ascending: false }).limit(50)).data as PayoutRow[] | null;
+    if (!first?.length) return { first: [] as PayoutRow[], again: new Map<string, PayoutRow>() };
+    const mine = ((await sb.from("payout_items").select("payout_id,payment_id").in("payout_id", first.map((p) => p.id))).data ?? []) as { payout_id: string; payment_id: string }[];
+    const live = ((await sb.from("payout_items").select("payout_id,payment_id").eq("live", true).in("payment_id", [...new Set(mine.map((i) => i.payment_id))])).data ?? []) as { payout_id: string; payment_id: string }[];
+    const others = live.length ? (((await sb.from("payouts").select("*").in("id", [...new Set(live.map((i) => i.payout_id))])).data ?? []) as PayoutRow[]) : [];
+    const byId = new Map(others.map((p) => [p.id, p]));
+    const again = new Map<string, PayoutRow>();
+    for (const p of first) {
+      const pay = mine.find((i) => i.payout_id === p.id)?.payment_id;
+      const holder = live.find((i) => i.payment_id === pay)?.payout_id;
+      const row = holder ? byId.get(holder) : undefined;
+      if (row) again.set(p.id, row);
+    }
+    return { first, again };
+  }, [refreshKey]);
+  const rows = data?.first ?? [];
+  if (!rows.length) return null;
+  async function settle(p: PayoutRow) {
+    setBusy(p.id); setProblem("");
+    const r = await sb.rpc("settle_paid_twice", { p_payout: p.id, p_note: null });
+    setBusy("");
+    if (r.error) setProblem(r.error.message); else reload();
+  }
+  const total = rows.reduce((t, p) => t + Number(p.send_amount), 0);
+  return (
+    <Card className="mb-4 overflow-hidden border-status-bad/40">
+      <div className="border-b border-border bg-status-bad/10 px-4 py-2">
+        <h2 className="text-sm font-semibold text-status-bad">Paid twice ({rows.length}) · {tk(total)} too much</h2>
+        <p className="text-xs text-muted-foreground">
+          The phone reported these as failed, but the wallet's SMS shows the money went, and the same transactions were then paid again. Ask the person for the extra back, then mark it dealt with.
+        </p>
+      </div>
+      <ul className="divide-y divide-border">
+        {rows.map((p) => (
+          <li key={p.id} className="flex flex-wrap items-start justify-between gap-2 px-4 py-3 text-sm">
+            <div className="min-w-0 space-y-0.5">
+              <p className="font-medium">{paidTwiceLine(p, data?.again.get(p.id), nameOf)}</p>
+              <p className="text-xs text-muted-foreground">First send {when(p.paid_at ?? p.created_at)}</p>
+            </div>
+            <Confirm
+              title={`Mark the ${tk(Number(p.send_amount))} paid twice as dealt with?`}
+              description="Do this once the extra money came back, or you decided to let it go. The record stays in the payout history."
+              confirmLabel="Dealt with"
+              onConfirm={() => settle(p)}
+            >
+              <Button size="sm" variant="outline" disabled={busy === p.id}>Dealt with</Button>
             </Confirm>
           </li>
         ))}

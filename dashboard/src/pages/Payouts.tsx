@@ -28,7 +28,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SendWayChoice } from "@/components/SendWayChoice";
 import { type SendWay, wayWords } from "@/lib/sendWay";
-import { DefaultShare, ExtraPayoutForm, ExtraPayoutList } from "@/components/PayoutExtras";
+import { DefaultShare, ExtraPayoutForm, ExtraPayoutList, PaidTwiceCard } from "@/components/PayoutExtras";
 
 /** Only money RECEIVED can be paid out (the database's payout_refusal says the same). */
 const PAYABLE_TYPES = ["cash_out", "send_money_received", "payment_received"];
@@ -176,6 +176,8 @@ export function Payouts() {
         description={`Keep your share, send the rest. Showing ${rangeLabel(range)}.`}
         help={<><p>Tick the received transactions, then send from a phone or mark them paid by hand.</p><p>A transaction can be in one payout only, so it is never paid twice.</p><p>Days run 12:00 AM to 11:59 PM Bangladesh time.</p></>}
       />
+
+      <PaidTwiceCard nameOf={devices.nameOf} refreshKey={data} />
 
       <Card className="mb-4 flex flex-wrap items-center justify-between gap-3 p-3">
         <DefaultShare pct={data?.keepPct ?? 20} onSaved={reload} />

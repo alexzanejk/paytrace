@@ -25,6 +25,8 @@ export interface NeedCounts {
   webhooksFailed: number | null;
   /** USDT transfers that matched no order. */
   cryptoReview: number | null;
+  /** Payouts that went out twice (migration 106) and that the owner has not marked dealt with. */
+  paidTwice?: { n: number; amount: number } | null;
   /** Cash In / Send Money of the last 7 days that no dashboard command explains (migration 105). */
   unexpectedCashins?: { n: number; amount: number } | null;
 }
@@ -60,6 +62,13 @@ export function needs(c: NeedCounts): Need[] {
       id: "offline", tone: "bad", page: "devices", action: "Open Phones",
       title: `${plural(c.phonesOffline.length, "phone")} offline`,
       detail: `${nameList(c.phonesOffline)}: payments to ${c.phonesOffline.length === 1 ? "its" : "their"} numbers are not seen until ${c.phonesOffline.length === 1 ? "it is" : "they are"} back.`,
+    });
+  }
+  if (c.paidTwice && c.paidTwice.n > 0) {
+    out.push({
+      id: "paidtwice", tone: "bad", page: "payout", action: "See them",
+      title: `${plural(c.paidTwice.n, "payout")} paid twice`,
+      detail: `${taka(c.paidTwice.amount)} went out twice to the same people. Ask them for it back, then mark each one dealt with.`,
     });
   }
   if (c.unexpectedCashins && c.unexpectedCashins.n > 0) {
@@ -138,6 +147,7 @@ const CHECK_NAMES: Record<keyof NeedCounts, string> = {
   commissionDue: "commission due", phonesOffline: "phones", phonesOutdated: "app versions", numbersMissing: "deposit numbers",
   numbersInvalid: "deposit numbers", webhooksFailed: "website results", cryptoReview: "USDT transfers",
   unexpectedCashins: "Cash Ins not from the dashboard",
+  paidTwice: "payouts paid twice",
 };
 
 /** What could not be checked this time, in words, each named once. */

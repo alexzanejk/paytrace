@@ -60,5 +60,12 @@ check("the bottom bar holds four real sections", BOTTOM_BAR.length === 4 && BOTT
   check("payments is a real page", TABS.some((t) => t.id === "payments"));
 }
 
+{
+  const list = needs({ ...quiet, phonesOffline: ["Vivo"], unexpectedCashins: { n: 1, amount: 100 }, paidTwice: { n: 7, amount: 5226 } });
+  check("paid twice comes right after offline phones", list.map((n) => n.id).join() === "offline,paidtwice,unexpected", list.map((n) => n.id));
+  check("it says how many and how much, and opens Payout", list[1].title === "7 payouts paid twice" && list[1].detail.startsWith("Tk 5,226.00") && list[1].page === "payout");
+  check("none = no line; unknown = said", needs({ ...quiet, paidTwice: { n: 0, amount: 0 } }).length === 0 && unchecked({ ...quiet, paidTwice: null }).includes("payouts paid twice"));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

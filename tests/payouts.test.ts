@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import {
-  checkNumbers, droppedLine, settleTicks, tickedRows, toggleShown, MOST_TICKS, extraSplit, feeLine, parseMoney, keepPctFor, parseSendAmount, groupDigits, parseFee, liveItemsByPayment, parsePct, payoutLine, payoutRefusal, tickableRefusal, recentNumbers, sendMethod, sendProblem, senderOptions, splitPayout, personalAccounts, accountName,
+  checkNumbers, droppedLine, settleTicks, tickedRows, toggleShown, MOST_TICKS, extraSplit, feeLine, parseMoney, keepPctFor, parseSendAmount, groupDigits, parseFee, liveItemsByPayment, paidTwiceLine, parsePct, payoutLine, payoutRefusal, tickableRefusal, recentNumbers, sendMethod, sendProblem, senderOptions, splitPayout, personalAccounts, accountName,
   type PayoutRow,
 } from "../dashboard/src/lib/payouts.ts";
 import { accountTitle, checkLine, figures, sourceLine, type DayMoneyRow } from "../dashboard/src/lib/dayMoney.ts";
@@ -201,6 +201,17 @@ check("a hand record names the transaction it paid on",
   const line = droppedLine([{ id: "A", why: "Already paid out" }], (id) => (id === "A" ? "DKB6CCN518" : undefined));
   check("a dropped tick is named with its reason", line === "A ticked transaction was taken out: DKB6CCN518 (already paid out).", line);
   check("no dropped tick, no line", droppedLine([], () => undefined) === "");
+}
+
+{
+  const base = { id: "a", method: "cash_in", status: "paid", device_id: "x", provider: "bkash", from_account: "agent", to_number: "01320995064",
+    total_amount: 1458, keep_pct: 16.32, keep_amount: 238, send_amount: 1220, command_id: null, trx_id: "DKJ5NYE2OX", balance_after: null,
+    error: "paid_twice", note: null, created_at: "2026-11-19T06:15:16Z", paid_at: null } as PayoutRow;
+  const again = { ...base, id: "b", device_id: "y", send_amount: 1230, trx_id: "DKJ6NYGXGE", error: null } as PayoutRow;
+  const name = (id: string | null) => (id === "x" ? "Xiaomi" : "Realme");
+  const line = paidTwiceLine(base, again, name);
+  check("paid twice names both sends and the extra amount", line === "Paid twice to 0132 099 5064: Tk 1,220 (TrxID DKJ5NYE2OX) from Xiaomi, then Tk 1,230 (TrxID DKJ6NYGXGE) from Realme for the same transactions. Tk 1,220 too much went out.", line);
+  check("paid twice without the second payout still reads", paidTwiceLine(base, undefined, name).includes("then a second payout"));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
