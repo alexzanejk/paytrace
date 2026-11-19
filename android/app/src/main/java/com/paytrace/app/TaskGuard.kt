@@ -37,6 +37,7 @@ object TaskGuard {
         val p = pkg?.lowercase() ?: return "nothing readable"
         return when {
             p == "com.android.systemui" -> "the notification shade"
+            p == "android" -> "an Android pop-up (such as \"app isn't responding\")"
             "launcher" in p || p.endsWith(".home") || p == "com.miui.home" || "nexuslauncher" in p -> "the home screen"
             "inputmethod" in p || p.endsWith(".ime") || "keyboard" in p -> "the keyboard"
             p == "com.android.phone" || "incallui" in p || "dialer" in p || "telecom" in p -> "the phone's dialer/call screen"
@@ -70,8 +71,15 @@ object TaskGuard {
         try {
             if (Build.VERSION.SDK_INT >= 31) a.performGlobalAction(AccessibilityService.GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
             else closeDialogs(a)
+            // A pop-up of Android itself ("app isn't responding", an "open with" chooser) covers every app and lets nothing
+            // be read (rubel's Xiaomi, 2026-11-19: "windows: android" and nothing opened for 20 minutes). Back closes such a
+            // pop-up without choosing anything ("Wait" on the not-responding one).
+            if (isSystemDialog(a.rootInActiveWindow?.packageName?.toString())) a.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
         } catch (e: Exception) { }
     }
+
+    /** Pure: the package of Android's own pop-ups. */
+    fun isSystemDialog(pkg: String?): Boolean = pkg == "android"
 
     @Suppress("DEPRECATION")
     private fun closeDialogs(a: AccessibilityService) = a.sendBroadcast(Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS))
