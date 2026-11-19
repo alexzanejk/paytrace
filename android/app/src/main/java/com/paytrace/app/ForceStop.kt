@@ -71,7 +71,8 @@ object ForceStop {
                     if (texts.isNotEmpty()) lastPage = texts.joinToString(" / ")
                     when (phase) {
                         0 -> {
-                            val label = pickButton(texts) ?: return main.postDelayed(this, TICK_MS)
+                            val label = pickButton(texts)
+                            if (label == null) { main.postDelayed(this, TICK_MS); return }
                             val node = nodes.first { it.text?.toString()?.trim()?.lowercase(Locale.ROOT) == label }
                             if (!node.isEnabled) return finish(true, "the app was not running (Force stop is grey)")
                             if (press(svc, node)) { phase = 1; pressedAt = now; note("pressed \"${node.text}\" on the app-info page") }
