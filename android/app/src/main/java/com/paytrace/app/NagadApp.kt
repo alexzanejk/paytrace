@@ -513,12 +513,19 @@ object NagadApp {
             if (finished) return
             finished = true
             running = false
-            TaskShield.lower()
+            TaskShield.lower { note(it) }
             note("end: $why")
             done(o.copy(trace = (trace + "screen: $screenText").joinToString("\n").take(1900)))
             main.postDelayed({ try { svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME) } catch (e: Exception) { } }, pace.readPause())
         }
         fun stop(error: String, why: String) = finish(UssdOutcome(false, null, error), why)
+        /** Stuck or cut off before the sign-in PIN was touched, or once signed in, and (for a Cash In) before its PIN,
+         *  সাবমিট or হ্যাঁ: close the app fully and start over once. After a money step nothing is ever started again. */
+        fun stuckCode(fallback: String): String {
+            val fresh = (loginAt == 0L && pinWay == 0 || signedIn) && ForceStop.canTry()
+            val money = task is NagadTask.CashIn && (cPinWay != 0 || submits > 0 || yesAt != 0L)
+            return if (fresh && !money) AppRestart.CODE else fallback
+        }
 
         /** Types [text] on the on-screen keyboard, one key at a time, each key found again just before it is pressed
          *  (after [deletes] presses of its delete key, which empties the box). Every press first checks that the box
@@ -768,13 +775,13 @@ object NagadApp {
                     val r = root(svc, pkg)
                     if (r == null) {
                         if (seenApp == 0L && OpenRetry.due(false, now - started, reopens)) { reopens++; note("the Nagad app is not on screen yet: opening it again ($reopens)"); AppReader.openBkash(svc, app, pkg, woke) { note(it) } }
-                        if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) return stop("app_not_opened", "the Nagad app did not open (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
+                        if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) return stop(stuckCode("app_not_opened"), "the Nagad app did not open (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
                         if (seenApp > 0) {
                             if (leftAt == 0L) leftAt = now
                             if (yesAt == 0L) {
                                 // Something else took the screen: put it aside and bring Nagad back (TaskGuard). Never after হ্যাঁ.
                                 TaskGuard.onGone(svc, app, pkg, "Nagad", now - leftAt, relaunches, true, { relaunches++; leftAt = 0L; nextActAt = now + pace.settle() }) { note(it) }
-                                    ?.let { return stop("app_closed", it) }
+                                    ?.let { return stop(stuckCode("app_closed"), it) }
                             } else if (yesAt > 0 && now - yesAt > AFTER_YES_MS) {
                                 return stop("no_answer_after_confirm", "the app left the screen after হ্যাঁ")
                             }
@@ -1211,11 +1218,10 @@ object NagadApp {
                                 progressAt = now
                                 nextActAt = now + pace.settle()
                             } else if (now - progressAt > STUCK_MS) {
-                                val fresh = loginAt == 0L && pinWay == 0 && ForceStop.canTry()
                                 return when (task) {
-                                    is NagadTask.Read -> if (seen.isNotEmpty()) { finishRead("a screen PayTrace does not know") } else stop(if (fresh) AppRestart.CODE else "unexpected_screen", "a screen PayTrace does not know")
-                                    is NagadTask.CashIn -> stop("app_stopped_before_send", "a screen PayTrace does not know; nothing sent")
-                                    else -> stop(if (fresh) AppRestart.CODE else "unexpected_screen", "a screen PayTrace does not know")
+                                    is NagadTask.Read -> if (seen.isNotEmpty()) { finishRead("a screen PayTrace does not know") } else stop(stuckCode("unexpected_screen"), "a screen PayTrace does not know")
+                                    is NagadTask.CashIn -> stop(stuckCode("app_stopped_before_send"), "a screen PayTrace does not know; nothing sent")
+                                    else -> stop(stuckCode("unexpected_screen"), "a screen PayTrace does not know")
                                 }
                             }
                         }

@@ -624,7 +624,7 @@ object UssdSession {
     fun abort(error: String) = finish(UssdOutcome(false, null, error))
 
     private fun finish(outcome0: UssdOutcome) {
-        TaskShield.lower()
+        TaskShield.lower { note(it) }
         // So a failed run can be read later: what was last on the screen, with every long number hidden.
         if (!outcome0.ok && lastText.isNotBlank()) noteOnce("last", "last screen: " + UssdRedact.snippet(lastText))
         val cb: ((UssdOutcome) -> Unit)?

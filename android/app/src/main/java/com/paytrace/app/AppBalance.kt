@@ -106,12 +106,14 @@ object AppBalance {
             if (finished) return
             finished = true
             running = false
-            TaskShield.lower()
+            TaskShield.lower { note(it) }
             note("end: $why")
             val log = (trace + "screen: $screenText").joinToString("\n").take(1900)
             done(o.copy(trace = log))
         }
         fun stop(error: String, why: String) = finish(UssdOutcome(false, null, error), why)
+        /** Stuck or cut off before the PIN was touched, or once the PIN was accepted: close the app fully and start over once. */
+        fun stuckCode(fallback: String) = if ((typed == 0 && !pressed || submittedAt > 0) && ForceStop.canTry()) AppRestart.CODE else fallback
 
         AppReader.holdScreen(app, RUN_MS + 5_000, "appbalance")
 
@@ -125,14 +127,14 @@ object AppBalance {
                     val root = AppReader.bkashRoot(svc)
                     if (root == null) {
                         if (seenApp == 0L && OpenRetry.due(false, now - started, reopens)) { reopens++; note("the app is not on screen yet: opening it again ($reopens)"); AppReader.openBkash(svc, app, pkg, woke) { note(it) } }
-                        if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) return stop("app_not_opened", "the app did not open (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
+                        if (seenApp == 0L && now - started > OpenRetry.GIVE_UP_MS) return stop(stuckCode("app_not_opened"), "the app did not open (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
                         if (seenApp > 0) {
                             // Brought back only before the PIN is touched or once Home was reached after it.
                             val may = (typed == 0 && !pressed) || homeAt > 0
                             TaskGuard.onGone(svc, app, pkg, "bKash", now - seenApp, reclaims, may, { reclaims++; seenApp = now; nextActAt = now + pace.settle() }) { note(it) }
-                                ?.let { return stop("app_closed", it) }
+                                ?.let { return stop(stuckCode("app_closed"), it) }
                         }
-                        if (seenApp > 0 && now - seenApp > 20_000) return stop("app_closed", "the app left the screen while the PIN was being typed (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
+                        if (seenApp > 0 && now - seenApp > 20_000) return stop(stuckCode("app_closed"), "the app left the screen while the PIN was being typed (in front: ${TaskGuard.whoTook(svc, setOf(pkg))})")
                     } else {
                         if (seenApp == 0L) nextActAt = now + pace.settle()
                         seenApp = now
@@ -237,7 +239,7 @@ object AppBalance {
                             progressAt = now
                             nextActAt = now + pace.settle()
                         } else if (now - progressAt > STUCK_MS) {
-                            return stop(if (typed == 0 && !pressed && ForceStop.canTry()) AppRestart.CODE else "unexpected_screen", "a screen PayTrace does not know")
+                            return stop(stuckCode("unexpected_screen"), "a screen PayTrace does not know")
                         }
                     }
                 } catch (e: Exception) {
