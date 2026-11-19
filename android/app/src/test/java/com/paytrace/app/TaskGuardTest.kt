@@ -1,6 +1,8 @@
 package com.paytrace.app
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -26,6 +28,14 @@ class TaskGuardTest {
         assertEquals("the notification shade", TaskGuard.nameOf("com.android.systemui"))
         assertEquals("com.whatsapp", TaskGuard.nameOf("com.whatsapp"))
         assertEquals("nothing readable", TaskGuard.nameOf(null))
+        assertTrue(TaskGuard.nameOf("android").contains("Android pop-up"))
+    }
+
+    @Test fun onlyAndroidsOwnPopUpsAreClosedWithBack() {
+        assertTrue(TaskGuard.isSystemDialog("android"))
+        assertFalse(TaskGuard.isSystemDialog("com.android.phone"))
+        assertFalse(TaskGuard.isSystemDialog("com.android.systemui"))
+        assertFalse(TaskGuard.isSystemDialog(null))
     }
 
     @Test fun theIntruderSkipsTheTasksOwnAppAndTheKeyboard() {

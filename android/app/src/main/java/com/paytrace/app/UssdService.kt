@@ -294,6 +294,8 @@ object UssdSession {
     private var dialerSeen = false
     /** When the wallet's menu, once seen, went off the screen (0 = it is on screen). */
     private var lostSince = 0L
+    private var systemBacks = 0
+    private var systemBackAt = 0L
     private var startedAt = 0L
     private var unknownSig = ""
     private var unknownSince = 0L
@@ -318,6 +320,8 @@ object UssdSession {
         this.pinTyped = false
         this.dialerSeen = false
         this.lostSince = 0L
+        this.systemBacks = 0
+        this.systemBackAt = 0L
         this.startedAt = SystemClock.elapsedRealtime()
         this.unknownSig = ""
         this.unknownSince = 0L
@@ -436,6 +440,13 @@ object UssdSession {
                 if (who != null) noteOnce("took:$who", "$who took the screen over the wallet's menu")
             }
         } else if (w != null) lostSince = 0L
+        if (w == null && !dialerSeen && systemBacks < 2 && SystemClock.elapsedRealtime() - systemBackAt > 3_000 &&
+            TaskGuard.isSystemDialog(svc.rootInActiveWindow?.packageName?.toString())) {
+            // An Android pop-up covers the screen before the dialer could be read: Back closes it without choosing anything.
+            systemBacks++; systemBackAt = SystemClock.elapsedRealtime()
+            note("an Android pop-up covered the screen: closing it with Back")
+            svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        }
         if (w == null) {
             if (SystemClock.elapsedRealtime() - startedAt > BLIND_MS) {
                 val seen = try { svc.windows.mapNotNull { it.root?.packageName?.toString() }.distinct().take(4).joinToString(", ") } catch (e: Exception) { "" }
