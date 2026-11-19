@@ -705,8 +705,9 @@ object AppReader {
     }
 
     internal fun bkashRoot(svc: AccessibilityService): AccessibilityNodeInfo? {
-        svc.rootInActiveWindow?.let { if (AppRecorder.isBkash(it.packageName?.toString())) return it }
-        return try { svc.windows.mapNotNull { it.root }.firstOrNull { AppRecorder.isBkash(it.packageName?.toString()) } } catch (e: Exception) { null }
+        // The AGENT app only: the personal bKash app on screen is something else in front, never "the app".
+        svc.rootInActiveWindow?.let { if (AppRecorder.isAgentBkash(it.packageName?.toString())) return it }
+        return try { svc.windows.mapNotNull { it.root }.firstOrNull { AppRecorder.isAgentBkash(it.packageName?.toString()) } } catch (e: Exception) { null }
     }
 
     /** How many digits the PIN box shows: the password box (or the box whose hint says PIN), never the account box.

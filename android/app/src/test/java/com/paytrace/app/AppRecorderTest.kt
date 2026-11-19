@@ -67,4 +67,20 @@ class AppRecorderTest {
         assertTrue(t.startsWith("#3 +12s pkg=com.bkash.businessapp also=com.android.systemui"))
         assertTrue(t.contains("more elements)"))
     }
+
+    @Test fun theAgentAppIsPickedNeverThePersonalOne() {
+        val agent = "com.bkash.businessapp"; val personal = "com.bKash.customerapp"
+        // Either order: the launcher lists apps in no fixed order.
+        assertEquals(agent, AppRecorder.pickAgent(listOf(personal, agent)))
+        assertEquals(agent, AppRecorder.pickAgent(listOf(agent, personal)))
+        assertEquals(null, AppRecorder.pickAgent(listOf(personal)))
+        assertEquals(agent, AppRecorder.pickAgent(listOf("com.bkash.merchantapp", agent)))
+    }
+
+    @Test fun thePersonalAppOnScreenIsNotTheAgentApp() {
+        assertTrue(AppRecorder.isAgentBkash("com.bkash.businessapp"))
+        assertFalse(AppRecorder.isAgentBkash("com.bKash.customerapp"))
+        assertFalse(AppRecorder.isAgentBkash("com.whatsapp"))
+        assertTrue(AppRecorder.isBkash("com.bKash.customerapp"))
+    }
 }
