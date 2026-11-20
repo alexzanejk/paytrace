@@ -4,7 +4,6 @@ import { useQuery } from "@/hooks/useQuery";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { Confirm } from "@/components/Confirm";
-import { PersonName } from "@/components/PersonName";
 import { PersonPayout } from "@/components/PersonPayout";
 import { PayoutQueue } from "@/components/PayoutQueue";
 import { useDevices } from "@/hooks/useDevices";
@@ -122,9 +121,9 @@ export function TelegramClaims() {
         description="Payment screenshots posted in your group, matched to the transactions PayTrace holds."
         help={
           <>
-            <p>The bot receives every message of the chosen group. A photo is read by the OCR worker on your VPS; the TrxID it finds, or one typed as text, is looked for among the transactions PayTrace holds that are not paid out yet. Found: the post gets a thumbs-up from the bot and is tied to the person (the site login they typed in the group, else their Telegram profile). Not found, already paid out, or unclear: nothing happens to the post.</p>
+            <p>The bot receives every message of the chosen group. A photo is read by the OCR worker on your VPS; the TrxID it finds, or one typed as text, is looked for among the transactions PayTrace holds that are not paid out yet. Found: the post gets a thumbs-up from the bot and is tied to the person, named by their Telegram @username (never by anything typed in the post). Not found, already paid out, or unclear: nothing happens to the post.</p>
             <p className="mt-2">A screenshot never proves a payment by itself; a held transaction stays held. One TrxID is one claim: the same person again is a duplicate, another person first is a conflict for you to decide. Nothing on this page pays anyone: the Payout page does that, and "who is owed what" below is what it will start from.</p>
-            <p className="mt-2">The person's name travels to the Payout page as the name on each matched transaction. "Set login" / "Change login" fixes the site login the bot read wrong or never saw; a name you type on the Payout page itself always wins over the bot's.</p>
+            <p className="mt-2">The @username travels to the Payout page as the name on each matched transaction; a name you type on the Payout page itself always wins over the bot's.</p>
           </>
         }
       />
@@ -183,7 +182,7 @@ export function TelegramClaims() {
 
       <div className="grid gap-3">
         {shown.length === 0 ? <Card className="p-6 text-center text-sm text-muted-foreground">{claims.length === 0 ? "No messages kept in this period yet." : "Nothing in this view."}</Card> : null}
-        {shown.map((c) => <ClaimRow key={c.id} claim={c} busy={busy} act={act} onChanged={refresh} />)}
+        {shown.map((c) => <ClaimRow key={c.id} claim={c} busy={busy} act={act} />)}
       </div>
 
       <UsersCard users={data?.users ?? []} claims={claims} devices={devices} keepPct={data?.keepPct ?? 20} sendFee={data?.sendFee ?? 10} onChanged={refresh} />
@@ -192,7 +191,7 @@ export function TelegramClaims() {
   );
 }
 
-function ClaimRow({ claim: c, busy, act, onChanged }: { claim: Claim; busy: string | null; act: (key: string, run: () => PromiseLike<{ error: { message: string } | null } | void>, done: string) => Promise<void>; onChanged: () => void }) {
+function ClaimRow({ claim: c, busy, act }: { claim: Claim; busy: string | null; act: (key: string, run: () => PromiseLike<{ error: { message: string } | null } | void>, done: string) => Promise<void> }) {
   const [pick, setPick] = useState("");
   const [picking, setPicking] = useState(false);
   const [img, setImg] = useState<string | null>(null);
@@ -227,7 +226,6 @@ function ClaimRow({ claim: c, busy, act, onChanged }: { claim: Claim; busy: stri
             <Badge tone={toneOf(c.status)} title={w.meaning}>{w.label}</Badge>
             {c.reacted ? <span title="The bot put a thumbs-up on this post" aria-label="thumbs-up sent">👍</span> : null}
             <span className="font-medium">{personLabel(c)}</span>
-            <PersonName userId={c.tg_user_id} siteUsername={c.site_username} onChanged={onChanged} />
             <span className="text-xs text-muted-foreground">id {c.tg_user_id} · {dhakaTime(c.sent_at)} · {c.kind === "photo" ? "photo" : "text"}</span>
           </div>
           <p className="mt-1 text-sm">{paymentLine(c.payment)}</p>
@@ -279,7 +277,6 @@ function UsersCard({ users, claims, devices, keepPct, sendFee, onChanged }: {
               <div className="min-w-0">
                 <span className="font-medium">{personLabel(u)}</span>
                 <span className="ml-2 text-xs text-muted-foreground">id {u.tg_user_id}{u.last_number ? ` · last paid to ${u.last_number}` : ""}</span>
-                <span className="ml-1"><PersonName userId={u.tg_user_id} siteUsername={u.site_username} onChanged={onChanged} /></span>
                 <div className="text-xs text-muted-foreground">
                   {u.matched} matched{u.held ? ` · ${u.held} held` : ""}{u.open ? ` · ${u.open} to look at` : ""}{u.conflicts ? ` · ${u.conflicts} conflict` : ""} · last {dhakaTime(u.last_at)}
                 </div>

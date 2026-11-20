@@ -58,7 +58,7 @@ export function PersonPayout({ user, claims, devices, defaultPct, defaultFee, on
     if (!split || pct == null || !sender || !nums.number) return;
     setBusy(true); setProblem("");
     const { data, error } = await sb.rpc("queue_payout", {
-      // The server names the plan after the person (site login, else Telegram name), the same name the transactions carry.
+      // The server names the plan after the person (the Telegram @username), the same name the transactions carry.
       p_label: null, p_tg_user: user.tg_user_id, p_payments: chosen.map((c) => c.payment!.id),
       p_device: sender.deviceId, p_provider: sender.provider, p_to_number: nums.number, p_keep_pct: pct,
       p_from_account: sender.account, p_via: way, p_account: sender.account === "personal" ? sender.personalN ?? 1 : null, p_note: note || null,

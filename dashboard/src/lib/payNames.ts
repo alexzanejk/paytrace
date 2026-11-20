@@ -1,5 +1,5 @@
 // The NAME on a received transaction, for the Payout page (owner 2026-11-20): who the money is paid to. Written by the
-// Telegram bot when a post matched (the person's site login, else their Telegram profile) or typed by the owner, who
+// Telegram bot when a post matched (the person's Telegram @username) or typed by the owner, who
 // always wins. Pure; the reads and the RPC live in the pages. Tested in tests/payNames.test.ts.
 
 export interface PaymentName {

@@ -730,8 +730,8 @@ Add to Home Screen way above works on an iPhone today.
 People post their payment screenshots in your Telegram group. PayTrace can now read them: a bot receives every message
 of the group, the OCR worker on your VPS reads the TrxID out of each photo, and the TrxID is looked for among the
 transactions PayTrace holds that are **not paid out yet**. Found: the bot puts a **thumbs-up** on that post (so you see it
-handled it) and ties the transaction to the person, named by the site login they typed in the group (like t9ceff6182),
-else by their Telegram profile. Not found, already paid out, or unclear: nothing happens to the post, no reaction, no
+handled it) and ties the transaction to the person, named by their Telegram @username (a site login typed in the post
+is never used as the name). Not found, already paid out, or unclear: nothing happens to the post, no reaction, no
 reply. A screenshot never proves a payment by itself; a held transaction stays held. Nothing here pays anyone; paying is
 still the Payout page's job.
 
@@ -765,14 +765,13 @@ corrected TrxID fits exactly one transaction; a photo that cannot be read is ans
 text; Rocket screenshots have not been tested yet; the worker needs the VPS to be up, and photos posted while it is down
 are read when it comes back.
 
-**Names on the Payout page.** Every matched post also puts a NAME on that transaction: the site login the person typed
-in the group (like t9ceff6182), else their Telegram @username (display names are not unique, usernames are; a person
-with no username shows their display name). On the Payout page each transaction shows it as a small
+**Names on the Payout page.** Every matched post also puts a NAME on that transaction: the person's Telegram @username
+(display names are not unique, usernames are; a person with no username shows their display name; whatever they typed
+in the post is never used as the name). On the Payout page each transaction shows it as a small
 "name · from Telegram" chip, so you see who a payment belongs to before you pay. Where the bot could not sort it, the
 row shows **Set name**: tap it, type the login or name, Save. Tap a name to change or clear it; a name you type
 yourself always wins over the bot's, and clearing goes back to the bot's name if there is one. The search box on the
-Payout page also finds names. On the Telegram page, **Set login** / **Change login** beside a person fixes the login the
-bot read wrong or never saw; their transactions are renamed at once. Names change nothing about money.
+Payout page also finds names. Names change nothing about money.
 
 **Paying a whole person in one go (step 4, 2026-11-20).** On the Telegram page, **Who is owed what** has a **Pay out**
 button beside each person. It opens a panel with all of that person's matched transactions ticked (untick any you do

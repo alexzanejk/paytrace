@@ -29,7 +29,7 @@ export function PayoutName({ paymentId, name, onChanged }: { paymentId: string; 
         <Input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="site login or name"
+          placeholder="@username or name"
           aria-label="Name for this transaction"
           className="h-7 w-44 text-xs"
           maxLength={64}

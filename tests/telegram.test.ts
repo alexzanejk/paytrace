@@ -40,7 +40,7 @@ check("the TrxID in a reply is cleaned", replyFor({ ...base, trx: "DKJ9<b>NWWLEH
 
 // ---- the page's pure parts ----
 check("every status has words and a place in the order", STATUS_ORDER.length === 9 && STATUS_ORDER.every((s) => STATUS_WORDS[s].label.length > 0));
-check("the person is named by the site login first, else the Telegram @username", personLabel({ site_username: "t9ceff6182", name: "Crazy", username: "cra_zy1", tg_user_id: 1 }) === "t9ceff6182 · @cra_zy1" && personLabel({ site_username: null, name: "Rifat", username: null, tg_user_id: 2 }) === "Rifat");
+check("the person is named by the Telegram @username only; a site login typed in the post is never used (owner 2026-11-20)", personLabel({ site_username: "t9ceff6182", name: "Crazy", username: "cra_zy1", tg_user_id: 1 }) === "@cra_zy1" && personLabel({ site_username: "t9ceff6182", name: "Rifat", username: null, tg_user_id: 2 }) === "Rifat");
 check("user labels: @username before the display name (names are not unique, owner 2026-11-20)", userLabel({ name: "Alice", username: "alice", tg_user_id: 1 }) === "@alice" && userLabel({ name: null, username: null, tg_user_id: 7001 }) === "user 7001" && userLabel({ name: "", username: "bob", tg_user_id: 2 }) === "@bob" && userLabel({ name: "Only Name", username: null, tg_user_id: 3 }) === "Only Name");
 const pay = { id: "p", trx_id: "DKJ9NWWLEH", provider: "bkash", amount: 2781, status: "tracked_only", review_reason: null, counterparty: "0182XXXX112", occurred_at: null, phone: "Vivo", paid_out: true };
 check("payment line", paymentLine(pay) === "bKash Tk 2,781.00 · TrxID DKJ9NWWLEH · Vivo · already in a payout" && paymentLine(null) === "no transaction");
