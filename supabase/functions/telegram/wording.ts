@@ -58,3 +58,16 @@ export function welcomeText(first: boolean): string {
   }
   return "ℹ️ এই চ্যাটে শুধু পেমেন্টের খবর আসে। TrxID বা স্ক্রিনশট গ্রুপে পোস্ট করুন।\nThis chat only carries your payment notices. Please post your TrxID or screenshot in the group.";
 }
+
+/** The bot's answer to "/owner <code>" in a private chat (migration 121): the owner pairs their own chat with a one-time
+ *  code from the dashboard, and from then on gets a copy of every private notice. Never repeats the code. */
+export function ownerClaimText(why: "claimed" | "wrong" | "expired" | "no_code"): string {
+  switch (why) {
+    case "claimed":
+      return "✅ এই চ্যাটটি এখন মালিকের। প্রতিটি ব্যক্তিগত পেমেন্ট নোটিশের একটি কপি এখানে আসবে।\nThis chat is now the owner's: a copy of every private payout notice will arrive here.";
+    case "expired":
+      return "⌛ কোডটির মেয়াদ শেষ। ড্যাশবোর্ডে নতুন কোড নিন।\nThat code has expired (10 minutes). Get a new one on the dashboard.";
+    default:
+      return "❌ কোডটি মেলেনি। ড্যাশবোর্ডের কোডটি আবার দেখুন।\nThat code does not match. Check the code on the dashboard.";
+  }
+}

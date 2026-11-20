@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { dhakaTime } from "@/lib/dayMoney";
 import {
-  DM_WORDS, REPLY_MODES, STATUS_ORDER, STATUS_WORDS, claimDetail, cleanTrx, connectState, dmById, dmState, inviteText, needsOwner, needsYou, paymentLine, periodRange, personLabel, statusCounts, taka, type Claim, type ClaimStatus, type ReplyMode, type TelegramChat, type TelegramSettings, type TelegramUserDm, type UserSummary,
+  DM_WORDS, OWNER_WORDS, REPLY_MODES, STATUS_ORDER, STATUS_WORDS, claimDetail, cleanTrx, connectState, dmById, dmState, inviteText, needsOwner, needsYou, ownerCommand, ownerState, paymentLine, periodRange, personLabel, statusCounts, taka, type Claim, type ClaimStatus, type ReplyMode, type TelegramChat, type TelegramSettings, type TelegramUserDm, type UserSummary,
 } from "@/lib/telegram";
 
 type Period = "today" | "7d" | "30d";
@@ -57,12 +57,12 @@ export function TelegramClaims() {
     async () => {
       const { from, to } = periodRange(period);
       const [settings, chats, claims, users, pay, dms] = await Promise.all([
-        sb.from("telegram_settings").select("group_chat_id,group_title,reply_mode,webhook_set_at,bot_username,payout_reply").eq("id", true).maybeSingle(),
+        sb.from("telegram_settings").select("group_chat_id,group_title,reply_mode,webhook_set_at,bot_username,payout_reply,owner_chat_id,owner_user_id,owner_set_at,owner_copy").eq("id", true).maybeSingle(),
         sb.from("telegram_chats").select("chat_id,title,kind,last_seen_at,messages").order("last_seen_at", { ascending: false }).limit(20),
         sb.rpc("tg_claims", { p_from: from.toISOString(), p_to: to.toISOString(), p_status: null }),
         sb.rpc("tg_user_summary", { p_from: from.toISOString() }),
         sb.from("payout_settings").select("keep_pct,send_money_fee").limit(1),
-        sb.from("telegram_users").select("tg_user_id,dm_since,dm_blocked_at,dm_blocked_why").not("dm_since", "is", null),
+        sb.from("telegram_users").select("tg_user_id,dm_since,dm_blocked_at,dm_blocked_why,username").not("dm_since", "is", null),
       ]);
       const ps = (must(pay) as { keep_pct: number | string; send_money_fee?: number | string }[])[0];
       return {
@@ -191,6 +191,7 @@ export function TelegramClaims() {
           <p className="mt-1 whitespace-pre-line text-xs text-muted-foreground">{inviteText(data?.settings?.bot_username)}</p>
           <p className="mt-1 text-xs text-muted-foreground">Telegram lets a bot write to a person only after that person wrote to it first. People who never press Start keep getting the group reply.</p>
         </div>
+        <OwnerCopyCard settings={data?.settings ?? null} dms={data?.dms ?? new Map()} busy={busy} act={act} />
       </Card>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -282,6 +283,60 @@ function ClaimRow({ claim: c, busy, act }: { claim: Claim; busy: string | null; 
       {imgErr ? <p className="mt-2 text-xs text-status-warn">{imgErr}</p> : null}
       {img ? <img src={img} alt="the posted screenshot" className="mt-3 max-h-[70vh] max-w-full rounded-lg border" /> : null}
     </Card>
+  );
+}
+
+/** Copies of private notices to the owner (migration 121). Pairing is by a one-time code the owner sends to the bot from
+ *  their own Telegram, never by picking a name: a wrong pick would send full numbers to a stranger. */
+function OwnerCopyCard({ settings, dms, busy, act }: {
+  settings: TelegramSettings | null; dms: Map<number, TelegramUserDm>; busy: string | null;
+  act: (key: string, run: () => PromiseLike<{ error: { message: string } | null } | void>, done: string) => Promise<void>;
+}) {
+  const state = ownerState(settings);
+  const [code, setCode] = useState<string | null>(null);
+  const who = settings?.owner_user_id ? (dms.get(settings.owner_user_id)?.username ? "@" + dms.get(settings.owner_user_id)!.username : "user " + settings.owner_user_id) : "";
+  const bot = settings?.bot_username ? "@" + settings.bot_username : "the bot";
+  async function getCode() {
+    await act("owner_code", async () => {
+      const { data, error } = await sb.rpc("tg_owner_code");
+      if (error) return { error };
+      setCode(String((data as { code?: string } | null)?.code ?? ""));
+      return { error: null };
+    }, "Code made. Send it to the bot within 10 minutes.");
+  }
+  return (
+    <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3 text-sm" aria-label="Copies of private notices to you">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-medium">Copies of private notices to you</span>
+        {state === "unset" ? (
+          <Button size="sm" variant="outline" disabled={busy === "owner_code"} onClick={getCode}>Get a code</Button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Switch checked={state === "on"} disabled={busy === "owner_copy"} aria-label="Copy private notices to me"
+              onCheckedChange={(on) => act("owner_copy", () => sb.rpc("tg_set_owner_copy", { p_on: on }), on ? "On: copies come to your chat." : "Off: no copies.")} />
+            <Confirm title="Stop the copies?" description="Your chat is unpaired and no copy is sent until you pair again with a new code. Nothing else changes." confirmLabel="Stop"
+              onConfirm={() => act("owner_clear", () => sb.rpc("tg_clear_owner"), "Unpaired.")}>
+              <Button size="sm" variant="ghost" disabled={busy === "owner_clear"}>Stop</Button>
+            </Confirm>
+          </div>
+        )}
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {state === "unset" ? OWNER_WORDS.unset : `${OWNER_WORDS[state]} Paired with ${who}${settings?.owner_set_at ? " on " + dhakaTime(settings.owner_set_at) : ""}.`}
+      </p>
+      {code ? (
+        <div className="mt-2 rounded-md border border-primary/40 bg-background p-3">
+          <p className="text-xs text-muted-foreground">Open {bot} in Telegram (a private chat, not the group) and send exactly this line, within 10 minutes:</p>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <code className="rounded bg-muted px-2 py-1 font-mono text-base" aria-label="Owner code">{ownerCommand(code)}</code>
+            <Button size="sm" variant="outline" onClick={() => navigator.clipboard?.writeText(ownerCommand(code))}>Copy</Button>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">The bot answers once it is paired; this card updates on the next refresh.</p>
+        </div>
+      ) : state !== "unset" ? (
+        <Button size="sm" variant="ghost" className="mt-1 px-0" disabled={busy === "owner_code"} onClick={getCode}>Pair a different Telegram account</Button>
+      ) : null}
+    </div>
   );
 }
 

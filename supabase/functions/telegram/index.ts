@@ -12,7 +12,7 @@
 // verify_jwt=false: each path checks its own caller.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "./cors.ts";
-import { replyFor, welcomeText, type ClaimStatus, type ReplyMode } from "./wording.ts";
+import { ownerClaimText, replyFor, welcomeText, type ClaimStatus, type ReplyMode } from "./wording.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -147,6 +147,14 @@ async function onPrivate(m: TgMessage): Promise<void> {
   if (error) { console.error("tg_private_seen failed", error.code); return; }
   const first = (data as { first?: boolean } | null)?.first === true;
   const text = (m.text ?? "").trim();
+  // "/owner <code>": the owner pairs this chat for copies of private notices (migration 121). The code never travels back.
+  if (/^\/owner\b/i.test(text)) {
+    const { data: c } = await db.rpc("tg_owner_claim", { p_user_id: from.id, p_chat_id: m.chat.id, p_text: text });
+    const r = c as { claimed?: boolean; why?: string } | null;
+    const why = r?.claimed ? "claimed" : r?.why === "expired" ? "expired" : r?.why === "no_code" ? "no_code" : "wrong";
+    await tg("sendMessage", { chat_id: m.chat.id, text: ownerClaimText(why) });
+    return;
+  }
   // The first message (usually /start) is always answered; later ones only when they are a command or text, not a photo,
   // so a person who chats here is told once per message where TrxIDs go, and a photo never gets a reply (it is not read).
   if (first || text) await tg("sendMessage", { chat_id: m.chat.id, text: welcomeText(first), disable_notification: !first });
