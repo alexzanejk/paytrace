@@ -21,6 +21,7 @@ import { JobHistory } from "@/pages/JobHistory";
 import { Logs } from "@/pages/Logs";
 import { ApiAccess } from "@/pages/ApiAccess";
 import { SiteNumbers } from "@/pages/SiteNumbers";
+import { TelegramClaims } from "@/pages/TelegramClaims";
 import { PayPageCode } from "@/pages/PayPageCode";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { Help } from "@/pages/Help";
@@ -127,6 +128,7 @@ function Pages({ tab, settings, onSettings }: { tab: TabId; settings: Settings |
       {tab === "logs" && <Logs />}
       {tab === "api" && <ApiAccess />}
       {tab === "numbers" && <SiteNumbers />}
+      {tab === "telegram" && <TelegramClaims />}
       {tab === "paycode" && <PayPageCode />}
       {tab === "settings" && <SettingsPage onSaved={onSettings} />}
       {tab === "help" && <Help />}
