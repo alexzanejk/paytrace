@@ -39,10 +39,14 @@ export interface UserSummary {
 export interface TelegramSettings {
   group_chat_id: number | null; group_title: string | null; reply_mode: ReplyMode; webhook_set_at: string | null; bot_username: string | null;
   payout_reply?: boolean | null; // step 5: tell the person in the group when their payout is paid (default on)
+  owner_chat_id?: number | null; // migration 121: the owner's own chat with the bot, paired by a one-time code
+  owner_user_id?: number | null;
+  owner_set_at?: string | null;
+  owner_copy?: boolean | null;   // a copy of every private notice goes to that chat (default on once paired)
 }
 /** Whether the bot may write to a person privately (migration 119): Telegram allows it only after the person wrote to
  *  the bot first (pressed Start), and a refusal (blocked, never started) is remembered until they write again. */
-export interface TelegramUserDm { tg_user_id: number; dm_since: string | null; dm_blocked_at: string | null; dm_blocked_why?: string | null }
+export interface TelegramUserDm { tg_user_id: number; dm_since: string | null; dm_blocked_at: string | null; dm_blocked_why?: string | null; username?: string | null }
 export type DmState = "private" | "blocked" | "group_only";
 export function dmState(u: Pick<TelegramUserDm, "dm_since" | "dm_blocked_at"> | null | undefined): DmState {
   if (!u || !u.dm_since) return "group_only";
@@ -167,3 +171,19 @@ export function periodRange(id: "today" | "7d" | "30d", now = new Date()): { fro
 export function cleanTrx(s: string): string {
   return s.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 24);
 }
+
+/** Copies of private notices to the owner (migration 121): not paired yet, paired and on, or paired and switched off. */
+export type OwnerState = "unset" | "on" | "off";
+export function ownerState(s: Pick<TelegramSettings, "owner_chat_id" | "owner_copy"> | null | undefined): OwnerState {
+  if (!s || !s.owner_chat_id) return "unset";
+  return s.owner_copy === false ? "off" : "on";
+}
+/** What the owner sends the bot to pair their chat. The code is shown once and dies after 10 minutes. */
+export function ownerCommand(code: string): string {
+  return "/owner " + String(code).replace(/\D/g, "").slice(0, 6);
+}
+export const OWNER_WORDS: Record<OwnerState, string> = {
+  unset: "Not set up. Get a code, send it to the bot from your own Telegram, and every private notice is copied to you.",
+  on: "On: every private payout notice is also sent to your own chat with the bot, word for word, with the person's name on top.",
+  off: "Paired, but copies are switched off.",
+};

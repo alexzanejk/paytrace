@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { trxCandidates } from "../supabase/functions/telegram/candidates.ts";
 import { trxCandidates as workerCandidates } from "../ocr-worker/src/candidates.ts";
-import { replyFor, welcomeText } from "../supabase/functions/telegram/wording.ts";
+import { ownerClaimText, replyFor, welcomeText } from "../supabase/functions/telegram/wording.ts";
 import {
-  DM_WORDS, STATUS_ORDER, STATUS_WORDS, claimDetail, cleanTrx, connectState, dmById, dmState, inviteText, needsOwner, needsYou, paymentLine, periodRange, personLabel, statusCounts, userLabel,
+  DM_WORDS, OWNER_WORDS, STATUS_ORDER, STATUS_WORDS, claimDetail, cleanTrx, connectState, dmById, dmState, inviteText, needsOwner, needsYou, ownerCommand, ownerState, paymentLine, periodRange, personLabel, statusCounts, userLabel,
   type Claim,
 } from "../dashboard/src/lib/telegram.ts";
 
@@ -74,6 +74,13 @@ const inv = inviteText("boss12339_bot");
 check("invitation names the bot once per language and says Start", inv.split("@boss12339_bot").length === 3 && inv.includes("Start") && inv.includes("নম্বরসহ"));
 check("invitation without a bot name still reads", inviteText(null).includes("our bot") && !inviteText("@x").includes("@@"));
 check("welcome: the first private message explains, later ones point to the group", welcomeText(true).includes("private message") && welcomeText(false).includes("group") && !/\d{5,}/.test(welcomeText(true) + welcomeText(false)));
+
+// copies of private notices to the owner (migration 121)
+check("owner: not paired", ownerState(null) === "unset" && ownerState({ owner_chat_id: null, owner_copy: true }) === "unset");
+check("owner: paired and on / off", ownerState({ owner_chat_id: 5, owner_copy: true }) === "on" && ownerState({ owner_chat_id: 5, owner_copy: null }) === "on" && ownerState({ owner_chat_id: 5, owner_copy: false }) === "off");
+check("owner command keeps only the six digits", ownerCommand("482913") === "/owner 482913" && ownerCommand(" 48-29-13x ") === "/owner 482913");
+check("owner words for every state", (["unset", "on", "off"] as const).every((k) => OWNER_WORDS[k].length > 10));
+check("bot answers to /owner never carry a code", !/\d{4,}/.test(ownerClaimText("claimed") + ownerClaimText("wrong") + ownerClaimText("expired") + ownerClaimText("no_code")) && ownerClaimText("expired").includes("expired") && ownerClaimText("claimed").includes("copy"));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

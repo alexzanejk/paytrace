@@ -809,3 +809,12 @@ carries a small mark: **private inbox ✓**, **group only** (not opened the bot 
 of a person says whether each notice went privately or in the group. A name you type on the Payout page's chip as
 "@username" counts too: when it is a known Telegram username, a payout of those transactions tells that person. A name
 typed without the @ (or a handle the bot has never seen) is only a label, and no notice goes out for it.
+
+**A copy of every private notice comes to you (2026-11-20).** Nobody can read a bot's private chats, so the bot sends YOU
+the same text it sent the person, at the same moment, in your own chat with the bot. Set it up once: on the Telegram
+page's bot card press **Get a code** under "Copies of private notices to you", open @boss12339_bot in Telegram (a
+private chat, not the group), and send the line shown, for example `/owner 482913`, within 10 minutes. The bot answers
+"This chat is now the owner's", and from then on each private notice arrives in your chat as "📋 sent privately to
+@person:" followed by the exact message, full number included. The switch on the card pauses the copies; **Stop**
+unpairs. Group replies are not copied (you see them in the group). Only the person who sends the code gets the copies,
+so never share a code.
