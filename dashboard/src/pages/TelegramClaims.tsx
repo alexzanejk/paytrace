@@ -57,7 +57,7 @@ export function TelegramClaims() {
     async () => {
       const { from, to } = periodRange(period);
       const [settings, chats, claims, users, pay, dms] = await Promise.all([
-        sb.from("telegram_settings").select("group_chat_id,group_title,reply_mode,webhook_set_at,bot_username,payout_reply,owner_chat_id,owner_user_id,owner_set_at,owner_copy").eq("id", true).maybeSingle(),
+        sb.from("telegram_settings").select("group_chat_id,group_title,reply_mode,webhook_set_at,bot_username,payout_reply,owner_chat_id,owner_user_id,owner_set_at,owner_copy,payout_group_fallback").eq("id", true).maybeSingle(),
         sb.from("telegram_chats").select("chat_id,title,kind,last_seen_at,messages").order("last_seen_at", { ascending: false }).limit(20),
         sb.rpc("tg_claims", { p_from: from.toISOString(), p_to: to.toISOString(), p_status: null }),
         sb.rpc("tg_user_summary", { p_from: from.toISOString() }),
@@ -175,9 +175,17 @@ export function TelegramClaims() {
           <span>
             <span className="font-medium">Tell the person when their payout is paid</span>
             <span className="block text-xs text-muted-foreground">
-              Privately first: a person who has opened the bot (pressed Start once) gets a private message with the amount, the full number and the TrxID.
-              Anyone else gets a reply to their own post in the group, with the middle digits of the number hidden. Separate from the text replies above.
+              Private only: a person who has opened the bot (pressed Start once) gets a private message with the amount, the full number and the TrxID.
+              A person who has not gets nothing, and you are told. Separate from the text replies above.
             </span>
+          </span>
+        </label>
+        <label className="mt-2 flex items-start gap-3 text-sm">
+          <Switch checked={data?.settings?.payout_group_fallback === true} disabled={busy === "group_fallback"} aria-label="Also reply in the group when the person has no private chat"
+            onCheckedChange={(on) => act("group_fallback", () => sb.rpc("tg_set_group_fallback", { p_on: on }), on ? "On: people without a private chat get a reply in the group (number hidden)." : "Off: private only.")} />
+          <span>
+            <span className="font-medium">Also reply in the group when the person has no private chat</span>
+            <span className="block text-xs text-muted-foreground">Off by default. When on, a person who never pressed Start gets a reply under their own post in the group, with the middle digits hidden.</span>
           </span>
         </label>
         <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3 text-sm">

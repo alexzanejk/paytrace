@@ -95,17 +95,16 @@ async function reply(chatId: number, messageId: number, text: string): Promise<b
 }
 
 /** Step 5 (owner 2026-11-20): messages the database queued in telegram_outbox, today only the "payout sent" notice
- *  (migration 118 writes it when a payout tied to a Telegram person becomes paid). Migration 119: the person's PRIVATE
- *  chat first (the text with the full number) when they have written to the bot; when Telegram refuses that chat for a
- *  lasting reason (never pressed Start, blocked the bot) the person is marked and the GROUP text (hidden number) goes out
- *  as a reply to their own post, else as a plain message in the group. A refusal of the group message is counted and
- *  given up on after 3 tries. Drained after every update, after every OCR answer, and by the pg_cron tick ("drain"). */
+ *  (migration 118 writes it when a payout tied to a Telegram person becomes paid) and the owner's copies (121/123).
+ *  Migration 119/122: the person's PRIVATE chat (the text with the full number) when they have written to the bot; the
+ *  GROUP reply (hidden number) only while the owner's group-fallback switch is on, else a refused private chat is given
+ *  up on and the owner is told. Drained after every update, after every OCR answer, and by the pg_cron tick ("drain"). */
 const DM_REFUSED = /blocked|initiate|not found|deactivated|forbidden/i;
 async function drainOutbox(): Promise<number> {
   let sent = 0;
   try {
-    const { data } = await db.rpc("tg_outbox_next2", { p_limit: 5 });
-    for (const o of (data ?? []) as Array<{ id: string; chat_id: number; reply_to: number | null; text: string; dm_chat_id: number | null; dm_text: string | null }>) {
+    const { data } = await db.rpc("tg_outbox_next3", { p_limit: 5 });
+    for (const o of (data ?? []) as Array<{ id: string; chat_id: number; reply_to: number | null; text: string; dm_chat_id: number | null; dm_text: string | null; group_ok: boolean }>) {
       let dmError: string | null = null, dmRefused = false;
       if (o.dm_chat_id && o.dm_text) {
         const d = await tg("sendMessage", { chat_id: o.dm_chat_id, text: String(o.dm_text).slice(0, 1000) });
@@ -117,6 +116,18 @@ async function drainOutbox(): Promise<number> {
         }
         dmError = String(d.description ?? "failed").slice(0, 200);
         dmRefused = DM_REFUSED.test(dmError);
+      }
+      // Migration 122: private only unless the owner switched the group fallback on (a copy to the owner is always a
+      // plain message to the owner's own chat and comes with group_ok true). A refused private chat with the group off is
+      // given up on at once; the database tells the owner it was not delivered.
+      if (!o.group_ok) {
+        if (dmError && !dmRefused) {
+          // a passing failure (network, rate limit): keep the row for the next drain, up to 3 tries
+          await db.rpc("tg_outbox_done2", { p_id: o.id, p_ok: false, p_error: "private chat: " + dmError, p_message_id: null, p_where: null, p_dm_error: dmError, p_dm_refused: false });
+        } else {
+          await db.rpc("tg_outbox_skip", { p_id: o.id, p_error: "private chat refused: " + (dmError ?? "no private chat") + " (group replies are off)", p_dm_refused: dmRefused });
+        }
+        continue;
       }
       const body: Record<string, unknown> = { chat_id: o.chat_id, text: String(o.text).slice(0, 1000) };
       if (o.reply_to) body.reply_parameters = { message_id: o.reply_to, allow_sending_without_reply: true };
