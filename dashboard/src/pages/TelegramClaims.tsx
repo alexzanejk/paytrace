@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { dhakaTime } from "@/lib/dayMoney";
 import {
-  REPLY_MODES, STATUS_ORDER, STATUS_WORDS, claimDetail, cleanTrx, connectState, needsOwner, paymentLine, periodRange, personLabel, statusCounts, taka,
+  REPLY_MODES, STATUS_ORDER, STATUS_WORDS, claimDetail, cleanTrx, connectState, needsOwner, needsYou, paymentLine, periodRange, personLabel, statusCounts, taka,
   type Claim, type ClaimStatus, type ReplyMode, type TelegramChat, type TelegramSettings, type UserSummary,
 } from "@/lib/telegram";
 
@@ -84,7 +84,7 @@ export function TelegramClaims() {
 
   const claims = data?.claims ?? [];
   const counts = statusCounts(claims);
-  const shown = filter === "all" ? claims : filter === "needs" ? claims.filter((c) => c.status === "conflict" || c.status === "review" || c.status === "unmatched") : claims.filter((c) => c.status === filter);
+  const shown = filter === "all" ? claims : filter === "needs" ? claims.filter(needsYou) : claims.filter((c) => c.status === filter);
   const connect = connectState(data?.settings ?? null, bot);
 
   async function act(key: string, run: () => PromiseLike<{ error: { message: string } | null } | void>, done: string) {
@@ -173,7 +173,7 @@ export function TelegramClaims() {
           <Button key={p} size="sm" variant={period === p ? "default" : "outline"} onClick={() => setPeriod(p)}>{p === "today" ? "Today" : p === "7d" ? "7 days" : "30 days"}</Button>
         ))}
         <span className="mx-1 text-muted-foreground">·</span>
-        <Button size="sm" variant={filter === "needs" ? "default" : "outline"} onClick={() => setFilter("needs")}>Needs you ({needsOwner(counts)})</Button>
+        <Button size="sm" variant={filter === "needs" ? "default" : "outline"} onClick={() => setFilter("needs")}>Needs you ({needsOwner(claims)})</Button>
         <Button size="sm" variant={filter === "all" ? "default" : "outline"} onClick={() => setFilter("all")}>All ({claims.length})</Button>
         {STATUS_ORDER.filter((s) => counts[s] > 0).map((s) => (
           <Button key={s} size="sm" variant={filter === s ? "default" : "outline"} onClick={() => setFilter(s)}>{STATUS_WORDS[s].label} ({counts[s]})</Button>

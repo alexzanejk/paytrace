@@ -107,8 +107,15 @@ export function statusCounts(claims: Claim[]): Record<ClaimStatus, number> {
   return out;
 }
 
-/** How many need the owner now: conflicts, looks and no-matches. */
-export const needsOwner = (counts: Record<ClaimStatus, number>) => counts.conflict + counts.review + counts.unmatched;
+/** Does this claim need the owner's eyes? Conflicts and "look at this" always; a no-match only when it was a real
+ *  attempt (a photo, or a text that carried a TrxID-shaped word). Plain chat in the group (a text with nothing
+ *  TrxID-shaped in it) is kept under "No match" and "All" but never counted as needing anyone (owner 2026-11-20:
+ *  12 of 14 "Needs you" were greetings and "please check"). */
+export const needsYou = (c: Pick<Claim, "status" | "kind" | "candidates">) =>
+  c.status === "conflict" || c.status === "review" || (c.status === "unmatched" && (c.kind === "photo" || c.candidates.length > 0));
+
+/** How many need the owner now. */
+export const needsOwner = (claims: Array<Pick<Claim, "status" | "kind" | "candidates">>) => claims.filter(needsYou).length;
 
 /** Where the bot stands, from the settings and the function's status answer, in one phrase and a next step. */
 export function connectState(s: TelegramSettings | null, status: { configured?: boolean; webhook_ok?: boolean; bot?: string | null } | null): { state: "no_token" | "not_connected" | "no_group" | "ready" | "unknown"; line: string; next: string } {

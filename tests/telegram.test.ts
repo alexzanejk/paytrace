@@ -3,7 +3,7 @@ import { trxCandidates } from "../supabase/functions/telegram/candidates.ts";
 import { trxCandidates as workerCandidates } from "../ocr-worker/src/candidates.ts";
 import { replyFor } from "../supabase/functions/telegram/wording.ts";
 import {
-  STATUS_ORDER, STATUS_WORDS, claimDetail, cleanTrx, connectState, needsOwner, paymentLine, periodRange, personLabel, statusCounts, userLabel,
+  STATUS_ORDER, STATUS_WORDS, claimDetail, cleanTrx, connectState, needsOwner, needsYou, paymentLine, periodRange, personLabel, statusCounts, userLabel,
   type Claim,
 } from "../dashboard/src/lib/telegram.ts";
 
@@ -51,8 +51,10 @@ const claim = (over: Partial<Claim>): Claim => ({
 check("detail: conflict names the first poster", claimDetail(claim({ status: "conflict", first_claim: { id: "x", tg_user_id: 2, username: "bob", name: "Bob", sent_at: "" } })) === "first submitted by @bob");
 check("detail: a new photo waits for the worker", claimDetail(claim({ status: "new", ocr_status: "pending" })) === "waiting for the OCR worker");
 check("detail: the note wins, else the read strings", claimDetail(claim({ status: "unmatched", note: "no TrxID in it" })) === "no TrxID in it" && claimDetail(claim({ note: null, candidates: ["A1B2C3D4"] })) === "read: A1B2C3D4");
-const counts = statusCounts([claim({}), claim({ status: "conflict" }), claim({ status: "unmatched" }), claim({ status: "held" })]);
-check("counts and what needs the owner", counts.matched === 1 && counts.conflict === 1 && needsOwner(counts) === 2);
+const some = [claim({}), claim({ status: "conflict" }), claim({ status: "unmatched", kind: "text", candidates: [] }), claim({ status: "held" }), claim({ status: "unmatched", kind: "photo", candidates: [] }), claim({ status: "unmatched", kind: "text", candidates: ["T2515F25A8"] }), claim({ status: "review" })];
+const counts = statusCounts(some);
+check("counts", counts.matched === 1 && counts.conflict === 1 && counts.unmatched === 3);
+check("needs you: conflicts, looks, unread photos and texts with a TrxID-shaped word; plain chat is left out (owner 2026-11-20)", needsOwner(some) === 4 && !needsYou({ status: "unmatched", kind: "text", candidates: [] }) && needsYou({ status: "unmatched", kind: "photo", candidates: [] }) && needsYou({ status: "unmatched", kind: "text", candidates: ["A1B2C3D4"] }) && !needsYou({ status: "matched", kind: "text", candidates: ["A1B2C3D4"] }));
 check("connect state: no token", connectState(null, { configured: false }).state === "no_token");
 check("connect state: webhook not set", connectState({ group_chat_id: null, group_title: null, reply_mode: "problems", webhook_set_at: null, bot_username: null }, { configured: true, webhook_ok: false, bot: "pt_bot" }).state === "not_connected");
 check("connect state: no group yet", connectState({ group_chat_id: null, group_title: null, reply_mode: "problems", webhook_set_at: "x", bot_username: "pt_bot" }, { configured: true, webhook_ok: true, bot: "pt_bot" }).state === "no_group");

@@ -758,7 +758,8 @@ still the Payout page's job.
 transaction it names, and a state: **Matched** (not paid out yet, thumbs-up sent), **Paid out** (already in a payout),
 **Held** (held for review in PayTrace, follows by itself when released), **No match** (no TrxID of ours: pick the transaction by hand or ignore), **Look** (ambiguous),
 **Duplicate** (same person again), **Conflict** (another person submitted that TrxID first: you decide). "Needs you" is
-the default view. At the bottom, **who is owed what**: matched transactions not yet in a payout, per person.
+the default view; plain chat in the group (a text with nothing that looks like a TrxID) is left out of it and sits only
+under "No match" and "All". At the bottom, **who is owed what**: matched transactions not yet in a payout, per person.
 
 **Limits to keep in mind:** bKash's receipt font turns some digits into letters, which PayTrace corrects only when the
 corrected TrxID fits exactly one transaction; a photo that cannot be read is answered with a request for the TrxID as
