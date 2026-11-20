@@ -764,3 +764,11 @@ the default view. At the bottom, **who is owed what**: matched transactions not 
 corrected TrxID fits exactly one transaction; a photo that cannot be read is answered with a request for the TrxID as
 text; Rocket screenshots have not been tested yet; the worker needs the VPS to be up, and photos posted while it is down
 are read when it comes back.
+
+**Names on the Payout page.** Every matched post also puts a NAME on that transaction: the site login the person typed
+in the group (like t9ceff6182), else their Telegram name. On the Payout page each transaction shows it as a small
+"name · from Telegram" chip, so you see who a payment belongs to before you pay. Where the bot could not sort it, the
+row shows **Set name**: tap it, type the login or name, Save. Tap a name to change or clear it; a name you type
+yourself always wins over the bot's, and clearing goes back to the bot's name if there is one. The search box on the
+Payout page also finds names. On the Telegram page, **Set login** / **Change login** beside a person fixes the login the
+bot read wrong or never saw; their transactions are renamed at once. Names change nothing about money.
