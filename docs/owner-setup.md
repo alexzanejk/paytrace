@@ -766,7 +766,8 @@ text; Rocket screenshots have not been tested yet; the worker needs the VPS to b
 are read when it comes back.
 
 **Names on the Payout page.** Every matched post also puts a NAME on that transaction: the site login the person typed
-in the group (like t9ceff6182), else their Telegram name. On the Payout page each transaction shows it as a small
+in the group (like t9ceff6182), else their Telegram @username (display names are not unique, usernames are; a person
+with no username shows their display name). On the Payout page each transaction shows it as a small
 "name · from Telegram" chip, so you see who a payment belongs to before you pay. Where the bot could not sort it, the
 row shows **Set name**: tap it, type the login or name, Save. Tap a name to change or clear it; a name you type
 yourself always wins over the bot's, and clearing goes back to the bot's name if there is one. The search box on the

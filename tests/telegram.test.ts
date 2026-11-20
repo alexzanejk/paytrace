@@ -40,15 +40,15 @@ check("the TrxID in a reply is cleaned", replyFor({ ...base, trx: "DKJ9<b>NWWLEH
 
 // ---- the page's pure parts ----
 check("every status has words and a place in the order", STATUS_ORDER.length === 9 && STATUS_ORDER.every((s) => STATUS_WORDS[s].label.length > 0));
-check("the person is named by the site login first, else the Telegram profile", personLabel({ site_username: "t9ceff6182", name: "Crazy", username: "cra_zy1", tg_user_id: 1 }) === "t9ceff6182 · Crazy (@cra_zy1)" && personLabel({ site_username: null, name: "Rifat", username: null, tg_user_id: 2 }) === "Rifat");
-check("user labels", userLabel({ name: "Alice", username: "alice", tg_user_id: 1 }) === "Alice (@alice)" && userLabel({ name: null, username: null, tg_user_id: 7001 }) === "user 7001" && userLabel({ name: "", username: "bob", tg_user_id: 2 }) === "@bob");
+check("the person is named by the site login first, else the Telegram @username", personLabel({ site_username: "t9ceff6182", name: "Crazy", username: "cra_zy1", tg_user_id: 1 }) === "t9ceff6182 · @cra_zy1" && personLabel({ site_username: null, name: "Rifat", username: null, tg_user_id: 2 }) === "Rifat");
+check("user labels: @username before the display name (names are not unique, owner 2026-11-20)", userLabel({ name: "Alice", username: "alice", tg_user_id: 1 }) === "@alice" && userLabel({ name: null, username: null, tg_user_id: 7001 }) === "user 7001" && userLabel({ name: "", username: "bob", tg_user_id: 2 }) === "@bob" && userLabel({ name: "Only Name", username: null, tg_user_id: 3 }) === "Only Name");
 const pay = { id: "p", trx_id: "DKJ9NWWLEH", provider: "bkash", amount: 2781, status: "tracked_only", review_reason: null, counterparty: "0182XXXX112", occurred_at: null, phone: "Vivo", paid_out: true };
 check("payment line", paymentLine(pay) === "bKash Tk 2,781.00 · TrxID DKJ9NWWLEH · Vivo · already in a payout" && paymentLine(null) === "no transaction");
 const claim = (over: Partial<Claim>): Claim => ({
   id: "c", status: "matched", kind: "photo", note: null, candidates: [], ocr_status: "done", tg_user_id: 1, username: "alice", name: "Alice",
   chat_id: -1, message_id: 1, sent_at: "2026-11-20T10:00:00Z", payment: pay, first_claim: null, ...over,
 });
-check("detail: conflict names the first poster", claimDetail(claim({ status: "conflict", first_claim: { id: "x", tg_user_id: 2, username: "bob", name: "Bob", sent_at: "" } })) === "first submitted by Bob (@bob)");
+check("detail: conflict names the first poster", claimDetail(claim({ status: "conflict", first_claim: { id: "x", tg_user_id: 2, username: "bob", name: "Bob", sent_at: "" } })) === "first submitted by @bob");
 check("detail: a new photo waits for the worker", claimDetail(claim({ status: "new", ocr_status: "pending" })) === "waiting for the OCR worker");
 check("detail: the note wins, else the read strings", claimDetail(claim({ status: "unmatched", note: "no TrxID in it" })) === "no TrxID in it" && claimDetail(claim({ note: null, candidates: ["A1B2C3D4"] })) === "read: A1B2C3D4");
 const counts = statusCounts([claim({}), claim({ status: "conflict" }), claim({ status: "unmatched" }), claim({ status: "held" })]);

@@ -63,20 +63,21 @@ export const REPLY_MODES: Array<{ id: ReplyMode; label: string; meaning: string 
 ];
 
 /** The name the owner pays under (owner 2026-11-20): the site login the person typed in the group, else their Telegram
- *  profile. "t9ceff6182 · Crazy (@cra_zy1)" when both are known. */
+ *  profile. "t9ceff6182 · @cra_zy1" when both are known. */
 export function personLabel(u: { site_username?: string | null; username?: string | null; name?: string | null; tg_user_id: number }): string {
   const site = (u.site_username ?? "").trim();
   const tg = userLabel(u);
   return site ? `${site} · ${tg}` : tg;
 }
 
-/** "Alice (@alice)", "Alice", "@alice" or "user 7001". Never trusts the names for identity: the id is the key. */
+/** "@alice", "Alice" (no username) or "user 7001". The @username comes first because display names are not unique
+ *  (owner 2026-11-20); the display name is shown only for a person with no username. Never trusts the names for
+ *  identity: the id is the key. */
 export function userLabel(u: { username?: string | null; name?: string | null; tg_user_id: number }): string {
   const name = (u.name ?? "").trim();
   const handle = (u.username ?? "").trim();
-  if (name && handle) return `${name} (@${handle})`;
-  if (name) return name;
   if (handle) return `@${handle}`;
+  if (name) return name;
   return `user ${u.tg_user_id}`;
 }
 
