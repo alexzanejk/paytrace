@@ -30,6 +30,8 @@ import { SendWayChoice } from "@/components/SendWayChoice";
 import { type SendWay, wayWords } from "@/lib/sendWay";
 import { CommandWhy } from "@/components/CommandWhy";
 import { DefaultShare, ExtraPayoutForm, ExtraPayoutList, PaidTwiceCard } from "@/components/PayoutExtras";
+import { PayoutName } from "@/components/PayoutName";
+import { nameOf as nameOf2, namesAmong, namesById, safeNameTerm, type PaymentName } from "@/lib/payNames";
 
 /** Only money RECEIVED can be paid out (the database's payout_refusal says the same). */
 const PAYABLE_TYPES = ["cash_out", "send_money_received", "payment_received"];
@@ -41,6 +43,8 @@ async function inChunks<T>(ids: string[], ask: (part: string[]) => PromiseLike<{
   return out;
 }
 const safeSearch = (q: string) => q.replace(/[^A-Za-z0-9*+\-]/g, "").slice(0, 40);
+/** The search also finds the NAME on a transaction (owner 2026-11-20); that term may carry _ . @ and spaces. */
+const safeName = safeNameTerm;
 
 type Show = "open" | "paid" | "all";
 
@@ -88,7 +92,14 @@ export function Payouts() {
         .limit(limit);
       if (device !== ALL) q = q.eq("device_id", device);
       if (provider !== ALL) q = q.eq("provider", provider);
-      if (term) q = q.or(`trx_id.ilike.%${term}%,counterparty.ilike.%${term}%`);
+      if (term) {
+        // A name typed in the box: the transactions named so (at most 200) join the TrxID / number match.
+        const nameTerm = safeName(search);
+        const named = nameTerm.length >= 2
+          ? (must(await sb.from("payment_names").select("payment_id").ilike("name", `%${nameTerm}%`).limit(200)) as { payment_id: string }[]).map((r) => r.payment_id)
+          : [];
+        q = q.or(`trx_id.ilike.%${term}%,counterparty.ilike.%${term}%${named.length ? `,id.in.(${named.join(",")})` : ""}`);
+      }
       const res = await q;
       if (res.error) throw new Error(res.error.message);
       const rows = (res.data ?? []) as Payment[];
@@ -98,6 +109,8 @@ export function Payouts() {
       const picked = (await inChunks(asked, (part) => sb.from("payments").select("*").in("id", part))) as Payment[];
       const ids = [...onList, ...picked.map((r) => r.id)];
       const items = (await inChunks(ids, (part) => sb.from("payout_items").select("payout_id,payment_id,amount,live").in("payment_id", part))) as PayoutItemRow[];
+      // Who each transaction is paid to: the bot's name or the owner's (migration 114).
+      const names = (await inChunks(ids, (part) => sb.from("payment_names").select("payment_id,name,source,tg_user_id").in("payment_id", part))) as PaymentName[];
       const recent = must(await sb.from("payouts").select("*").order("created_at", { ascending: false }).limit(300)) as PayoutRow[];
       const known = new Set(recent.map((p) => p.id));
       const missing = [...new Set(items.map((i) => i.payout_id))].filter((id) => !known.has(id));
@@ -105,17 +118,18 @@ export function Payouts() {
       const extras = must(await sb.from("payouts").select("*").eq("extra", true).order("created_at", { ascending: false }).limit(100)) as PayoutRow[];
       const settings = must(await sb.from("payout_settings").select("keep_pct,send_money_fee").limit(1)) as { keep_pct: number | string; send_money_fee?: number | string }[];
       return {
-        rows, picked, asked, total: res.count ?? 0, items, payouts: [...recent, ...older], extras,
+        rows, picked, asked, total: res.count ?? 0, items, names, payouts: [...recent, ...older], extras,
         keepPct: Number(settings[0]?.keep_pct ?? 20), sendFee: Number(settings[0]?.send_money_fee ?? 10),
       };
     },
-    [device, provider, startIso, endIso, term, limit, [...ticked].join(",")],
+    [device, provider, startIso, endIso, term, safeName(search), limit, [...ticked].join(",")],
     { refreshMs: 10000 },
   );
 
   const rows = data?.rows ?? [];
   const payoutsById = useMemo(() => new Map((data?.payouts ?? []).map((p) => [p.id, p])), [data]);
   const liveOf = useMemo(() => liveItemsByPayment(data?.items ?? []), [data]);
+  const names = useMemo(() => namesById(data?.names ?? []), [data]);
   const taken = useMemo(() => new Set(liveOf.keys()), [liveOf]);
   const shown = rows.filter((p) => (show === "all" ? true : show === "paid" ? taken.has(p.id) : !taken.has(p.id)));
 
@@ -226,7 +240,7 @@ export function Payouts() {
         </div>
         <div className="relative w-full sm:w-64">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-          <Input className="pl-9" placeholder="Search TrxID or number" aria-label="Search" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input className="pl-9" placeholder="Search TrxID, number or name" aria-label="Search" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
       </div>
 
@@ -246,6 +260,7 @@ export function Payouts() {
           devices={devices.list}
           nameOf={devices.nameOf}
           recent={recentNumbers(data?.payouts ?? [])}
+          names={names}
           offList={offList}
           onRemove={toggle}
           onDone={() => { clearTicks(); reload(); }}
@@ -284,7 +299,10 @@ export function Payouts() {
                     title={why === HELD_REFUSAL ? "Held for review: can only be marked paid by hand, and stays held" : why ?? "Tick to pay this out"}
                     onChange={() => toggle(p.id)}
                   />
-                  <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setOpen(isOpen ? null : p.id)} aria-expanded={isOpen}>
+                  <div className="min-w-0 flex-1">
+                  {/* The expand button holds only the first line: the name chip below is a button of its own, and a button
+                      may not sit inside another (the two read as one to a screen reader). */}
+                  <button type="button" className="block w-full text-left" onClick={() => setOpen(isOpen ? null : p.id)} aria-expanded={isOpen} aria-label={`${p.trx_id}: ${isOpen ? "hide" : "show"} details`}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex min-w-0 items-center gap-2">
                         {isOpen ? <ChevronDown className="h-4 w-4 shrink-0" aria-hidden /> : <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />}
@@ -293,9 +311,11 @@ export function Payouts() {
                       </div>
                       <span className="text-base font-semibold tabular">{tk(p.amount)}</span>
                     </div>
+                  </button>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                       <DeviceChip id={p.device_id} name={devices.nameOf(p.device_id)} />
                       <span>{when(p.occurred_at ?? p.received_at)}</span>
+                      <PayoutName paymentId={p.id} name={names.get(p.id)} onChanged={reload} />
                       <StatusBadge status={p.status} />
                       {payout ? (
                         <Badge tone={payoutWord(payout).tone}>
@@ -305,7 +325,7 @@ export function Payouts() {
                       ) : why === HELD_REFUSAL ? <span className="text-status-warn">Held: mark paid by hand only</span>
                         : why && why !== "Already paid out" ? <span className="text-status-warn">{why}</span> : null}
                     </div>
-                  </button>
+                  </div>
                 </div>
                 {isOpen ? (
                   <div className="ml-7 mt-3 space-y-2 border-t border-border pt-3 text-sm">
@@ -336,9 +356,11 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String((e as {
 
 /** The panel that appears once something is ticked: the split, the sender, the number (typed twice), and the confirm. */
 function PayoutPanel({
-  chosen, defaultPct, defaultFee, devices, nameOf, recent, offList, onRemove, onDone, onClear,
+  chosen, defaultPct, defaultFee, devices, nameOf, recent, names, offList, onRemove, onDone, onClear,
 }: {
   chosen: Payment[];
+  /** Who each transaction is paid to (the bot's or the owner's name), by transaction id. */
+  names: Map<string, PaymentName>;
   /** How many of the ticked transactions are not on the list right now (ticked before a search or other dates). */
   offList: number;
   onRemove: (id: string) => void;
@@ -390,6 +412,7 @@ function PayoutPanel({
   const nums = checkNumbers(first, second);
   const sizeProblem = split ? sendProblem(split.send, byHand ? "manual" : "cash_in") : "";
   const mixed = new Set(chosen.map((r) => `${r.device_id}:${r.provider}`)).size > 1;
+  const people = namesAmong(names, chosen.map((r) => r.id));
 
   const ready = !!split && !sizeProblem && (byHand ? (first.trim() ? !!nums.number : true) : !!nums.number && !!sender && !sender.why);
   const blockedBy = fee == null ? "Type the bKash fee to set aside (0 to 500 taka)."
@@ -446,6 +469,7 @@ function PayoutPanel({
           <li key={r.id} className="flex items-center gap-2 px-3 py-1.5">
             <ProviderChip provider={r.provider} />
             <span className="min-w-0 truncate font-mono text-xs">{r.trx_id}</span>
+            {nameOf2(names, r.id) ? <span className="min-w-0 truncate rounded bg-muted px-1 text-xs font-medium">{nameOf2(names, r.id)}</span> : null}
             <span className="hidden min-w-0 truncate text-xs text-muted-foreground sm:inline">{nameOf(r.device_id)} · {when(r.occurred_at ?? r.received_at)}</span>
             <span className="ml-auto shrink-0 font-medium tabular">{tk(r.amount)}</span>
             <button
@@ -464,6 +488,7 @@ function PayoutPanel({
         {offList ? ` ${offList} of them ${offList === 1 ? "is" : "are"} not in the list below right now.` : ""}
       </p>
       {mixed ? <p className="text-xs text-muted-foreground">These came in on more than one wallet; they are paid out together from the one wallet you choose below.</p> : null}
+      {people.length > 1 ? <p className="text-xs text-status-warn">These are named for {people.length} different people ({people.join(", ")}). One payout goes to ONE number: tick one person's transactions at a time unless that is what you mean.</p> : null}
 
       <div className="grid gap-4 md:grid-cols-3">
         <label className="space-y-1 text-sm">
