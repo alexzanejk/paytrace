@@ -1,6 +1,7 @@
 // PayTrace Telegram bot (step 2, owner 2026-11-20): receives every message of the owner's payment group, keeps who posted
-// what as a CLAIM (migration 112), answers in the group when something needs the poster, and serves the OCR worker on
-// the owner's VPS. Nothing here moves money.
+// what as a CLAIM (migrations 112/113), puts a thumbs-up on a post whose TrxID matched a transaction not yet paid out
+// (and says nothing otherwise, unless the owner switches text replies on), and serves the OCR worker on the owner's VPS.
+// Nothing here moves money.
 //
 // Who may call what:
 //   Telegram itself     POST with header X-Telegram-Bot-Api-Secret-Token = a secret derived from the bot token at setup
@@ -66,6 +67,25 @@ async function tg(method: string, body: Record<string, unknown>): Promise<{ ok: 
   } catch {
     // Never log the error: a fetch failure message can carry the token in the address.
     return { ok: false, description: "request failed" };
+  }
+}
+
+/** The bot's one ordinary word: a thumbs-up on a post whose TrxID matched a transaction not yet paid out (owner
+ *  2026-11-20: "if it finds a match it reacts to that post so I can see the bot did its job"). Nothing else gets a
+ *  reaction. Pending ones are drained after every update and every OCR answer, so a claim matched later (a hold released,
+ *  an owner's pick) is reacted to within the next message. */
+const THUMBS_UP = { type: "emoji", emoji: "👍" };
+async function drainReactions(): Promise<void> {
+  try {
+    const { data } = await db.rpc("tg_react_next", { p_limit: 5 });
+    for (const r of (data ?? []) as Array<{ id: string; chat_id: number; message_id: number }>) {
+      const ok = (await tg("setMessageReaction", { chat_id: r.chat_id, message_id: r.message_id, reaction: [THUMBS_UP] })).ok;
+      await db.rpc("tg_reacted", { p_claim: r.id, p_ok: ok });
+      // A refused reaction (the bot not in the group, an old message) is not tried again on every message.
+      if (!ok) await db.from("telegram_claims").update({ react_pending: false }).eq("id", r.id);
+    }
+  } catch (e) {
+    console.error("reactions failed", e instanceof Error ? e.name : "error");
   }
 }
 
@@ -135,6 +155,7 @@ async function onUpdate(update: { message?: TgMessage; channel_post?: TgMessage 
   });
   if (error) { console.error("tg_claim_add failed", error.code); return; }
   await maybeReply(data as Brief | null);
+  await drainReactions();
 }
 
 // ---------- the photo, for the worker and for the dashboard ----------
@@ -190,6 +211,7 @@ async function ocrDone(body: Record<string, unknown>): Promise<Response> {
   if (error) return json({ success: false, message: "could not save the read" }, 500);
   const b = { ...(data as Brief), kept: true } as Brief;
   await maybeReply(b);
+  await drainReactions();
   return json({ success: true, claim: data });
 }
 

@@ -2,7 +2,7 @@
 // Telegram group (a payment screenshot or a text) tied to the stored transaction it names, if any. Nothing here moves
 // money; paying a person out is the Payout page's job (step 4). Tested in tests/telegram.test.ts.
 
-export type ClaimStatus = "new" | "unmatched" | "matched" | "held" | "duplicate" | "conflict" | "review" | "ignored";
+export type ClaimStatus = "new" | "unmatched" | "matched" | "paid" | "held" | "duplicate" | "conflict" | "review" | "ignored";
 export type ReplyMode = "off" | "problems" | "all";
 
 export interface ClaimPayment {
@@ -20,6 +20,10 @@ export interface Claim {
   tg_user_id: number;
   username: string | null;
   name: string | null;
+  site_username?: string | null;      // the site login this person typed in the group (latest wins), owner-editable
+  site_username_seen?: string | null; // the one typed in THIS message
+  reacted?: boolean;                   // the bot's thumbs-up is on the post
+  react_pending?: boolean;
   chat_id: number;
   message_id: number;
   sent_at: string;
@@ -39,7 +43,8 @@ export interface TelegramChat { chat_id: number; title: string | null; kind: str
 
 /** Plain words for each claim state, in the order the page lists them. */
 export const STATUS_WORDS: Record<ClaimStatus, { label: string; tone: "ok" | "warn" | "bad" | "muted"; meaning: string }> = {
-  matched: { label: "Matched", tone: "ok", meaning: "The TrxID is one of our counted transactions. Ready for a payout once you decide." },
+  matched: { label: "Matched", tone: "ok", meaning: "The TrxID is one of our counted transactions, not paid out yet. The bot put a thumbs-up on the post." },
+  paid: { label: "Paid out", tone: "muted", meaning: "The transaction is already in a payout. No reaction, nothing to do." },
   held: { label: "Held", tone: "warn", meaning: "The transaction exists but is held for review in PayTrace. It follows by itself when released." },
   new: { label: "Reading", tone: "muted", meaning: "A photo the OCR worker has not read yet." },
   unmatched: { label: "No match", tone: "warn", meaning: "No TrxID of ours in this message. Pick the transaction by hand, or ignore it." },
@@ -48,13 +53,22 @@ export const STATUS_WORDS: Record<ClaimStatus, { label: string; tone: "ok" | "wa
   conflict: { label: "Conflict", tone: "bad", meaning: "Another person submitted this TrxID first. Decide who it belongs to." },
   ignored: { label: "Ignored", tone: "muted", meaning: "You dismissed it." },
 };
-export const STATUS_ORDER: ClaimStatus[] = ["conflict", "review", "unmatched", "held", "matched", "new", "duplicate", "ignored"];
+export const STATUS_ORDER: ClaimStatus[] = ["conflict", "review", "unmatched", "held", "matched", "paid", "new", "duplicate", "ignored"];
 
+/** TEXT replies. The thumbs-up reaction on a matched post is always on and is not a reply. */
 export const REPLY_MODES: Array<{ id: ReplyMode; label: string; meaning: string }> = [
-  { id: "off", label: "Never", meaning: "The bot writes nothing in the group." },
+  { id: "off", label: "Never (only the thumbs-up)", meaning: "The bot writes no text; a matched post gets a thumbs-up, anything else gets nothing." },
   { id: "problems", label: "Only when needed", meaning: "TrxID could not be read, transaction held, or already submitted." },
   { id: "all", label: "Every message", meaning: "Also a short \"received\" on every match." },
 ];
+
+/** The name the owner pays under (owner 2026-11-20): the site login the person typed in the group, else their Telegram
+ *  profile. "t9ceff6182 · Crazy (@cra_zy1)" when both are known. */
+export function personLabel(u: { site_username?: string | null; username?: string | null; name?: string | null; tg_user_id: number }): string {
+  const site = (u.site_username ?? "").trim();
+  const tg = userLabel(u);
+  return site ? `${site} · ${tg}` : tg;
+}
 
 /** "Alice (@alice)", "Alice", "@alice" or "user 7001". Never trusts the names for identity: the id is the key. */
 export function userLabel(u: { username?: string | null; name?: string | null; tg_user_id: number }): string {

@@ -3,7 +3,7 @@ import { trxCandidates } from "../supabase/functions/telegram/candidates.ts";
 import { trxCandidates as workerCandidates } from "../ocr-worker/src/candidates.ts";
 import { replyFor } from "../supabase/functions/telegram/wording.ts";
 import {
-  STATUS_ORDER, STATUS_WORDS, claimDetail, cleanTrx, connectState, needsOwner, paymentLine, periodRange, statusCounts, userLabel,
+  STATUS_ORDER, STATUS_WORDS, claimDetail, cleanTrx, connectState, needsOwner, paymentLine, periodRange, personLabel, statusCounts, userLabel,
   type Claim,
 } from "../dashboard/src/lib/telegram.ts";
 
@@ -23,6 +23,7 @@ check("nothing in empty or null", same(trxCandidates(""), []) && same(trxCandida
 check("the worker's copy reads the same", same(workerCandidates(sample), trxCandidates(sample)));
 check("the two TypeScript copies are byte for byte the same file", readFileSync("supabase/functions/telegram/candidates.ts", "utf8") === readFileSync("ocr-worker/src/candidates.ts", "utf8"));
 check("the SQL copy carries the same rule", /length\(t\) = 8 and t ~ '\[A-Z\]' and t ~ '\[0-9\]'\) or \(length\(t\) = 10 and t ~ '\[A-Z\]'\) or \(t ~ '\^\[0-9\]\{10\}\$'\)/.test(readFileSync("supabase/migrations/20261120_112_telegram_claims.sql", "utf8")));
+check("113 keeps 112's reader and adds paid, the thumbs-up and the site username", /tg_claim_judge2/.test(readFileSync("supabase/migrations/20261120_113_telegram_react_and_username.sql", "utf8")) && /'paid'/.test(readFileSync("supabase/migrations/20261120_113_telegram_react_and_username.sql", "utf8")));
 
 // ---- the bot's replies ----
 const base = { kind: "text" as const, ocrStatus: "none" as const, trx: "DKJ9NWWLEH", amount: 500 };
@@ -34,11 +35,12 @@ check("a photo not yet read is not asked for text", replyFor({ ...base, kind: "p
 check("a photo read with no TrxID is asked for the TrxID as text", replyFor({ ...base, kind: "photo", ocrStatus: "done", status: "unmatched", mode: "problems" })?.kind === "ask_trx");
 check("a text with no TrxID is asked at once", replyFor({ ...base, status: "unmatched", mode: "problems" })?.kind === "ask_trx");
 check("duplicate and conflict are answered neutrally", replyFor({ ...base, status: "duplicate", mode: "problems" })?.kind === "duplicate" && !/thief|fake/i.test(replyFor({ ...base, status: "conflict", mode: "problems" })!.text));
-check("new, review and ignored are silent", ["new", "review", "ignored"].every((s) => replyFor({ ...base, status: s as never, mode: "all" }) === null));
+check("new, paid, review and ignored are silent", ["new", "paid", "review", "ignored"].every((s) => replyFor({ ...base, status: s as never, mode: "all" }) === null));
 check("the TrxID in a reply is cleaned", replyFor({ ...base, trx: "DKJ9<b>NWWLEH", status: "held", mode: "all" })!.text.includes("DKJ9BNWWLEH") === true);
 
 // ---- the page's pure parts ----
-check("every status has words and a place in the order", STATUS_ORDER.length === 8 && STATUS_ORDER.every((s) => STATUS_WORDS[s].label.length > 0));
+check("every status has words and a place in the order", STATUS_ORDER.length === 9 && STATUS_ORDER.every((s) => STATUS_WORDS[s].label.length > 0));
+check("the person is named by the site login first, else the Telegram profile", personLabel({ site_username: "t9ceff6182", name: "Crazy", username: "cra_zy1", tg_user_id: 1 }) === "t9ceff6182 · Crazy (@cra_zy1)" && personLabel({ site_username: null, name: "Rifat", username: null, tg_user_id: 2 }) === "Rifat");
 check("user labels", userLabel({ name: "Alice", username: "alice", tg_user_id: 1 }) === "Alice (@alice)" && userLabel({ name: null, username: null, tg_user_id: 7001 }) === "user 7001" && userLabel({ name: "", username: "bob", tg_user_id: 2 }) === "@bob");
 const pay = { id: "p", trx_id: "DKJ9NWWLEH", provider: "bkash", amount: 2781, status: "tracked_only", review_reason: null, counterparty: "0182XXXX112", occurred_at: null, phone: "Vivo", paid_out: true };
 check("payment line", paymentLine(pay) === "bKash Tk 2,781.00 · TrxID DKJ9NWWLEH · Vivo · already in a payout" && paymentLine(null) === "no transaction");

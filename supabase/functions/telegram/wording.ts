@@ -1,12 +1,13 @@
 // What the bot writes back in the group, and when. Pure, no I/O, unit tested (tests/telegram.test.ts).
 //
-// The owner's reply mode (telegram_settings.reply_mode): off = never; problems = only when something needs the poster
-// (TrxID unreadable, transaction held, already submitted); all = also a short "received" on every match. Bangla first,
-// a short English line after. "Received" never says "found" or "verified" (the 2026-11-04 lesson: পাওয়া গেছে reads as
+// The bot's ordinary word is a thumbs-up REACTION on a matched post (sent by index.ts, not here). TEXT replies follow the
+// owner's reply mode (telegram_settings.reply_mode), OFF by default (owner 2026-11-20: no match = no reaction, no reply):
+// problems = only when something needs the poster (TrxID unreadable, transaction held, already submitted); all = also a
+// short "received" on every match. Bangla first, a short English line after. "Received" never says "found" or "verified" (the 2026-11-04 lesson: পাওয়া গেছে reads as
 // proven), because a match only means PayTrace holds that TrxID; paying out is a separate, human step.
 
 export type ReplyMode = "off" | "problems" | "all";
-export type ClaimStatus = "new" | "unmatched" | "matched" | "held" | "duplicate" | "conflict" | "review" | "ignored";
+export type ClaimStatus = "new" | "unmatched" | "matched" | "paid" | "held" | "duplicate" | "conflict" | "review" | "ignored";
 
 export interface ReplyInput {
   status: ClaimStatus;
@@ -41,6 +42,7 @@ export function replyFor(i: ReplyInput): { kind: string; text: string } | null {
       return { kind: "duplicate", text: `ℹ️ TrxID ${trx} আগেই জমা দেওয়া হয়েছে।\nThis TrxID was already submitted.` };
     case "conflict":
       return { kind: "conflict", text: `⚠️ TrxID ${trx} আগেই জমা হয়েছে; অ্যাডমিন দেখবেন।\nThis TrxID was already submitted; an admin will check.` };
+    case "paid":
     case "review":
     case "ignored":
       return null;

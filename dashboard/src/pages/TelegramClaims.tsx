@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { dhakaTime } from "@/lib/dayMoney";
 import {
-  REPLY_MODES, STATUS_ORDER, STATUS_WORDS, claimDetail, cleanTrx, connectState, needsOwner, paymentLine, periodRange, statusCounts, taka, userLabel,
+  REPLY_MODES, STATUS_ORDER, STATUS_WORDS, claimDetail, cleanTrx, connectState, needsOwner, paymentLine, periodRange, personLabel, statusCounts, taka,
   type Claim, type ClaimStatus, type ReplyMode, type TelegramChat, type TelegramSettings, type UserSummary,
 } from "@/lib/telegram";
 
@@ -110,8 +110,8 @@ export function TelegramClaims() {
         description="Payment screenshots posted in your group, matched to the transactions PayTrace holds."
         help={
           <>
-            <p>The bot receives every message of the chosen group. A photo is read by the OCR worker on your VPS; the TrxID it finds, or one typed as text, is matched against PayTrace's own stored receipts. A screenshot never proves a payment by itself: only a TrxID PayTrace holds matches, and a held transaction stays held.</p>
-            <p className="mt-2">One TrxID is one claim. The same person again is a duplicate; another person first is a conflict for you to decide. Nothing on this page pays anyone: the Payout page does that, and the "who is owed what" list below is what it will start from.</p>
+            <p>The bot receives every message of the chosen group. A photo is read by the OCR worker on your VPS; the TrxID it finds, or one typed as text, is looked for among the transactions PayTrace holds that are not paid out yet. Found: the post gets a thumbs-up from the bot and is tied to the person (the site login they typed in the group, else their Telegram profile). Not found, already paid out, or unclear: nothing happens to the post.</p>
+            <p className="mt-2">A screenshot never proves a payment by itself; a held transaction stays held. One TrxID is one claim: the same person again is a duplicate, another person first is a conflict for you to decide. Nothing on this page pays anyone: the Payout page does that, and "who is owed what" below is what it will start from.</p>
           </>
         }
       />
@@ -144,7 +144,7 @@ export function TelegramClaims() {
             </Select>
           </div>
           <div className="min-w-0">
-            <label className="text-xs text-muted-foreground">When the bot replies in the group</label>
+            <label className="text-xs text-muted-foreground">Text replies in the group (the thumbs-up on a match is always on)</label>
             <Select value={data?.settings?.reply_mode ?? "problems"} onValueChange={(v) => act("mode", () => sb.rpc("tg_set_reply_mode", { p_mode: v as ReplyMode }), "Saved.")}>
               <SelectTrigger className="min-w-0 [&>span]:truncate"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -211,7 +211,8 @@ function ClaimRow({ claim: c, busy, act }: { claim: Claim; busy: string | null; 
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={toneOf(c.status)} title={w.meaning}>{w.label}</Badge>
-            <span className="font-medium">{userLabel(c)}</span>
+            {c.reacted ? <span title="The bot put a thumbs-up on this post" aria-label="thumbs-up sent">👍</span> : null}
+            <span className="font-medium">{personLabel(c)}</span>
             <span className="text-xs text-muted-foreground">id {c.tg_user_id} · {dhakaTime(c.sent_at)} · {c.kind === "photo" ? "photo" : "text"}</span>
           </div>
           <p className="mt-1 text-sm">{paymentLine(c.payment)}</p>
@@ -257,8 +258,8 @@ function UsersCard({ users }: { users: UserSummary[] }) {
           {owed.map((u) => (
             <div key={u.tg_user_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm">
               <div className="min-w-0">
-                <span className="font-medium">{userLabel(u)}</span>
-                <span className="ml-2 text-xs text-muted-foreground">id {u.tg_user_id}{u.site_username ? ` · site ${u.site_username}` : ""}{u.last_number ? ` · last paid to ${u.last_number}` : ""}</span>
+                <span className="font-medium">{personLabel(u)}</span>
+                <span className="ml-2 text-xs text-muted-foreground">id {u.tg_user_id}{u.last_number ? ` · last paid to ${u.last_number}` : ""}</span>
                 <div className="text-xs text-muted-foreground">
                   {u.matched} matched{u.held ? ` · ${u.held} held` : ""}{u.open ? ` · ${u.open} to look at` : ""}{u.conflicts ? ` · ${u.conflicts} conflict` : ""} · last {dhakaTime(u.last_at)}
                 </div>
