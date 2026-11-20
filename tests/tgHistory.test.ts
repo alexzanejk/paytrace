@@ -14,6 +14,8 @@ check("a failed plan is red with its reason", historyLine({ at: null, kind: "pla
 const l4 = historyLine({ at: null, kind: "payout", status: "paid", amount: 400, to: "01712345678", method: "cash_in", trx: "DKJ1X", count: 1 });
 check("a paid payout", l4.title === "Paid Tk 400.00 to 01712345678 (by Cash In) · TrxID DKJ1X" && l4.detail === "1 transaction" && l4.tone === "ok");
 check("a reply sent", historyLine({ at: null, kind: "reply", status: "sent", detail: "✅ @bob, …" }).title === "Reply sent in the group");
+check("a reply sent privately says so", historyLine({ at: null, kind: "reply", status: "sent", where: "private", detail: "✅ …" }).title === "Reply sent privately (their inbox)");
+check("a reply sent in the group says so when told", historyLine({ at: null, kind: "reply", status: "sent", where: "group", detail: "✅ …" }).title === "Reply sent in the group");
 check("a reply that failed is red", historyLine({ at: null, kind: "reply", status: "failed", detail: "x" }).tone === "bad");
 const csv = historyCsv([post, { at: "2026-11-20T11:00:00Z", kind: "reply", status: "sent", detail: "=HYPERLINK(\"x\")" }]);
 check("csv: header, one row per event, a formula-looking cell is made safe", csv.split("\n").length === 3 && csv.includes("when,what,detail") && csv.includes("'=HYPERLINK"));

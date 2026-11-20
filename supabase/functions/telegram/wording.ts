@@ -48,3 +48,13 @@ export function replyFor(i: ReplyInput): { kind: string; text: string } | null {
       return null;
   }
 }
+
+/** What the bot says when a person opens a private chat with it (migration 119): the one way Telegram lets a bot
+ *  message a person privately is after that person wrote to it first, so this confirms what they get for it. `first`
+ *  = the first private message from this person; later ones get a shorter line. Never a number, never an amount. */
+export function welcomeText(first: boolean): string {
+  if (first) {
+    return "✅ ধন্যবাদ! এখন থেকে আপনার পেমেন্ট পাঠানো হলে খবরটি এখানে ব্যক্তিগতভাবে পাবেন।\nThanks! From now on you will get a private message here when your payment is sent.";
+  }
+  return "ℹ️ এই চ্যাটে শুধু পেমেন্টের খবর আসে। TrxID বা স্ক্রিনশট গ্রুপে পোস্ট করুন।\nThis chat only carries your payment notices. Please post your TrxID or screenshot in the group.";
+}

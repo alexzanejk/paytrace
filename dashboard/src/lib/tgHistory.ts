@@ -13,6 +13,7 @@ export interface HistoryEvent {
   photo?: boolean | null;
   reacted?: boolean | null;
   reply?: string | null;
+  where?: string | null;    // reply: private | group (migration 119)
   count?: number | null;
   to?: string | null;
   method?: string | null;
@@ -63,7 +64,7 @@ export function historyLine(e: HistoryEvent): { title: string; detail: string; t
     };
   }
   if (e.kind === "reply") {
-    const st = e.status === "sent" ? "Reply sent in the group" : e.status === "failed" ? "Reply could not be sent" : "Reply waiting to be sent";
+    const st = e.status === "sent" ? (e.where === "private" ? "Reply sent privately (their inbox)" : "Reply sent in the group") : e.status === "failed" ? "Reply could not be sent" : "Reply waiting to be sent";
     return { title: st, detail: e.detail ?? "", tone: e.status === "failed" ? "bad" : e.status === "sent" ? "ok" : "idle" };
   }
   return { title: e.kind, detail: e.detail ?? "", tone: "idle" };
