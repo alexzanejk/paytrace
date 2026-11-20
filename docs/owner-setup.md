@@ -724,3 +724,39 @@ tell me what you see.
 
 **iPhone app (App Store / TestFlight):** not built. It needs an Apple Developer account in your name ($99 a year). The
 Add to Home Screen way above works on an iPhone today.
+
+## Telegram payment screenshots (2026-11-20, step 2 of the plan)
+
+People post their payment screenshots in your Telegram group. PayTrace can now read them: a bot receives every message
+of the group, the OCR worker on your VPS reads the TrxID out of each photo, and the TrxID is looked for among the
+transactions PayTrace holds that are **not paid out yet**. Found: the bot puts a **thumbs-up** on that post (so you see it
+handled it) and ties the transaction to the person, named by the site login they typed in the group (like t9ceff6182),
+else by their Telegram profile. Not found, already paid out, or unclear: nothing happens to the post, no reaction, no
+reply. A screenshot never proves a payment by itself; a held transaction stays held. Nothing here pays anyone; paying is
+still the Payout page's job.
+
+**Connect it (once, about five minutes):**
+
+1. Dashboard, **Pay out** section, **Telegram** tab, press **Connect the bot**. It uses the same bot that sends you the
+   Telegram alerts (the token already set in Supabase), so there is nothing new to create. If the page says the token is
+   not set, set `TELEGRAM_BOT_TOKEN` in Supabase first (Edge Functions, Secrets) and press Connect again.
+2. In Telegram, add that bot to the group **as an administrator** (an ordinary member bot does not see every message).
+3. Post any message in the group, go back to the dashboard page and pick the group under **The group the bot listens to**.
+   From that moment every photo and text posted there is kept.
+4. Text replies are OFF: the thumbs-up is the bot's only word. If you ever want text (for example "please type the TrxID"
+   when a photo cannot be read), choose it under "Text replies in the group"; the lines are short Bangla with English after.
+5. The OCR worker on your VPS: open the droplet's **Web Console** and paste
+   `curl -fsSL https://raw.githubusercontent.com/alexzanejk/paytrace/main/ocr-worker/setup.sh | bash`. It installs what
+   it needs from Ubuntu's own packages, asks you to type the Supabase **service** key once (hidden), and starts the
+   worker as its own user with a memory cap. It never touches the proxy on that machine. Run the same line again to update.
+
+**What the page shows:** every kept message with the person (name, @username and their permanent Telegram id), the
+transaction it names, and a state: **Matched** (not paid out yet, thumbs-up sent), **Paid out** (already in a payout),
+**Held** (held for review in PayTrace, follows by itself when released), **No match** (no TrxID of ours: pick the transaction by hand or ignore), **Look** (ambiguous),
+**Duplicate** (same person again), **Conflict** (another person submitted that TrxID first: you decide). "Needs you" is
+the default view. At the bottom, **who is owed what**: matched transactions not yet in a payout, per person.
+
+**Limits to keep in mind:** bKash's receipt font turns some digits into letters, which PayTrace corrects only when the
+corrected TrxID fits exactly one transaction; a photo that cannot be read is answered with a request for the TrxID as
+text; Rocket screenshots have not been tested yet; the worker needs the VPS to be up, and photos posted while it is down
+are read when it comes back.

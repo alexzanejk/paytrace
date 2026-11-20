@@ -1,4 +1,4 @@
-import { Bitcoin, Code2, HandCoins, BookOpen, BookText, Briefcase, ClipboardList, Hash, History, Home, KeyRound, ListChecks, Percent, Receipt, ScrollText, Settings2, Smartphone } from "lucide-react";
+import { Bitcoin, Code2, HandCoins, BookOpen, BookText, Briefcase, ClipboardList, Hash, History, Home, KeyRound, ListChecks, MessageSquare, Percent, Receipt, ScrollText, Settings2, Smartphone } from "lucide-react";
 
 /** Every page. Ids are stable (the address bar, bookmarks and `lib/filters.ts` use them), so a link such as `#/numbers`
  *  keeps working whatever the menu looks like. `label` is the page's name on its tab. The money pages keep Admin Hub's
@@ -11,6 +11,7 @@ export const TABS = [
   { id: "ledger", label: "Wallet ledger", icon: BookText },
   { id: "payout", label: "Payout", icon: HandCoins },
   { id: "commission", label: "Commission", icon: Percent },
+  { id: "telegram", label: "Telegram", icon: MessageSquare },
   { id: "jobs", label: "Set up", icon: Briefcase },
   { id: "jobhistory", label: "History", icon: History },
   { id: "devices", label: "Phones", icon: Smartphone },
@@ -32,7 +33,7 @@ export const isTabId = (v: string): v is TabId => TABS.some((t) => t.id === v);
 export const SECTIONS = [
   { id: "home", label: "Home", icon: Home, pages: ["overview"] },
   { id: "transactions", label: "Transactions", icon: Receipt, pages: ["payments", "orders", "review", "ledger"] },
-  { id: "payout", label: "Pay out", icon: HandCoins, pages: ["payout", "commission"] },
+  { id: "payout", label: "Pay out", icon: HandCoins, pages: ["payout", "commission", "telegram"] },
   { id: "jobs", label: "Jobs", icon: Briefcase, pages: ["jobs", "jobhistory"] },
   { id: "phones", label: "Phones", icon: Smartphone, pages: ["devices"] },
   { id: "websites", label: "Websites", icon: KeyRound, pages: ["api", "numbers", "crypto", "paycode"] },

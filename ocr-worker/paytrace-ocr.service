@@ -1,0 +1,28 @@
+[Unit]
+Description=PayTrace OCR worker (reads TrxIDs out of Telegram payment screenshots)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=paytrace
+Group=paytrace
+WorkingDirectory=/opt/paytrace/ocr-worker
+EnvironmentFile=/etc/paytrace-ocr.env
+ExecStart=/usr/bin/node /opt/paytrace/ocr-worker/dist/index.js
+Restart=always
+RestartSec=5
+# The proxy on this machine comes first: the worker may never grow past this.
+MemoryMax=600M
+CPUWeight=50
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/tmp
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,18 @@
+{
+  "name": "paytrace-ocr-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Reads the TrxID out of payment screenshots posted in the owner's Telegram group, on the owner's own VPS, with Tesseract. No dependencies beyond Node, Tesseract and ImageMagick.",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "once": "node dist/index.js --once"
+  },
+  "engines": { "node": ">=18.17" },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "@types/node": "^20.0.0"
+  }
+}

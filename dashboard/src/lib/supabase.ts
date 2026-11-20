@@ -12,6 +12,7 @@ export const LANDING = readLanding(typeof window === "undefined" ? "" : window.l
 
 export const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 export const INGEST_URL = `${SUPABASE_URL}/functions/v1/ingest`;
+export const TELEGRAM_URL = `${SUPABASE_URL}/functions/v1/telegram`;
 
 /** Throws on a failed query so screens can show one error message. */
 export function must<T>(result: { data: T | null; error: { message: string } | null }): T {
