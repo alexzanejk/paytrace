@@ -786,3 +786,12 @@ other, with the same wallet checks if it fails. The transactions of a queued pay
 "Queued for <name>" and will not let you tick them) so they can never go out twice. If the maker's rules refuse a plan
 when its turn comes (for example you paid one of its transactions by hand meanwhile), it ends as **Failed, not sent**
 with the reason, and nothing was sent. Held transactions are never in such a payout.
+
+**The bot tells the person when their payout is paid (step 5, 2026-11-20).** When a payout tied to a Telegram person
+becomes PAID (one you queued from the Telegram page, or one from the Payout page whose transactions carry that person's
+name), the bot replies to the person's own post in the group: "✅ @user, পেমেন্ট পাঠানো হয়েছে: Tk 1,286 → 0171XXXX678
+(TrxID …)" with the English line under it. The middle of the number is hidden; everyone in the group can read it. The
+switch is on the Telegram page's bot card ("Tell the person in the group when their payout is paid"), on by default.
+It is never sent for a payout that was paid twice, and never when the payout's transactions belong to two different
+people. Each person in "Who is owed what" also has a **History** button: their posts, what matched, the replies, the
+payouts queued and paid, with a CSV download.

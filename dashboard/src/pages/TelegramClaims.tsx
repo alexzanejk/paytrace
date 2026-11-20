@@ -6,6 +6,8 @@ import { PageHeader } from "@/components/PageHeader";
 import { Confirm } from "@/components/Confirm";
 import { PersonPayout } from "@/components/PersonPayout";
 import { PayoutQueue } from "@/components/PayoutQueue";
+import { PersonHistory } from "@/components/PersonHistory";
+import { Switch } from "@/components/ui/switch";
 import { useDevices } from "@/hooks/useDevices";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -56,7 +58,7 @@ export function TelegramClaims() {
     async () => {
       const { from, to } = periodRange(period);
       const [settings, chats, claims, users, pay] = await Promise.all([
-        sb.from("telegram_settings").select("group_chat_id,group_title,reply_mode,webhook_set_at,bot_username").eq("id", true).maybeSingle(),
+        sb.from("telegram_settings").select("group_chat_id,group_title,reply_mode,webhook_set_at,bot_username,payout_reply").eq("id", true).maybeSingle(),
         sb.from("telegram_chats").select("chat_id,title,kind,last_seen_at,messages").order("last_seen_at", { ascending: false }).limit(20),
         sb.rpc("tg_claims", { p_from: from.toISOString(), p_to: to.toISOString(), p_status: null }),
         sb.rpc("tg_user_summary", { p_from: from.toISOString() }),
@@ -166,6 +168,14 @@ export function TelegramClaims() {
             <p className="mt-1 text-xs text-muted-foreground">{REPLY_MODES.find((m) => m.id === (data?.settings?.reply_mode ?? "problems"))?.meaning}</p>
           </div>
         </div>
+        <label className="mt-3 flex items-start gap-3 text-sm">
+          <Switch checked={data?.settings?.payout_reply !== false} disabled={busy === "payout_reply"} aria-label="Tell the person in the group when their payout is paid"
+            onCheckedChange={(on) => act("payout_reply", () => sb.rpc("tg_set_payout_reply", { p_on: on }), on ? "On: the bot replies to the person when a payout is paid." : "Off: no payout replies.")} />
+          <span>
+            <span className="font-medium">Tell the person in the group when their payout is paid</span>
+            <span className="block text-xs text-muted-foreground">A reply to their own post with the amount, the number (middle digits hidden) and the TrxID. Everyone in the group can see it. Separate from the text replies above.</span>
+          </span>
+        </label>
       </Card>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -265,6 +275,7 @@ function UsersCard({ users, claims, devices, keepPct, sendFee, onChanged }: {
 }) {
   const owed = users.filter((u) => u.matched > 0);
   const [paying, setPaying] = useState<number | null>(null);
+  const [history, setHistory] = useState<number | null>(null);
   return (
     <Card className="mt-6 p-4">
       <h3 className="font-semibold">Who is owed what (this period)</h3>
@@ -283,11 +294,13 @@ function UsersCard({ users, claims, devices, keepPct, sendFee, onChanged }: {
               </div>
               <div className="flex items-center gap-3">
                 <div className="text-base font-semibold tabular-nums">{taka(u.matched_total)}</div>
+                <Button size="sm" variant="ghost" onClick={() => setHistory(history === u.tg_user_id ? null : u.tg_user_id)} aria-label={`History of ${personLabel(u)}`}>History</Button>
                 <Button size="sm" variant={paying === u.tg_user_id ? "outline" : "default"} onClick={() => setPaying(paying === u.tg_user_id ? null : u.tg_user_id)} aria-label={`Pay out ${personLabel(u)}`}>
                   {paying === u.tg_user_id ? "Close" : "Pay out"}
                 </Button>
               </div>
              </div>
+             {history === u.tg_user_id ? <PersonHistory userId={u.tg_user_id} label={personLabel(u)} onClose={() => setHistory(null)} /> : null}
              {paying === u.tg_user_id ? (
                <PersonPayout user={u} claims={claims} devices={devices} defaultPct={keepPct} defaultFee={sendFee} onDone={() => { setPaying(null); onChanged(); }} onClose={() => setPaying(null)} />
              ) : null}

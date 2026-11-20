@@ -94,6 +94,28 @@ async function reply(chatId: number, messageId: number, text: string): Promise<b
   return r.ok;
 }
 
+/** Step 5 (owner 2026-11-20): messages the database queued in telegram_outbox, today only the "payout sent" notice
+ *  (migration 118 writes it when a payout tied to a Telegram person becomes paid). Sent as a reply to the person's own
+ *  post when there is one, else as a plain message in the group; a refusal is counted and given up on after 3 tries.
+ *  Drained after every update, after every OCR answer, and by the pg_cron tick (action "drain") while rows wait. */
+async function drainOutbox(): Promise<number> {
+  let sent = 0;
+  try {
+    const { data } = await db.rpc("tg_outbox_next", { p_limit: 5 });
+    for (const o of (data ?? []) as Array<{ id: string; chat_id: number; reply_to: number | null; text: string }>) {
+      const body: Record<string, unknown> = { chat_id: o.chat_id, text: String(o.text).slice(0, 1000) };
+      if (o.reply_to) body.reply_parameters = { message_id: o.reply_to, allow_sending_without_reply: true };
+      const r = await tg("sendMessage", body);
+      const mid = r.ok && r.result && typeof r.result === "object" ? Number((r.result as { message_id?: number }).message_id ?? 0) || null : null;
+      await db.rpc("tg_outbox_done", { p_id: o.id, p_ok: r.ok, p_error: r.ok ? null : String(r.description ?? "failed").slice(0, 200), p_message_id: mid });
+      if (r.ok) sent++;
+    }
+  } catch (e) {
+    console.error("outbox failed", e instanceof Error ? e.name : "error");
+  }
+  return sent;
+}
+
 // ---------- claims ----------
 interface Brief {
   id: string; status: ClaimStatus; kind: "photo" | "text"; ocr_status: "none" | "pending" | "done" | "failed";
@@ -156,6 +178,7 @@ async function onUpdate(update: { message?: TgMessage; channel_post?: TgMessage 
   if (error) { console.error("tg_claim_add failed", error.code); return; }
   await maybeReply(data as Brief | null);
   await drainReactions();
+  await drainOutbox();
 }
 
 // ---------- the photo, for the worker and for the dashboard ----------
@@ -212,6 +235,7 @@ async function ocrDone(body: Record<string, unknown>): Promise<Response> {
   const b = { ...(data as Brief), kept: true } as Brief;
   await maybeReply(b);
   await drainReactions();
+  await drainOutbox();
   return json({ success: true, claim: data });
 }
 
@@ -241,6 +265,9 @@ async function handle(req: Request): Promise<Response> {
     return json({ ok: true });
   }
   const action = String(body.action ?? "");
+  // The pg_cron tick: send what waits. Unauthenticated on purpose (like gateway/deliver): it can only send messages the
+  // database already decided to send, sooner.
+  if (action === "drain") return json({ success: true, sent: await drainOutbox() });
   if (action === "ocr_next" || action === "ocr_done") {
     if (!isOurs(req)) return json({ success: false, message: "not allowed" }, 401);
     return action === "ocr_next" ? await ocrNext(body.limit) : await ocrDone(body);

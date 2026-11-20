@@ -38,6 +38,7 @@ export interface UserSummary {
 
 export interface TelegramSettings {
   group_chat_id: number | null; group_title: string | null; reply_mode: ReplyMode; webhook_set_at: string | null; bot_username: string | null;
+  payout_reply?: boolean | null; // step 5: tell the person in the group when their payout is paid (default on)
 }
 export interface TelegramChat { chat_id: number; title: string | null; kind: string | null; last_seen_at: string; messages: number }
 
