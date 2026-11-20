@@ -806,4 +806,6 @@ Telegram page's bot card, paste it in the group and pin it. It asks people to op
 The bot answers a person's first private message with what they will get there, and later private messages with
 "post your TrxID in the group" (nothing posted privately is ever read as a claim). In "Who is owed what" each person
 carries a small mark: **private inbox ✓**, **group only** (not opened the bot yet) or **blocked the bot**. The History
-of a person says whether each notice went privately or in the group.
+of a person says whether each notice went privately or in the group. A name you type on the Payout page's chip as
+"@username" counts too: when it is a known Telegram username, a payout of those transactions tells that person. A name
+typed without the @ (or a handle the bot has never seen) is only a label, and no notice goes out for it.
