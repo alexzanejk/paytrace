@@ -38,7 +38,31 @@ export interface UserSummary {
 
 export interface TelegramSettings {
   group_chat_id: number | null; group_title: string | null; reply_mode: ReplyMode; webhook_set_at: string | null; bot_username: string | null;
+  payout_reply?: boolean | null; // step 5: tell the person in the group when their payout is paid (default on)
 }
+/** Whether the bot may write to a person privately (migration 119): Telegram allows it only after the person wrote to
+ *  the bot first (pressed Start), and a refusal (blocked, never started) is remembered until they write again. */
+export interface TelegramUserDm { tg_user_id: number; dm_since: string | null; dm_blocked_at: string | null; dm_blocked_why?: string | null }
+export type DmState = "private" | "blocked" | "group_only";
+export function dmState(u: Pick<TelegramUserDm, "dm_since" | "dm_blocked_at"> | null | undefined): DmState {
+  if (!u || !u.dm_since) return "group_only";
+  return u.dm_blocked_at ? "blocked" : "private";
+}
+export const DM_WORDS: Record<DmState, { label: string; meaning: string; tone: "ok" | "warn" | "idle" }> = {
+  private: { label: "private inbox ✓", meaning: "This person has opened the bot, so payout notices go to their private chat (with the full number).", tone: "ok" },
+  blocked: { label: "blocked the bot", meaning: "Telegram refused the private chat (the person blocked the bot or removed it); notices go to the group until they write to the bot again.", tone: "warn" },
+  group_only: { label: "group only", meaning: "This person has not opened the bot yet, so payout notices are posted in the group (number hidden). Pin the invitation so they press Start.", tone: "idle" },
+};
+export const dmById = (rows: TelegramUserDm[] | null | undefined) => new Map((rows ?? []).map((r) => [r.tg_user_id, r] as const));
+
+/** The message the owner pins in the group so people open the bot and get their payout notices privately. */
+export function inviteText(botUsername: string | null | undefined): string {
+  const bot = botUsername ? "@" + botUsername.replace(/^@/, "") : "our bot";
+  return `📩 পেমেন্টের খবর ব্যক্তিগতভাবে পেতে ${bot} খুলে Start চাপুন (একবারই)। এরপর আপনার পেমেন্ট পাঠানো হলে বটটি আপনাকে সরাসরি মেসেজ দেবে, নম্বরসহ।
+`
+    + `To get your payment notices privately, open ${bot} and press Start once. After that the bot messages you directly, with the number, each time your payment is sent.`;
+}
+
 export interface TelegramChat { chat_id: number; title: string | null; kind: string | null; last_seen_at: string; messages: number }
 
 /** Plain words for each claim state, in the order the page lists them. */

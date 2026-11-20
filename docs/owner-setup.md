@@ -786,3 +786,24 @@ other, with the same wallet checks if it fails. The transactions of a queued pay
 "Queued for <name>" and will not let you tick them) so they can never go out twice. If the maker's rules refuse a plan
 when its turn comes (for example you paid one of its transactions by hand meanwhile), it ends as **Failed, not sent**
 with the reason, and nothing was sent. Held transactions are never in such a payout.
+
+**The bot tells the person when their payout is paid (step 5, 2026-11-20).** When a payout tied to a Telegram person
+becomes PAID (one you queued from the Telegram page, or one from the Payout page whose transactions carry that person's
+name), the bot replies to the person's own post in the group: "✅ @user, পেমেন্ট পাঠানো হয়েছে: Tk 1,286 → 0171XXXX678
+(TrxID …)" with the English line under it. The middle of the number is hidden; everyone in the group can read it. The
+switch is on the Telegram page's bot card ("Tell the person in the group when their payout is paid"), on by default.
+It is never sent for a payout that was paid twice, and never when the payout's transactions belong to two different
+people. Each person in "Who is owed what" also has a **History** button: their posts, what matched, the replies, the
+payouts queued and paid, with a CSV download.
+
+**The notice goes to the person's private inbox first (2026-11-20).** Telegram lets a bot write to a person privately
+only after that person has opened the bot and pressed **Start** (or sent it any message) once; a bot cannot start a
+private chat on its own. So: a person who has done that gets a PRIVATE message when their payout is paid, with the
+amount, the FULL number and the TrxID (nobody else sees it); everyone else gets the group reply as before, number
+hidden. When Telegram refuses the private chat (the person blocked the bot, or never started it), the bot posts in the
+group and remembers that until the person writes to the bot again. What you do: press **Copy the invitation** on the
+Telegram page's bot card, paste it in the group and pin it. It asks people to open @boss12339_bot and press Start once.
+The bot answers a person's first private message with what they will get there, and later private messages with
+"post your TrxID in the group" (nothing posted privately is ever read as a claim). In "Who is owed what" each person
+carries a small mark: **private inbox ✓**, **group only** (not opened the bot yet) or **blocked the bot**. The History
+of a person says whether each notice went privately or in the group.

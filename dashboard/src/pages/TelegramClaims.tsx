@@ -6,6 +6,8 @@ import { PageHeader } from "@/components/PageHeader";
 import { Confirm } from "@/components/Confirm";
 import { PersonPayout } from "@/components/PersonPayout";
 import { PayoutQueue } from "@/components/PayoutQueue";
+import { PersonHistory } from "@/components/PersonHistory";
+import { Switch } from "@/components/ui/switch";
 import { useDevices } from "@/hooks/useDevices";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,8 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { dhakaTime } from "@/lib/dayMoney";
 import {
-  REPLY_MODES, STATUS_ORDER, STATUS_WORDS, claimDetail, cleanTrx, connectState, needsOwner, needsYou, paymentLine, periodRange, personLabel, statusCounts, taka,
-  type Claim, type ClaimStatus, type ReplyMode, type TelegramChat, type TelegramSettings, type UserSummary,
+  DM_WORDS, REPLY_MODES, STATUS_ORDER, STATUS_WORDS, claimDetail, cleanTrx, connectState, dmById, dmState, inviteText, needsOwner, needsYou, paymentLine, periodRange, personLabel, statusCounts, taka, type Claim, type ClaimStatus, type ReplyMode, type TelegramChat, type TelegramSettings, type TelegramUserDm, type UserSummary,
 } from "@/lib/telegram";
 
 type Period = "today" | "7d" | "30d";
@@ -55,12 +56,13 @@ export function TelegramClaims() {
   const { data, error, loading, refresh } = useQuery(
     async () => {
       const { from, to } = periodRange(period);
-      const [settings, chats, claims, users, pay] = await Promise.all([
-        sb.from("telegram_settings").select("group_chat_id,group_title,reply_mode,webhook_set_at,bot_username").eq("id", true).maybeSingle(),
+      const [settings, chats, claims, users, pay, dms] = await Promise.all([
+        sb.from("telegram_settings").select("group_chat_id,group_title,reply_mode,webhook_set_at,bot_username,payout_reply").eq("id", true).maybeSingle(),
         sb.from("telegram_chats").select("chat_id,title,kind,last_seen_at,messages").order("last_seen_at", { ascending: false }).limit(20),
         sb.rpc("tg_claims", { p_from: from.toISOString(), p_to: to.toISOString(), p_status: null }),
         sb.rpc("tg_user_summary", { p_from: from.toISOString() }),
         sb.from("payout_settings").select("keep_pct,send_money_fee").limit(1),
+        sb.from("telegram_users").select("tg_user_id,dm_since,dm_blocked_at,dm_blocked_why").not("dm_since", "is", null),
       ]);
       const ps = (must(pay) as { keep_pct: number | string; send_money_fee?: number | string }[])[0];
       return {
@@ -68,6 +70,7 @@ export function TelegramClaims() {
         chats: must(chats) as TelegramChat[],
         claims: (must(claims) as Claim[] | null) ?? [],
         users: (must(users) as UserSummary[] | null) ?? [],
+        dms: dmById(must(dms) as TelegramUserDm[] | null),
         keepPct: Number(ps?.keep_pct ?? 20),
         sendFee: Number(ps?.send_money_fee ?? 10),
       };
@@ -166,6 +169,28 @@ export function TelegramClaims() {
             <p className="mt-1 text-xs text-muted-foreground">{REPLY_MODES.find((m) => m.id === (data?.settings?.reply_mode ?? "problems"))?.meaning}</p>
           </div>
         </div>
+        <label className="mt-3 flex items-start gap-3 text-sm">
+          <Switch checked={data?.settings?.payout_reply !== false} disabled={busy === "payout_reply"} aria-label="Tell the person when their payout is paid"
+            onCheckedChange={(on) => act("payout_reply", () => sb.rpc("tg_set_payout_reply", { p_on: on }), on ? "On: the bot tells the person when a payout is paid." : "Off: no payout notices.")} />
+          <span>
+            <span className="font-medium">Tell the person when their payout is paid</span>
+            <span className="block text-xs text-muted-foreground">
+              Privately first: a person who has opened the bot (pressed Start once) gets a private message with the amount, the full number and the TrxID.
+              Anyone else gets a reply to their own post in the group, with the middle digits of the number hidden. Separate from the text replies above.
+            </span>
+          </span>
+        </label>
+        <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-medium">Invitation to pin in the group</span>
+            <Button size="sm" variant="outline" aria-label="Copy the invitation" onClick={() => {
+              const text = inviteText(data?.settings?.bot_username);
+              navigator.clipboard?.writeText(text).then(() => setNote("Invitation copied. Paste it in the group and pin it."), () => setNote("Could not copy; select the text and copy it by hand."));
+            }}>Copy the invitation</Button>
+          </div>
+          <p className="mt-1 whitespace-pre-line text-xs text-muted-foreground">{inviteText(data?.settings?.bot_username)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Telegram lets a bot write to a person only after that person wrote to it first. People who never press Start keep getting the group reply.</p>
+        </div>
       </Card>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -185,7 +210,7 @@ export function TelegramClaims() {
         {shown.map((c) => <ClaimRow key={c.id} claim={c} busy={busy} act={act} />)}
       </div>
 
-      <UsersCard users={data?.users ?? []} claims={claims} devices={devices} keepPct={data?.keepPct ?? 20} sendFee={data?.sendFee ?? 10} onChanged={refresh} />
+      <UsersCard users={data?.users ?? []} claims={claims} devices={devices} keepPct={data?.keepPct ?? 20} sendFee={data?.sendFee ?? 10} dms={data?.dms ?? new Map()} onChanged={refresh} />
       <PayoutQueue nameOf={devices.nameOf} refreshKey={data} />
     </Screen>
   );
@@ -260,11 +285,12 @@ function ClaimRow({ claim: c, busy, act }: { claim: Claim; busy: string | null; 
   );
 }
 
-function UsersCard({ users, claims, devices, keepPct, sendFee, onChanged }: {
-  users: UserSummary[]; claims: Claim[]; devices: ReturnType<typeof useDevices>; keepPct: number; sendFee: number; onChanged: () => void;
+function UsersCard({ users, claims, devices, keepPct, sendFee, dms, onChanged }: {
+  users: UserSummary[]; claims: Claim[]; devices: ReturnType<typeof useDevices>; keepPct: number; sendFee: number; dms: Map<number, TelegramUserDm>; onChanged: () => void;
 }) {
   const owed = users.filter((u) => u.matched > 0);
   const [paying, setPaying] = useState<number | null>(null);
+  const [history, setHistory] = useState<number | null>(null);
   return (
     <Card className="mt-6 p-4">
       <h3 className="font-semibold">Who is owed what (this period)</h3>
@@ -277,17 +303,20 @@ function UsersCard({ users, claims, devices, keepPct, sendFee, onChanged }: {
               <div className="min-w-0">
                 <span className="font-medium">{personLabel(u)}</span>
                 <span className="ml-2 text-xs text-muted-foreground">id {u.tg_user_id}{u.last_number ? ` · last paid to ${u.last_number}` : ""}</span>
+                {(() => { const d = DM_WORDS[dmState(dms.get(u.tg_user_id))]; return <Badge tone={d.tone === "ok" ? "ok" : d.tone === "warn" ? "warn" : "idle"} className="ml-2 align-middle" title={d.meaning}>{d.label}</Badge>; })()}
                 <div className="text-xs text-muted-foreground">
                   {u.matched} matched{u.held ? ` · ${u.held} held` : ""}{u.open ? ` · ${u.open} to look at` : ""}{u.conflicts ? ` · ${u.conflicts} conflict` : ""} · last {dhakaTime(u.last_at)}
                 </div>
               </div>
               <div className="flex items-center gap-3">
                 <div className="text-base font-semibold tabular-nums">{taka(u.matched_total)}</div>
+                <Button size="sm" variant="ghost" onClick={() => setHistory(history === u.tg_user_id ? null : u.tg_user_id)} aria-label={`History of ${personLabel(u)}`}>History</Button>
                 <Button size="sm" variant={paying === u.tg_user_id ? "outline" : "default"} onClick={() => setPaying(paying === u.tg_user_id ? null : u.tg_user_id)} aria-label={`Pay out ${personLabel(u)}`}>
                   {paying === u.tg_user_id ? "Close" : "Pay out"}
                 </Button>
               </div>
              </div>
+             {history === u.tg_user_id ? <PersonHistory userId={u.tg_user_id} label={personLabel(u)} onClose={() => setHistory(null)} /> : null}
              {paying === u.tg_user_id ? (
                <PersonPayout user={u} claims={claims} devices={devices} defaultPct={keepPct} defaultFee={sendFee} onDone={() => { setPaying(null); onChanged(); }} onClose={() => setPaying(null)} />
              ) : null}

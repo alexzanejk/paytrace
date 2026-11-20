@@ -12,7 +12,7 @@
 // verify_jwt=false: each path checks its own caller.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "./cors.ts";
-import { replyFor, type ClaimStatus, type ReplyMode } from "./wording.ts";
+import { replyFor, welcomeText, type ClaimStatus, type ReplyMode } from "./wording.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -94,6 +94,64 @@ async function reply(chatId: number, messageId: number, text: string): Promise<b
   return r.ok;
 }
 
+/** Step 5 (owner 2026-11-20): messages the database queued in telegram_outbox, today only the "payout sent" notice
+ *  (migration 118 writes it when a payout tied to a Telegram person becomes paid). Migration 119: the person's PRIVATE
+ *  chat first (the text with the full number) when they have written to the bot; when Telegram refuses that chat for a
+ *  lasting reason (never pressed Start, blocked the bot) the person is marked and the GROUP text (hidden number) goes out
+ *  as a reply to their own post, else as a plain message in the group. A refusal of the group message is counted and
+ *  given up on after 3 tries. Drained after every update, after every OCR answer, and by the pg_cron tick ("drain"). */
+const DM_REFUSED = /blocked|initiate|not found|deactivated|forbidden/i;
+async function drainOutbox(): Promise<number> {
+  let sent = 0;
+  try {
+    const { data } = await db.rpc("tg_outbox_next2", { p_limit: 5 });
+    for (const o of (data ?? []) as Array<{ id: string; chat_id: number; reply_to: number | null; text: string; dm_chat_id: number | null; dm_text: string | null }>) {
+      let dmError: string | null = null, dmRefused = false;
+      if (o.dm_chat_id && o.dm_text) {
+        const d = await tg("sendMessage", { chat_id: o.dm_chat_id, text: String(o.dm_text).slice(0, 1000) });
+        if (d.ok) {
+          const mid = messageIdOf(d.result);
+          await db.rpc("tg_outbox_done2", { p_id: o.id, p_ok: true, p_error: null, p_message_id: mid, p_where: "private", p_dm_error: null, p_dm_refused: false });
+          sent++;
+          continue;
+        }
+        dmError = String(d.description ?? "failed").slice(0, 200);
+        dmRefused = DM_REFUSED.test(dmError);
+      }
+      const body: Record<string, unknown> = { chat_id: o.chat_id, text: String(o.text).slice(0, 1000) };
+      if (o.reply_to) body.reply_parameters = { message_id: o.reply_to, allow_sending_without_reply: true };
+      const r = await tg("sendMessage", body);
+      await db.rpc("tg_outbox_done2", {
+        p_id: o.id, p_ok: r.ok, p_error: r.ok ? null : String(r.description ?? "failed").slice(0, 200), p_message_id: r.ok ? messageIdOf(r.result) : null,
+        p_where: r.ok ? "group" : null, p_dm_error: dmError, p_dm_refused: dmRefused,
+      });
+      if (r.ok) sent++;
+    }
+  } catch (e) {
+    console.error("outbox failed", e instanceof Error ? e.name : "error");
+  }
+  return sent;
+}
+
+function messageIdOf(result: unknown): number | null {
+  return result && typeof result === "object" ? Number((result as { message_id?: number }).message_id ?? 0) || null : null;
+}
+
+/** A message in a PRIVATE chat with the bot (migration 119): the person can now be messaged privately. Recorded, answered
+ *  once with what that means, and nothing of it is kept as a claim (TrxIDs belong in the group, where the owner sees them). */
+async function onPrivate(m: TgMessage): Promise<void> {
+  const from = m.from;
+  if (!from || !from.id) return;
+  const name = [from.first_name, from.last_name].filter(Boolean).join(" ").slice(0, 120);
+  const { data, error } = await db.rpc("tg_private_seen", { p_user_id: from.id, p_chat_id: m.chat.id, p_username: from.username ?? null, p_name: name || null });
+  if (error) { console.error("tg_private_seen failed", error.code); return; }
+  const first = (data as { first?: boolean } | null)?.first === true;
+  const text = (m.text ?? "").trim();
+  // The first message (usually /start) is always answered; later ones only when they are a command or text, not a photo,
+  // so a person who chats here is told once per message where TrxIDs go, and a photo never gets a reply (it is not read).
+  if (first || text) await tg("sendMessage", { chat_id: m.chat.id, text: welcomeText(first), disable_notification: !first });
+}
+
 // ---------- claims ----------
 interface Brief {
   id: string; status: ClaimStatus; kind: "photo" | "text"; ocr_status: "none" | "pending" | "done" | "failed";
@@ -134,6 +192,7 @@ interface TgMessage {
 async function onUpdate(update: { message?: TgMessage; channel_post?: TgMessage }): Promise<void> {
   const m = update.message ?? update.channel_post;
   if (!m || !m.chat || m.from?.is_bot) return;
+  if (m.chat.type === "private") { await onPrivate(m); await drainOutbox(); return; }
   const from = m.from ?? { id: 0 };
   let kind = "other", fileId: string | null = null, fileUnique: string | null = null;
   const text = (m.text ?? m.caption ?? "").slice(0, 1000);
@@ -156,6 +215,7 @@ async function onUpdate(update: { message?: TgMessage; channel_post?: TgMessage 
   if (error) { console.error("tg_claim_add failed", error.code); return; }
   await maybeReply(data as Brief | null);
   await drainReactions();
+  await drainOutbox();
 }
 
 // ---------- the photo, for the worker and for the dashboard ----------
@@ -212,6 +272,7 @@ async function ocrDone(body: Record<string, unknown>): Promise<Response> {
   const b = { ...(data as Brief), kept: true } as Brief;
   await maybeReply(b);
   await drainReactions();
+  await drainOutbox();
   return json({ success: true, claim: data });
 }
 
@@ -241,6 +302,9 @@ async function handle(req: Request): Promise<Response> {
     return json({ ok: true });
   }
   const action = String(body.action ?? "");
+  // The pg_cron tick: send what waits. Unauthenticated on purpose (like gateway/deliver): it can only send messages the
+  // database already decided to send, sooner.
+  if (action === "drain") return json({ success: true, sent: await drainOutbox() });
   if (action === "ocr_next" || action === "ocr_done") {
     if (!isOurs(req)) return json({ success: false, message: "not allowed" }, 401);
     return action === "ocr_next" ? await ocrNext(body.limit) : await ocrDone(body);
