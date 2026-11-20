@@ -5,6 +5,9 @@ import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { Confirm } from "@/components/Confirm";
 import { PersonName } from "@/components/PersonName";
+import { PersonPayout } from "@/components/PersonPayout";
+import { PayoutQueue } from "@/components/PayoutQueue";
+import { useDevices } from "@/hooks/useDevices";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,21 +51,26 @@ export function TelegramClaims() {
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [bot, setBot] = useState<BotStatus | null>(null);
+  const devices = useDevices();
 
   const { data, error, loading, refresh } = useQuery(
     async () => {
       const { from, to } = periodRange(period);
-      const [settings, chats, claims, users] = await Promise.all([
+      const [settings, chats, claims, users, pay] = await Promise.all([
         sb.from("telegram_settings").select("group_chat_id,group_title,reply_mode,webhook_set_at,bot_username").eq("id", true).maybeSingle(),
         sb.from("telegram_chats").select("chat_id,title,kind,last_seen_at,messages").order("last_seen_at", { ascending: false }).limit(20),
         sb.rpc("tg_claims", { p_from: from.toISOString(), p_to: to.toISOString(), p_status: null }),
         sb.rpc("tg_user_summary", { p_from: from.toISOString() }),
+        sb.from("payout_settings").select("keep_pct,send_money_fee").limit(1),
       ]);
+      const ps = (must(pay) as { keep_pct: number | string; send_money_fee?: number | string }[])[0];
       return {
         settings: (must(settings) as TelegramSettings | null),
         chats: must(chats) as TelegramChat[],
         claims: (must(claims) as Claim[] | null) ?? [],
         users: (must(users) as UserSummary[] | null) ?? [],
+        keepPct: Number(ps?.keep_pct ?? 20),
+        sendFee: Number(ps?.send_money_fee ?? 10),
       };
     },
     [period],
@@ -178,7 +186,8 @@ export function TelegramClaims() {
         {shown.map((c) => <ClaimRow key={c.id} claim={c} busy={busy} act={act} onChanged={refresh} />)}
       </div>
 
-      <UsersCard users={data?.users ?? []} onChanged={refresh} />
+      <UsersCard users={data?.users ?? []} claims={claims} devices={devices} keepPct={data?.keepPct ?? 20} sendFee={data?.sendFee ?? 10} onChanged={refresh} />
+      <PayoutQueue nameOf={devices.nameOf} refreshKey={data} />
     </Screen>
   );
 }
@@ -253,16 +262,20 @@ function ClaimRow({ claim: c, busy, act, onChanged }: { claim: Claim; busy: stri
   );
 }
 
-function UsersCard({ users, onChanged }: { users: UserSummary[]; onChanged: () => void }) {
+function UsersCard({ users, claims, devices, keepPct, sendFee, onChanged }: {
+  users: UserSummary[]; claims: Claim[]; devices: ReturnType<typeof useDevices>; keepPct: number; sendFee: number; onChanged: () => void;
+}) {
   const owed = users.filter((u) => u.matched > 0);
+  const [paying, setPaying] = useState<number | null>(null);
   return (
     <Card className="mt-6 p-4">
       <h3 className="font-semibold">Who is owed what (this period)</h3>
-      <p className="mb-3 text-sm text-muted-foreground">Matched transactions not yet in a payout, per person. Paying them is the Payout page's job; this list is what the next step will pay from.</p>
+      <p className="mb-3 text-sm text-muted-foreground">Matched transactions not yet in a payout, per person. <b>Pay out</b> sends all of a person's matched transactions in one go to a number you type; several people queue up and the phone sends them one after another.</p>
       {owed.length === 0 ? <p className="text-sm text-muted-foreground">Nobody yet.</p> : (
         <div className="grid gap-2">
           {owed.map((u) => (
-            <div key={u.tg_user_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm">
+            <div key={u.tg_user_id} className="rounded-lg border p-3 text-sm">
+             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
                 <span className="font-medium">{personLabel(u)}</span>
                 <span className="ml-2 text-xs text-muted-foreground">id {u.tg_user_id}{u.last_number ? ` · last paid to ${u.last_number}` : ""}</span>
@@ -271,7 +284,16 @@ function UsersCard({ users, onChanged }: { users: UserSummary[]; onChanged: () =
                   {u.matched} matched{u.held ? ` · ${u.held} held` : ""}{u.open ? ` · ${u.open} to look at` : ""}{u.conflicts ? ` · ${u.conflicts} conflict` : ""} · last {dhakaTime(u.last_at)}
                 </div>
               </div>
-              <div className="text-base font-semibold tabular-nums">{taka(u.matched_total)}</div>
+              <div className="flex items-center gap-3">
+                <div className="text-base font-semibold tabular-nums">{taka(u.matched_total)}</div>
+                <Button size="sm" variant={paying === u.tg_user_id ? "outline" : "default"} onClick={() => setPaying(paying === u.tg_user_id ? null : u.tg_user_id)} aria-label={`Pay out ${personLabel(u)}`}>
+                  {paying === u.tg_user_id ? "Close" : "Pay out"}
+                </Button>
+              </div>
+             </div>
+             {paying === u.tg_user_id ? (
+               <PersonPayout user={u} claims={claims} devices={devices} defaultPct={keepPct} defaultFee={sendFee} onDone={() => { setPaying(null); onChanged(); }} onClose={() => setPaying(null)} />
+             ) : null}
             </div>
           ))}
         </div>

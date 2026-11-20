@@ -772,3 +772,16 @@ row shows **Set name**: tap it, type the login or name, Save. Tap a name to chan
 yourself always wins over the bot's, and clearing goes back to the bot's name if there is one. The search box on the
 Payout page also finds names. On the Telegram page, **Set login** / **Change login** beside a person fixes the login the
 bot read wrong or never saw; their transactions are renamed at once. Names change nothing about money.
+
+**Paying a whole person in one go (step 4, 2026-11-20).** On the Telegram page, **Who is owed what** has a **Pay out**
+button beside each person. It opens a panel with all of that person's matched transactions ticked (untick any you do
+not want in this send), the share you keep, the phone and wallet that sends it (PayTrace picks the agent wallet that
+received most of them; change it if you like), USSD or the wallet's app, and the number to send to, typed twice (the
+number you used for that person last time is shown as a reminder). Press **Queue this payout**, read the amber sentence,
+confirm. The payout is QUEUED, not sent at once: a phone sends one payout at a time, so when you queue several people
+they wait their turn and start one after another (the card **Payouts queued from here** shows the line, with "next on
+this phone" and a **Cancel** on anything that has not started). Once a payout starts it shows on the Payout page like any
+other, with the same wallet checks if it fails. The transactions of a queued payout are locked (the Payout page shows
+"Queued for <name>" and will not let you tick them) so they can never go out twice. If the maker's rules refuse a plan
+when its turn comes (for example you paid one of its transactions by hand meanwhile), it ends as **Failed, not sent**
+with the reason, and nothing was sent. Held transactions are never in such a payout.
