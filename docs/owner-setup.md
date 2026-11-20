@@ -745,7 +745,11 @@ still the Payout page's job.
    From that moment every photo and text posted there is kept.
 4. Text replies are OFF: the thumbs-up is the bot's only word. If you ever want text (for example "please type the TrxID"
    when a photo cannot be read), choose it under "Text replies in the group"; the lines are short Bangla with English after.
-5. The OCR worker on your VPS: open the droplet's **Web Console** and paste
+5. The OCR worker on your VPS: open the droplet's **Web Console**. First paste the LOOK-ONLY line, which changes
+   nothing and only prints what is on the machine (tools, open ports, running services), so it can be checked before
+   anything is installed next to the proxy that already runs there:
+   `curl -fsSL https://raw.githubusercontent.com/alexzanejk/paytrace/main/ocr-worker/setup.sh | bash -s -- --check`.
+   Then paste the install line
    `curl -fsSL https://raw.githubusercontent.com/alexzanejk/paytrace/main/ocr-worker/setup.sh | bash`. It installs what
    it needs from Ubuntu's own packages, asks you to type the Supabase **service** key once (hidden), and starts the
    worker as its own user with a memory cap. It never touches the proxy on that machine. Run the same line again to update.
