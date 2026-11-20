@@ -4,7 +4,9 @@ import { useQuery } from "@/hooks/useQuery";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { Confirm } from "@/components/Confirm";
-import { PersonName } from "@/components/PersonName";
+import { PersonPayout } from "@/components/PersonPayout";
+import { PayoutQueue } from "@/components/PayoutQueue";
+import { useDevices } from "@/hooks/useDevices";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,21 +50,26 @@ export function TelegramClaims() {
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [bot, setBot] = useState<BotStatus | null>(null);
+  const devices = useDevices();
 
   const { data, error, loading, refresh } = useQuery(
     async () => {
       const { from, to } = periodRange(period);
-      const [settings, chats, claims, users] = await Promise.all([
+      const [settings, chats, claims, users, pay] = await Promise.all([
         sb.from("telegram_settings").select("group_chat_id,group_title,reply_mode,webhook_set_at,bot_username").eq("id", true).maybeSingle(),
         sb.from("telegram_chats").select("chat_id,title,kind,last_seen_at,messages").order("last_seen_at", { ascending: false }).limit(20),
         sb.rpc("tg_claims", { p_from: from.toISOString(), p_to: to.toISOString(), p_status: null }),
         sb.rpc("tg_user_summary", { p_from: from.toISOString() }),
+        sb.from("payout_settings").select("keep_pct,send_money_fee").limit(1),
       ]);
+      const ps = (must(pay) as { keep_pct: number | string; send_money_fee?: number | string }[])[0];
       return {
         settings: (must(settings) as TelegramSettings | null),
         chats: must(chats) as TelegramChat[],
         claims: (must(claims) as Claim[] | null) ?? [],
         users: (must(users) as UserSummary[] | null) ?? [],
+        keepPct: Number(ps?.keep_pct ?? 20),
+        sendFee: Number(ps?.send_money_fee ?? 10),
       };
     },
     [period],
@@ -114,9 +121,9 @@ export function TelegramClaims() {
         description="Payment screenshots posted in your group, matched to the transactions PayTrace holds."
         help={
           <>
-            <p>The bot receives every message of the chosen group. A photo is read by the OCR worker on your VPS; the TrxID it finds, or one typed as text, is looked for among the transactions PayTrace holds that are not paid out yet. Found: the post gets a thumbs-up from the bot and is tied to the person (the site login they typed in the group, else their Telegram profile). Not found, already paid out, or unclear: nothing happens to the post.</p>
+            <p>The bot receives every message of the chosen group. A photo is read by the OCR worker on your VPS; the TrxID it finds, or one typed as text, is looked for among the transactions PayTrace holds that are not paid out yet. Found: the post gets a thumbs-up from the bot and is tied to the person, named by their Telegram @username (never by anything typed in the post). Not found, already paid out, or unclear: nothing happens to the post.</p>
             <p className="mt-2">A screenshot never proves a payment by itself; a held transaction stays held. One TrxID is one claim: the same person again is a duplicate, another person first is a conflict for you to decide. Nothing on this page pays anyone: the Payout page does that, and "who is owed what" below is what it will start from.</p>
-            <p className="mt-2">The person's name travels to the Payout page as the name on each matched transaction. "Set login" / "Change login" fixes the site login the bot read wrong or never saw; a name you type on the Payout page itself always wins over the bot's.</p>
+            <p className="mt-2">The @username travels to the Payout page as the name on each matched transaction; a name you type on the Payout page itself always wins over the bot's.</p>
           </>
         }
       />
@@ -175,15 +182,16 @@ export function TelegramClaims() {
 
       <div className="grid gap-3">
         {shown.length === 0 ? <Card className="p-6 text-center text-sm text-muted-foreground">{claims.length === 0 ? "No messages kept in this period yet." : "Nothing in this view."}</Card> : null}
-        {shown.map((c) => <ClaimRow key={c.id} claim={c} busy={busy} act={act} onChanged={refresh} />)}
+        {shown.map((c) => <ClaimRow key={c.id} claim={c} busy={busy} act={act} />)}
       </div>
 
-      <UsersCard users={data?.users ?? []} onChanged={refresh} />
+      <UsersCard users={data?.users ?? []} claims={claims} devices={devices} keepPct={data?.keepPct ?? 20} sendFee={data?.sendFee ?? 10} onChanged={refresh} />
+      <PayoutQueue nameOf={devices.nameOf} refreshKey={data} />
     </Screen>
   );
 }
 
-function ClaimRow({ claim: c, busy, act, onChanged }: { claim: Claim; busy: string | null; act: (key: string, run: () => PromiseLike<{ error: { message: string } | null } | void>, done: string) => Promise<void>; onChanged: () => void }) {
+function ClaimRow({ claim: c, busy, act }: { claim: Claim; busy: string | null; act: (key: string, run: () => PromiseLike<{ error: { message: string } | null } | void>, done: string) => Promise<void> }) {
   const [pick, setPick] = useState("");
   const [picking, setPicking] = useState(false);
   const [img, setImg] = useState<string | null>(null);
@@ -218,7 +226,6 @@ function ClaimRow({ claim: c, busy, act, onChanged }: { claim: Claim; busy: stri
             <Badge tone={toneOf(c.status)} title={w.meaning}>{w.label}</Badge>
             {c.reacted ? <span title="The bot put a thumbs-up on this post" aria-label="thumbs-up sent">👍</span> : null}
             <span className="font-medium">{personLabel(c)}</span>
-            <PersonName userId={c.tg_user_id} siteUsername={c.site_username} onChanged={onChanged} />
             <span className="text-xs text-muted-foreground">id {c.tg_user_id} · {dhakaTime(c.sent_at)} · {c.kind === "photo" ? "photo" : "text"}</span>
           </div>
           <p className="mt-1 text-sm">{paymentLine(c.payment)}</p>
@@ -253,25 +260,37 @@ function ClaimRow({ claim: c, busy, act, onChanged }: { claim: Claim; busy: stri
   );
 }
 
-function UsersCard({ users, onChanged }: { users: UserSummary[]; onChanged: () => void }) {
+function UsersCard({ users, claims, devices, keepPct, sendFee, onChanged }: {
+  users: UserSummary[]; claims: Claim[]; devices: ReturnType<typeof useDevices>; keepPct: number; sendFee: number; onChanged: () => void;
+}) {
   const owed = users.filter((u) => u.matched > 0);
+  const [paying, setPaying] = useState<number | null>(null);
   return (
     <Card className="mt-6 p-4">
       <h3 className="font-semibold">Who is owed what (this period)</h3>
-      <p className="mb-3 text-sm text-muted-foreground">Matched transactions not yet in a payout, per person. Paying them is the Payout page's job; this list is what the next step will pay from.</p>
+      <p className="mb-3 text-sm text-muted-foreground">Matched transactions not yet in a payout, per person. <b>Pay out</b> sends all of a person's matched transactions in one go to a number you type; several people queue up and the phone sends them one after another.</p>
       {owed.length === 0 ? <p className="text-sm text-muted-foreground">Nobody yet.</p> : (
         <div className="grid gap-2">
           {owed.map((u) => (
-            <div key={u.tg_user_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm">
+            <div key={u.tg_user_id} className="rounded-lg border p-3 text-sm">
+             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
                 <span className="font-medium">{personLabel(u)}</span>
                 <span className="ml-2 text-xs text-muted-foreground">id {u.tg_user_id}{u.last_number ? ` · last paid to ${u.last_number}` : ""}</span>
-                <span className="ml-1"><PersonName userId={u.tg_user_id} siteUsername={u.site_username} onChanged={onChanged} /></span>
                 <div className="text-xs text-muted-foreground">
                   {u.matched} matched{u.held ? ` · ${u.held} held` : ""}{u.open ? ` · ${u.open} to look at` : ""}{u.conflicts ? ` · ${u.conflicts} conflict` : ""} · last {dhakaTime(u.last_at)}
                 </div>
               </div>
-              <div className="text-base font-semibold tabular-nums">{taka(u.matched_total)}</div>
+              <div className="flex items-center gap-3">
+                <div className="text-base font-semibold tabular-nums">{taka(u.matched_total)}</div>
+                <Button size="sm" variant={paying === u.tg_user_id ? "outline" : "default"} onClick={() => setPaying(paying === u.tg_user_id ? null : u.tg_user_id)} aria-label={`Pay out ${personLabel(u)}`}>
+                  {paying === u.tg_user_id ? "Close" : "Pay out"}
+                </Button>
+              </div>
+             </div>
+             {paying === u.tg_user_id ? (
+               <PersonPayout user={u} claims={claims} devices={devices} defaultPct={keepPct} defaultFee={sendFee} onDone={() => { setPaying(null); onChanged(); }} onClose={() => setPaying(null)} />
+             ) : null}
             </div>
           ))}
         </div>

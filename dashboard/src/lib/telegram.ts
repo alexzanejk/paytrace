@@ -20,7 +20,7 @@ export interface Claim {
   tg_user_id: number;
   username: string | null;
   name: string | null;
-  site_username?: string | null;      // the site login this person typed in the group (latest wins), owner-editable
+  site_username?: string | null;      // the site login this person typed in the group (kept, never used for the name: owner 2026-11-20)
   site_username_seen?: string | null; // the one typed in THIS message
   reacted?: boolean;                   // the bot's thumbs-up is on the post
   react_pending?: boolean;
@@ -62,21 +62,20 @@ export const REPLY_MODES: Array<{ id: ReplyMode; label: string; meaning: string 
   { id: "all", label: "Every message", meaning: "Also a short \"received\" on every match." },
 ];
 
-/** The name the owner pays under (owner 2026-11-20): the site login the person typed in the group, else their Telegram
- *  profile. "t9ceff6182 · Crazy (@cra_zy1)" when both are known. */
-export function personLabel(u: { site_username?: string | null; username?: string | null; name?: string | null; tg_user_id: number }): string {
-  const site = (u.site_username ?? "").trim();
-  const tg = userLabel(u);
-  return site ? `${site} · ${tg}` : tg;
+/** The name the owner pays under (owner 2026-11-20: "only telegram user name"): the @username; the site login a person
+ *  types in a post is never used for it. */
+export function personLabel(u: { username?: string | null; name?: string | null; tg_user_id: number }): string {
+  return userLabel(u);
 }
 
-/** "Alice (@alice)", "Alice", "@alice" or "user 7001". Never trusts the names for identity: the id is the key. */
+/** "@alice", "Alice" (no username) or "user 7001". The @username comes first because display names are not unique
+ *  (owner 2026-11-20); the display name is shown only for a person with no username. Never trusts the names for
+ *  identity: the id is the key. */
 export function userLabel(u: { username?: string | null; name?: string | null; tg_user_id: number }): string {
   const name = (u.name ?? "").trim();
   const handle = (u.username ?? "").trim();
-  if (name && handle) return `${name} (@${handle})`;
-  if (name) return name;
   if (handle) return `@${handle}`;
+  if (name) return name;
   return `user ${u.tg_user_id}`;
 }
 

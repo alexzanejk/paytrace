@@ -32,6 +32,7 @@ import { CommandWhy } from "@/components/CommandWhy";
 import { DefaultShare, ExtraPayoutForm, ExtraPayoutList, PaidTwiceCard } from "@/components/PayoutExtras";
 import { PayoutName } from "@/components/PayoutName";
 import { nameOf as nameOf2, namesAmong, namesById, safeNameTerm, type PaymentName } from "@/lib/payNames";
+import { plannedByPayment, type PayoutPlan } from "@/lib/payoutPlans";
 
 /** Only money RECEIVED can be paid out (the database's payout_refusal says the same). */
 const PAYABLE_TYPES = ["cash_out", "send_money_received", "payment_received"];
@@ -117,8 +118,10 @@ export function Payouts() {
       const older = missing.length ? (must(await sb.from("payouts").select("*").in("id", missing)) as PayoutRow[]) : [];
       const extras = must(await sb.from("payouts").select("*").eq("extra", true).order("created_at", { ascending: false }).limit(100)) as PayoutRow[];
       const settings = must(await sb.from("payout_settings").select("keep_pct,send_money_fee").limit(1)) as { keep_pct: number | string; send_money_fee?: number | string }[];
+      // Transactions already queued for a person from the Telegram page (step 4) wait there; they are not offered here.
+      const plans = must(await sb.from("payout_plans").select("id,label,payment_ids,status,device_id,created_at").eq("status", "queued").limit(200)) as PayoutPlan[];
       return {
-        rows, picked, asked, total: res.count ?? 0, items, names, payouts: [...recent, ...older], extras,
+        rows, picked, asked, total: res.count ?? 0, items, names, plans, payouts: [...recent, ...older], extras,
         keepPct: Number(settings[0]?.keep_pct ?? 20), sendFee: Number(settings[0]?.send_money_fee ?? 10),
       };
     },
@@ -130,6 +133,7 @@ export function Payouts() {
   const payoutsById = useMemo(() => new Map((data?.payouts ?? []).map((p) => [p.id, p])), [data]);
   const liveOf = useMemo(() => liveItemsByPayment(data?.items ?? []), [data]);
   const names = useMemo(() => namesById(data?.names ?? []), [data]);
+  const planned = useMemo(() => plannedByPayment(data?.plans ?? []), [data]);
   const taken = useMemo(() => new Set(liveOf.keys()), [liveOf]);
   const shown = rows.filter((p) => (show === "all" ? true : show === "paid" ? taken.has(p.id) : !taken.has(p.id)));
 
@@ -179,7 +183,7 @@ export function Payouts() {
     setNotice("");
     setTicked(new Set(next));
   }
-  const tickable = shown.filter((r) => tickableRefusal(payoutRefusal(r, taken)));
+  const tickable = shown.filter((r) => tickableRefusal(payoutRefusal(r, taken)) && !planned.has(r.id));
   const allTicked = tickable.length > 0 && tickable.every((r) => ticked.has(r.id));
 
   const phoneOptions = devices.list.filter((d) => d.status === "approved").map((d) => ({ value: d.id, label: devices.nameOf(d.id) }));
@@ -295,8 +299,8 @@ export function Payouts() {
                     className="mt-1 h-4 w-4 accent-[var(--color-primary)]"
                     aria-label={`Tick ${p.trx_id}`}
                     checked={ticked.has(p.id)}
-                    disabled={!tickableRefusal(why)}
-                    title={why === HELD_REFUSAL ? "Held for review: can only be marked paid by hand, and stays held" : why ?? "Tick to pay this out"}
+                    disabled={!tickableRefusal(why) || planned.has(p.id)}
+                    title={planned.has(p.id) ? `Queued for a payout to ${planned.get(p.id)} (Telegram page)` : why === HELD_REFUSAL ? "Held for review: can only be marked paid by hand, and stays held" : why ?? "Tick to pay this out"}
                     onChange={() => toggle(p.id)}
                   />
                   <div className="min-w-0 flex-1">
@@ -316,6 +320,7 @@ export function Payouts() {
                       <DeviceChip id={p.device_id} name={devices.nameOf(p.device_id)} />
                       <span>{when(p.occurred_at ?? p.received_at)}</span>
                       <PayoutName paymentId={p.id} name={names.get(p.id)} onChanged={reload} />
+                      {planned.has(p.id) ? <Badge tone="idle">Queued for {planned.get(p.id)}</Badge> : null}
                       <StatusBadge status={p.status} />
                       {payout ? (
                         <Badge tone={payoutWord(payout).tone}>
