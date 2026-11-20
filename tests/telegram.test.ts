@@ -68,7 +68,7 @@ check("a typed TrxID is cleaned", cleanTrx(" dkj9 nwwleh ") === "DKJ9NWWLEH");
 check("dm: never opened the bot = group only", dmState(null) === "group_only" && dmState({ dm_since: null, dm_blocked_at: null }) === "group_only");
 check("dm: opened the bot = private", dmState({ dm_since: "2026-11-20T10:00:00Z", dm_blocked_at: null }) === "private");
 check("dm: refused = blocked", dmState({ dm_since: "2026-11-20T10:00:00Z", dm_blocked_at: "2026-11-20T11:00:00Z" }) === "blocked");
-check("dm words exist for every state", (["private", "blocked", "group_only"] as const).every((k) => DM_WORDS[k].label && DM_WORDS[k].meaning));
+check("dm words exist for every state, and nobody is promised a group reply", (["private", "blocked", "group_only"] as const).every((k) => DM_WORDS[k].label && DM_WORDS[k].meaning && !/go to the group|posted in the group/.test(DM_WORDS[k].meaning)));
 check("dm rows by id", dmById([{ tg_user_id: 5, dm_since: "x", dm_blocked_at: null }]).get(5)?.dm_since === "x" && dmById(null).size === 0);
 const inv = inviteText("boss12339_bot");
 check("invitation names the bot once per language and says Start", inv.split("@boss12339_bot").length === 3 && inv.includes("Start") && inv.includes("নম্বরসহ"));

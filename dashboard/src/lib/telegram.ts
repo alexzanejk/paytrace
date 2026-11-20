@@ -43,6 +43,7 @@ export interface TelegramSettings {
   owner_user_id?: number | null;
   owner_set_at?: string | null;
   owner_copy?: boolean | null;   // a copy of every private notice goes to that chat (default on once paired)
+  payout_group_fallback?: boolean | null; // migration 122: reply in the group when the person has no private chat (default OFF: private only)
 }
 /** Whether the bot may write to a person privately (migration 119): Telegram allows it only after the person wrote to
  *  the bot first (pressed Start), and a refusal (blocked, never started) is remembered until they write again. */
@@ -54,8 +55,8 @@ export function dmState(u: Pick<TelegramUserDm, "dm_since" | "dm_blocked_at"> | 
 }
 export const DM_WORDS: Record<DmState, { label: string; meaning: string; tone: "ok" | "warn" | "idle" }> = {
   private: { label: "private inbox ✓", meaning: "This person has opened the bot, so payout notices go to their private chat (with the full number).", tone: "ok" },
-  blocked: { label: "blocked the bot", meaning: "Telegram refused the private chat (the person blocked the bot or removed it); notices go to the group until they write to the bot again.", tone: "warn" },
-  group_only: { label: "group only", meaning: "This person has not opened the bot yet, so payout notices are posted in the group (number hidden). Pin the invitation so they press Start.", tone: "idle" },
+  blocked: { label: "blocked the bot", meaning: "Telegram refused the private chat (the person blocked the bot or removed it); they get no notice until they write to the bot again (you are told each time).", tone: "warn" },
+  group_only: { label: "no private chat", meaning: "This person has not opened the bot yet. Notices are private only, so they get none until they press Start (you are told each time). Pin the invitation.", tone: "idle" },
 };
 export const dmById = (rows: TelegramUserDm[] | null | undefined) => new Map((rows ?? []).map((r) => [r.tg_user_id, r] as const));
 

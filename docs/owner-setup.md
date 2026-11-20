@@ -818,3 +818,10 @@ private chat, not the group), and send the line shown, for example `/owner 48291
 @person:" followed by the exact message, full number included. The switch on the card pauses the copies; **Stop**
 unpairs. Group replies are not copied (you see them in the group). Only the person who sends the code gets the copies,
 so never share a code.
+
+**Private only (2026-11-20).** Payout notices now go ONLY to the person's private chat with the bot. A person who has
+not opened the bot gets nothing, and the person's History on the Telegram page says "Notice not sent: the person has
+not opened the bot". You still get the message in your own chat in every case: "📋 sent privately to @x" when it was
+delivered, "⚠️ NOT sent to @x (they have not opened the bot yet)" when it was not, always with the full text, so you
+can forward it by hand if you want. The old group reply is a switch on the bot card, "Also reply in the group when the
+person has no private chat", off unless you turn it on. Keep the invitation pinned so people press Start.
