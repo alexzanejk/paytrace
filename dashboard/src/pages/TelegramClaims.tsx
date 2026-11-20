@@ -97,7 +97,10 @@ export function TelegramClaims() {
     setBusy("connect");
     setNote("");
     const r = await botCall("setup");
-    setNote(r.success ? `Connected as @${r.bot}. Now add the bot to the group (as an admin), post one message there, and pick the group below.` : (r.message ?? "Could not connect."));
+    // The "add it to the group" steps only while no group is chosen yet; once one is, a reconnect just says so.
+    setNote(r.success
+      ? (data?.settings?.group_chat_id ? `Connected as @${r.bot}.` : `Connected as @${r.bot}. Now add the bot to the group (as an admin), post one message there, and pick the group below.`)
+      : (r.message ?? "Could not connect."));
     setBot(await botCall("status").catch(() => null));
     setBusy(null);
     refresh();
