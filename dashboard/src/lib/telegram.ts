@@ -22,8 +22,12 @@ export interface Claim {
   name: string | null;
   site_username?: string | null;      // the site login this person typed in the group (kept, never used for the name: owner 2026-11-20)
   site_username_seen?: string | null; // the one typed in THIS message
-  reacted?: boolean;                   // the bot's thumbs-up is on the post
+  reacted?: boolean;                   // the bot's reaction is on the post (👍 on a match; 👎 on a conflict since migration 124)
   react_pending?: boolean;
+  react_kind?: "up" | "down";          // which thumb the bot put (or will put) on the post; absent = up (older rows)
+  warned?: boolean;                    // migration 124: the bot replied under this conflicting post, naming the first poster and asking to delete it
+  warn_pending?: boolean;
+  warn_swapped?: boolean;              // the warning says the transaction was confirmed for someone else (after the owner's decision)
   chat_id: number;
   message_id: number;
   sent_at: string;
@@ -44,7 +48,30 @@ export interface TelegramSettings {
   owner_set_at?: string | null;
   owner_copy?: boolean | null;   // a copy of every private notice goes to that chat (default on once paired)
   payout_group_fallback?: boolean | null; // migration 122: reply in the group when the person has no private chat (default OFF: private only)
+  conflict_warn?: boolean | null; // migration 124: 👎 + a warning under a post whose TrxID another person posted first (default ON)
 }
+
+/** The bot's mark on a post, for the claim row and the person's History: 👍 on a match, 👎 on a conflict (migration 124), or none.
+ *  Words only; the reaction itself is sent by the bot. */
+export function reactionMark(c: Pick<Claim, "reacted" | "react_kind" | "warned" | "warn_swapped" | "react_pending" | "warn_pending">): { emoji: "👍" | "👎"; title: string } | null {
+  const down = c.react_kind === "down";
+  if (c.reacted) {
+    if (!down) return { emoji: "👍", title: "The bot put a thumbs-up on this post" };
+    const warned = c.warned
+      ? c.warn_swapped ? ", and replied that the transaction was confirmed for someone else" : ", and replied naming the person who posted it first and asking to delete the post"
+      : "";
+    return { emoji: "👎", title: `The bot put a thumbs-down on this post${warned}` };
+  }
+  if (c.react_pending) return { emoji: down ? "👎" : "👍", title: "The bot will react to this post within the minute" };
+  return null;
+}
+
+export const CONFLICT_WARN_WORDS = {
+  label: "Warn the second person on a conflict",
+  meaning: "When a TrxID another person already posted is posted again by someone else, the bot puts a 👎 on the later post and replies under it, naming who posted it first and asking them to delete the post if it is not theirs. The same person posting twice gets nothing. Ignore on the first person's claim hands the transaction to the second person: the thumbs swap and the warning moves.",
+  on: "On: a later post of someone else's TrxID gets a 👎 and a warning naming the first poster.",
+  off: "Off: a conflict gets no reaction and no reply; it only waits for you on this page.",
+} as const;
 /** Whether the bot may write to a person privately (migration 119): Telegram allows it only after the person wrote to
  *  the bot first (pressed Start), and a refusal (blocked, never started) is remembered until they write again. */
 export interface TelegramUserDm { tg_user_id: number; dm_since: string | null; dm_blocked_at: string | null; dm_blocked_why?: string | null; username?: string | null }

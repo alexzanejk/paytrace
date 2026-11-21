@@ -71,3 +71,16 @@ export function ownerClaimText(why: "claimed" | "wrong" | "expired" | "no_code")
       return "❌ কোডটি মেলেনি। ড্যাশবোর্ডের কোডটি আবার দেখুন।\nThat code does not match. Check the code on the dashboard.";
   }
 }
+
+/** Migration 124 (owner 2026-11-21: "reply to the second person, give a thumbs down and tell him to remove it; name
+ *  them"). Under a post whose TrxID another person posted first: who posted it first, and please delete this post if it
+ *  is not yours. `swapped`: the owner decided the OTHER way, so this (earlier) post is the wrong one and the transaction
+ *  is confirmed as that person's. The name is a Telegram @username or display name: cleaned, never markup. */
+export function conflictWarnText(i: { trx: string | null | undefined; firstWho: string | null | undefined; swapped: boolean }): string {
+  const trx = clean(i.trx);
+  const who = String(i.firstWho ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40) || "someone else";
+  if (i.swapped) {
+    return `👎 TrxID ${trx} ${who}-এর লেনদেন বলে নিশ্চিত হয়েছে। অনুগ্রহ করে এই পোস্টটি মুছে ফেলুন।\nThis TrxID has been confirmed as ${who}'s transaction. Please delete this post.`;
+  }
+  return `👎 TrxID ${trx} আগেই ${who} জমা দিয়েছেন। এটি আপনার লেনদেন না হলে এই পোস্টটি মুছে ফেলুন।\nThis TrxID was already submitted by ${who}. If it is not your transaction, please delete this post.`;
+}

@@ -825,3 +825,13 @@ not opened the bot". You still get the message in your own chat in every case: "
 delivered, "⚠️ NOT sent to @x (they have not opened the bot yet)" when it was not, always with the full text, so you
 can forward it by hand if you want. The old group reply is a switch on the bot card, "Also reply in the group when the
 person has no private chat", off unless you turn it on. Keep the invitation pinned so people press Start.
+
+**A thumbs-down and a warning on a stolen screenshot (2026-11-21).** When somebody posts a TrxID that another person
+had already posted (a "conflict" on the Telegram page), the bot now puts a 👎 on the LATER post and replies under it,
+naming who posted it first: "👎 TrxID 76CQOWIY আগেই @Oli44443 জমা দিয়েছেন। এটি আপনার লেনদেন না হলে এই পোস্টটি মুছে ফেলুন। /
+This TrxID was already submitted by @Oli44443. If it is not your transaction, please delete this post." The same
+person posting the same receipt twice gets nothing (that is a duplicate, not a conflict). If YOU decide the second
+person was the real one, press **Ignore** on the first person's claim: the second post's 👎 becomes a 👍 and the bot
+deletes its own warning under it, and the first post gets the 👎 with "This TrxID has been confirmed as @x's
+transaction. Please delete this post." The switch on the bot card, "Warn the second person on a conflict", is on;
+switch it off and conflicts are silent again. The bot never deletes anyone's post itself.

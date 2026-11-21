@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { trxCandidates } from "../supabase/functions/telegram/candidates.ts";
 import { trxCandidates as workerCandidates } from "../ocr-worker/src/candidates.ts";
-import { ownerClaimText, replyFor, welcomeText } from "../supabase/functions/telegram/wording.ts";
+import { conflictWarnText, ownerClaimText, replyFor, welcomeText } from "../supabase/functions/telegram/wording.ts";
 import {
-  DM_WORDS, OWNER_WORDS, STATUS_ORDER, STATUS_WORDS, claimDetail, cleanTrx, connectState, dmById, dmState, inviteText, needsOwner, needsYou, ownerCommand, ownerState, paymentLine, periodRange, personLabel, statusCounts, userLabel,
+  CONFLICT_WARN_WORDS, DM_WORDS, OWNER_WORDS, STATUS_ORDER, STATUS_WORDS, claimDetail, reactionMark, cleanTrx, connectState, dmById, dmState, inviteText, needsOwner, needsYou, ownerCommand, ownerState, paymentLine, periodRange, personLabel, statusCounts, userLabel,
   type Claim,
 } from "../dashboard/src/lib/telegram.ts";
 
@@ -81,6 +81,19 @@ check("owner: paired and on / off", ownerState({ owner_chat_id: 5, owner_copy: t
 check("owner command keeps only the six digits", ownerCommand("482913") === "/owner 482913" && ownerCommand(" 48-29-13x ") === "/owner 482913");
 check("owner words for every state", (["unset", "on", "off"] as const).every((k) => OWNER_WORDS[k].length > 10));
 check("bot answers to /owner never carry a code", !/\d{4,}/.test(ownerClaimText("claimed") + ownerClaimText("wrong") + ownerClaimText("expired") + ownerClaimText("no_code")) && ownerClaimText("expired").includes("expired") && ownerClaimText("claimed").includes("copy"));
+// ---- migration 124: the thumbs-down and the warning on a conflicting post (owner 2026-11-21: "name them") ----
+const warn1 = conflictWarnText({ trx: "76CQOWIY", firstWho: "@Oli44443", swapped: false });
+check("conflict warning names the first poster, carries the TrxID, asks to delete, in Bangla and English", warn1.includes("@Oli44443") && warn1.includes("76CQOWIY") && warn1.includes("delete this post") && warn1.includes("মুছে ফেলুন") && warn1.startsWith("👎"));
+const warn2 = conflictWarnText({ trx: "76cqowiy", firstWho: " Bob\u0007 Smith ", swapped: true });
+check("swapped warning says the transaction was confirmed for the other person; the name is cleaned, the TrxID upper-cased", warn2.includes("confirmed as Bob Smith's") && warn2.includes("76CQOWIY") && !/\u0007/.test(warn2));
+check("warning with nobody known says 'someone else'", conflictWarnText({ trx: "X", firstWho: null, swapped: false }).includes("someone else"));
+check("reaction mark: 👍 on a reacted match, 👎 on a reacted conflict (with the warning in words), pending shows the thumb to come, nothing otherwise",
+  reactionMark({ reacted: true })?.emoji === "👍"
+  && reactionMark({ reacted: true, react_kind: "down", warned: true })?.emoji === "👎" && /naming the person/.test(reactionMark({ reacted: true, react_kind: "down", warned: true })!.title)
+  && /someone else/.test(reactionMark({ reacted: true, react_kind: "down", warned: true, warn_swapped: true })!.title)
+  && reactionMark({ reacted: false, react_pending: true, react_kind: "down" })?.emoji === "👎"
+  && reactionMark({ reacted: false }) === null);
+check("conflict-warn words exist for the switch", CONFLICT_WARN_WORDS.label.length > 0 && CONFLICT_WARN_WORDS.on.includes("👎") && CONFLICT_WARN_WORDS.off.includes("no reaction"));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

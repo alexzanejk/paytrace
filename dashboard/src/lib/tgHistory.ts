@@ -12,6 +12,8 @@ export interface HistoryEvent {
   message_id?: number | null;
   photo?: boolean | null;
   reacted?: boolean | null;
+  react_kind?: string | null; // up | down (migration 124)
+  warned?: boolean | null;    // the bot replied under a conflicting post asking to delete it
   reply?: string | null;
   where?: string | null;    // reply: private | group (migration 119)
   count?: number | null;
@@ -39,7 +41,7 @@ export function historyLine(e: HistoryEvent): { title: string; detail: string; t
     const what = POST[e.status ?? ""] ?? `posted (${e.status})`;
     const who = e.photo ? "a photo" : "a text";
     const tx = e.trx ? `${WALLET[e.provider ?? ""] ?? e.provider ?? ""} ${e.trx}${amount ? " · " + amount : ""}`.trim() : "";
-    const marks = [e.reacted ? "👍 sent" : "", e.reply ? `replied (${e.reply})` : ""].filter(Boolean).join(" · ");
+    const marks = [e.reacted ? (e.react_kind === "down" ? "👎 sent" : "👍 sent") : "", e.warned ? "warned to delete the post" : "", e.reply ? `replied (${e.reply})` : ""].filter(Boolean).join(" · ");
     return {
       title: `${what}: ${who}${tx ? " · " + tx : ""}`,
       detail: [e.detail ?? "", marks].filter(Boolean).join(" · "),

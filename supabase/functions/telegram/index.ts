@@ -12,7 +12,7 @@
 // verify_jwt=false: each path checks its own caller.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "./cors.ts";
-import { ownerClaimText, replyFor, welcomeText, type ClaimStatus, type ReplyMode } from "./wording.ts";
+import { conflictWarnText, ownerClaimText, replyFor, welcomeText, type ClaimStatus, type ReplyMode } from "./wording.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -75,17 +75,42 @@ async function tg(method: string, body: Record<string, unknown>): Promise<{ ok: 
  *  reaction. Pending ones are drained after every update and every OCR answer, so a claim matched later (a hold released,
  *  an owner's pick) is reacted to within the next message. */
 const THUMBS_UP = { type: "emoji", emoji: "👍" };
+const THUMBS_DOWN = { type: "emoji", emoji: "👎" };
 async function drainReactions(): Promise<void> {
   try {
-    const { data } = await db.rpc("tg_react_next", { p_limit: 5 });
-    for (const r of (data ?? []) as Array<{ id: string; chat_id: number; message_id: number }>) {
-      const ok = (await tg("setMessageReaction", { chat_id: r.chat_id, message_id: r.message_id, reaction: [THUMBS_UP] })).ok;
+    // Migration 124: the row says which thumb (up on a match, down on a conflict); a changed kind replaces the old one.
+    const { data } = await db.rpc("tg_react_next2", { p_limit: 5 });
+    for (const r of (data ?? []) as Array<{ id: string; chat_id: number; message_id: number; kind: string }>) {
+      const emoji = r.kind === "down" ? THUMBS_DOWN : THUMBS_UP;
+      const ok = (await tg("setMessageReaction", { chat_id: r.chat_id, message_id: r.message_id, reaction: [emoji] })).ok;
       await db.rpc("tg_reacted", { p_claim: r.id, p_ok: ok });
       // A refused reaction (the bot not in the group, an old message) is not tried again on every message.
       if (!ok) await db.from("telegram_claims").update({ react_pending: false }).eq("id", r.id);
     }
   } catch (e) {
     console.error("reactions failed", e instanceof Error ? e.name : "error");
+  }
+}
+
+/** Migration 124 (owner 2026-11-21): under a post whose TrxID another person posted first, the bot replies, naming that
+ *  person and asking the poster to delete the post if it is not their transaction; and it deletes its own warning again
+ *  when the owner's decision turns that post into the match. The database decides who gets what; this only sends. */
+async function drainWarnings(): Promise<void> {
+  try {
+    const { data } = await db.rpc("tg_warn_next", { p_limit: 5 });
+    for (const w of (data ?? []) as Array<{ id: string; chat_id: number; message_id: number; trx: string; first_who: string; swapped: boolean }>) {
+      const text = conflictWarnText({ trx: w.trx, firstWho: w.first_who, swapped: w.swapped === true });
+      const r = await tg("sendMessage", { chat_id: w.chat_id, text, reply_parameters: { message_id: w.message_id, allow_sending_without_reply: true } });
+      await db.rpc("tg_warned", { p_claim: w.id, p_ok: r.ok, p_message_id: r.ok ? messageIdOf(r.result) : null });
+    }
+    const { data: gone } = await db.rpc("tg_unwarn_next", { p_limit: 5 });
+    for (const u of (gone ?? []) as Array<{ id: string; chat_id: number; warn_message_id: number }>) {
+      // Deleted or refused (too old, already gone): either way the warning is forgotten.
+      await tg("deleteMessage", { chat_id: u.chat_id, message_id: u.warn_message_id });
+      await db.rpc("tg_unwarned", { p_claim: u.id });
+    }
+  } catch (e) {
+    console.error("warnings failed", e instanceof Error ? e.name : "error");
   }
 }
 
@@ -234,6 +259,7 @@ async function onUpdate(update: { message?: TgMessage; channel_post?: TgMessage 
   if (error) { console.error("tg_claim_add failed", error.code); return; }
   await maybeReply(data as Brief | null);
   await drainReactions();
+  await drainWarnings();
   await drainOutbox();
 }
 
@@ -291,6 +317,7 @@ async function ocrDone(body: Record<string, unknown>): Promise<Response> {
   const b = { ...(data as Brief), kept: true } as Brief;
   await maybeReply(b);
   await drainReactions();
+  await drainWarnings();
   await drainOutbox();
   return json({ success: true, claim: data });
 }
@@ -323,7 +350,11 @@ async function handle(req: Request): Promise<Response> {
   const action = String(body.action ?? "");
   // The pg_cron tick: send what waits. Unauthenticated on purpose (like gateway/deliver): it can only send messages the
   // database already decided to send, sooner.
-  if (action === "drain") return json({ success: true, sent: await drainOutbox() });
+  if (action === "drain") {
+    await drainReactions();
+    await drainWarnings();
+    return json({ success: true, sent: await drainOutbox() });
+  }
   if (action === "ocr_next" || action === "ocr_done") {
     if (!isOurs(req)) return json({ success: false, message: "not allowed" }, 401);
     return action === "ocr_next" ? await ocrNext(body.limit) : await ocrDone(body);
