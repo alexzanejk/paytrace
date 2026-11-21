@@ -885,18 +885,25 @@ async function storeSms(src: SmsSource): Promise<Response> {
       defer(fetch(`${SUPABASE_URL}/functions/v1/gateway/deliver`, { method: "POST", headers: DELIVER_AUTH, body: "{}" }).then((x) => x.body?.cancel()).catch(() => {}));
     }
   }
+  // Why it is held, whether that happened on arrival (reviewReason) or inside reconcile_payment (read back).
+  let heldReason: string | null = null;
+  if (matchResult === "review") {
+    heldReason = reviewReason;
+    if (!heldReason || status !== "review") {
+      const { data: row } = await db.from("payments").select("review_reason").eq("id", inserted.id).maybeSingle();
+      heldReason = row?.review_reason ?? heldReason;
+    }
+  }
   // A broken balance chain is a question for the phone, not a verdict: ask the wallet itself (live balance, then its
   // statement). Confirmed = released and matched; not confirmed = stays held and the owner is told (migration 053).
-  if (status === "review" && reviewReason === "balance_chain_mismatch") await startWalletCheck(inserted.id);
+  // The hold can be made by the insert (no order yet could still credit) OR by reconcile_payment a moment later, when a
+  // customer had already typed the TrxID; before 2026-11-21 only the first started the check, so almost half of the
+  // chain holds (15 of 33 in a week) waited for a person.
+  if (matchResult === "review" && heldReason === "balance_chain_mismatch") await startWalletCheck(inserted.id);
 
   // Tell the owner when a payment is being held, whether that happened on arrival or while matching.
   if (matchResult === "review") {
-    let reason = reviewReason;
-    if (!reason) {
-      const { data: row } = await db.from("payments").select("review_reason").eq("id", inserted.id).maybeSingle();
-      reason = row?.review_reason ?? null;
-    }
-    defer(notify.send(reviewMessage({ provider: d.provider, amount: d.amount, trxId: d.trxId, reason, dashboardUrl: DASHBOARD_URL })));
+    defer(notify.send(reviewMessage({ provider: d.provider, amount: d.amount, trxId: d.trxId, reason: heldReason, dashboardUrl: DASHBOARD_URL })));
   }
   return json({ success: true, message: "Payment received", payment_id: inserted.id, status: matchResult });
 }

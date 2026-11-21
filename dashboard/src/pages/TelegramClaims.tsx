@@ -16,7 +16,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { dhakaTime } from "@/lib/dayMoney";
 import {
-  DM_WORDS, OWNER_WORDS, REPLY_MODES, STATUS_ORDER, STATUS_WORDS, claimDetail, cleanTrx, connectState, dmById, dmState, inviteText, needsOwner, needsYou, ownerCommand, ownerState, paymentLine, periodRange, personLabel, statusCounts, taka, type Claim, type ClaimStatus, type ReplyMode, type TelegramChat, type TelegramSettings, type TelegramUserDm, type UserSummary,
+  CONFLICT_WARN_WORDS, DM_WORDS, OWNER_WORDS, REPLY_MODES, STATUS_ORDER, STATUS_WORDS, claimDetail, cleanTrx, connectState, dmById, dmState, inviteText, needsOwner, needsYou, ownerCommand, ownerState, paymentLine, periodRange, personLabel, reactionMark, statusCounts, taka,
+  type Claim, type ClaimStatus, type ReplyMode, type TelegramChat, type TelegramSettings, type TelegramUserDm, type UserSummary,
 } from "@/lib/telegram";
 
 type Period = "today" | "7d" | "30d";
@@ -57,7 +58,7 @@ export function TelegramClaims() {
     async () => {
       const { from, to } = periodRange(period);
       const [settings, chats, claims, users, pay, dms] = await Promise.all([
-        sb.from("telegram_settings").select("group_chat_id,group_title,reply_mode,webhook_set_at,bot_username,payout_reply,owner_chat_id,owner_user_id,owner_set_at,owner_copy,payout_group_fallback").eq("id", true).maybeSingle(),
+        sb.from("telegram_settings").select("group_chat_id,group_title,reply_mode,webhook_set_at,bot_username,payout_reply,owner_chat_id,owner_user_id,owner_set_at,owner_copy,payout_group_fallback,conflict_warn").eq("id", true).maybeSingle(),
         sb.from("telegram_chats").select("chat_id,title,kind,last_seen_at,messages").order("last_seen_at", { ascending: false }).limit(20),
         sb.rpc("tg_claims", { p_from: from.toISOString(), p_to: to.toISOString(), p_status: null }),
         sb.rpc("tg_user_summary", { p_from: from.toISOString() }),
@@ -188,6 +189,14 @@ export function TelegramClaims() {
             <span className="block text-xs text-muted-foreground">Off by default. When on, a person who never pressed Start gets a reply under their own post in the group, with the middle digits hidden.</span>
           </span>
         </label>
+        <label className="mt-2 flex items-start gap-3 text-sm">
+          <Switch checked={data?.settings?.conflict_warn !== false} disabled={busy === "conflict_warn"} aria-label={CONFLICT_WARN_WORDS.label}
+            onCheckedChange={(on) => act("conflict_warn", () => sb.rpc("tg_set_conflict_warn", { p_on: on }), on ? CONFLICT_WARN_WORDS.on : CONFLICT_WARN_WORDS.off)} />
+          <span>
+            <span className="font-medium">{CONFLICT_WARN_WORDS.label}</span>
+            <span className="block text-xs text-muted-foreground">{CONFLICT_WARN_WORDS.meaning}</span>
+          </span>
+        </label>
         <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3 text-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="font-medium">Invitation to pin in the group</span>
@@ -252,13 +261,14 @@ function ClaimRow({ claim: c, busy, act }: { claim: Claim; busy: string | null; 
     setPicking(false);
   }
 
+  const mark = reactionMark(c);
   return (
     <Card className="p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={toneOf(c.status)} title={w.meaning}>{w.label}</Badge>
-            {c.reacted ? <span title="The bot put a thumbs-up on this post" aria-label="thumbs-up sent">👍</span> : null}
+            {mark ? <span title={mark.title} aria-label={mark.emoji === "👍" ? "thumbs-up sent" : "thumbs-down sent"}>{mark.emoji}</span> : null}
             <span className="font-medium">{personLabel(c)}</span>
             <span className="text-xs text-muted-foreground">id {c.tg_user_id} · {dhakaTime(c.sent_at)} · {c.kind === "photo" ? "photo" : "text"}</span>
           </div>

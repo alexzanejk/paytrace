@@ -20,5 +20,7 @@ check("a reply that failed is red and says why", historyLine({ at: null, kind: "
 const csv = historyCsv([post, { at: "2026-11-20T11:00:00Z", kind: "reply", status: "sent", detail: "=HYPERLINK(\"x\")" }]);
 check("csv: header, one row per event, a formula-looking cell is made safe", csv.split("\n").length === 3 && csv.includes("when,what,detail") && csv.includes("'=HYPERLINK"));
 check("summary", historySummary([post, { at: null, kind: "payout", status: "paid", amount: 400 }, { at: null, kind: "post", status: "unmatched" }]) === "2 posts, 1 matched · 1 payout paid (Tk 400.00)");
+const down = historyLine({ at: null, kind: "post", status: "conflict", trx: "76CQOWIY", amount: 1000, provider: "nagad", photo: true, reacted: true, react_kind: "down", warned: true });
+check("a conflicting post shows the thumbs-down and the warning (migration 124)", down.detail.includes("👎 sent") && down.detail.includes("warned to delete the post") && down.tone === "warn");
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
