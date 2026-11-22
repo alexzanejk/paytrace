@@ -835,3 +835,21 @@ person was the real one, press **Ignore** on the first person's claim: the secon
 deletes its own warning under it, and the first post gets the 👎 with "This TrxID has been confirmed as @x's
 transaction. Please delete this post." The switch on the bot card, "Warn the second person on a conflict", is on;
 switch it off and conflicts are silent again. The bot never deletes anyone's post itself.
+
+## A failed payout you already know about (2026-11-21)
+
+When a payout or a commission payment fails on the phone, PayTrace keeps its transactions locked and first looks at the
+wallet's own list (the bKash/Nagad app or the *247# / *167# statement), so money can never be paid twice. The payout then
+reads **"Checking the wallet…"**. Two changes:
+
+- **A wallet PayTrace cannot read goes to you at once.** A personal bKash/Nagad account and a Rocket wallet have no list
+  the phone can read, so for those the check used to wait 15 minutes for an SMS and then ask you. Now such a payout turns
+  **Unsure** within a minute, with the note "PayTrace cannot read this wallet: check it yourself, then say whether it was
+  sent", and the two buttons are there.
+- **You may decide while a check is still running.** Every "Checking the wallet…" payout now shows **It was sent** and
+  **It was NOT sent** too (with the same confirmation as before). Your answer ends the check: "NOT sent" frees the
+  transactions so you can pay them again, "sent" marks the payout paid (type the TrxID if you have it). If you do not
+  answer, the check goes on exactly as before.
+
+Only say "NOT sent" after you looked at the wallet: a wrong answer pays the money twice. If an SMS for that send arrives
+later all the same, PayTrace marks the payout paid by itself, as before.
