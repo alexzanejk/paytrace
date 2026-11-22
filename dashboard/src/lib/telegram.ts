@@ -28,6 +28,10 @@ export interface Claim {
   warned?: boolean;                    // migration 124: the bot replied under this conflicting post, naming the first poster and asking to delete it
   warn_pending?: boolean;
   warn_swapped?: boolean;              // the warning says the transaction was confirmed for someone else (after the owner's decision)
+  nf_pending?: boolean;                // migration 127: the "payment not received" reply is about to be sent under this post
+  nf_sent_at?: string | null;          // when it was sent
+  nf_trx?: string | null;              // the TrxID it names
+  nf_undone?: boolean;                 // the bot took the reply back (the post later meant a transaction)
   chat_id: number;
   message_id: number;
   sent_at: string;
@@ -49,6 +53,9 @@ export interface TelegramSettings {
   owner_copy?: boolean | null;   // a copy of every private notice goes to that chat (default on once paired)
   payout_group_fallback?: boolean | null; // migration 122: reply in the group when the person has no private chat (default OFF: private only)
   conflict_warn?: boolean | null; // migration 124: 👎 + a warning under a post whose TrxID another person posted first (default ON)
+  not_found_reply?: boolean | null;   // migration 127: answer a screenshot of a payment that never reached us (default ON)
+  not_found_wait_min?: number | null; // minutes to wait before that reply (default 20, 5..180)
+  not_found_text?: string | null;     // the words, {trx} = the TrxID
 }
 
 /** The bot's mark on a post, for the claim row and the person's History: 👍 on a match, 👎 on a conflict (migration 124), or none.
@@ -63,6 +70,36 @@ export function reactionMark(c: Pick<Claim, "reacted" | "react_kind" | "warned" 
     return { emoji: "👎", title: `The bot put a thumbs-down on this post${warned}` };
   }
   if (c.react_pending) return { emoji: down ? "👎" : "👍", title: "The bot will react to this post within the minute" };
+  return null;
+}
+
+/** Migration 127 (owner 2026-11-22): the "payment not received" reply. The database decides (tg_not_found_due) and sends
+ *  nothing before the wait, nothing when any record knows the TrxID or one within two misread letters exists, and takes
+ *  the reply back (deletes its own message) if the post later means a transaction. These are only the words for the page. */
+export const NOT_FOUND_DEFAULT_TEXT = "ভাই, এই TrxID {trx} এর কোনো পেমেন্ট আমাদের কাছে আসেনি। স্ক্রিনশটটা ডিলিট করে দিন, আর ভুল করেও এই স্ক্রিনশট পেমেন্টের জন্য প্রাইম ভাইয়ের ইনবক্সে দিবেন না।";
+export const NOT_FOUND_WORDS = {
+  label: "Answer a screenshot of a payment that never arrived",
+  meaning: "A post with one clean TrxID (bKash DK…, Nagad 76…) that nothing knows after the wait (no SMS, not in the wallet apps' lists, not typed on any deposit order, no TrxID within two misread letters) gets a 👎 and this reply under it. Never while a wallet of that kind is offline or silent. If the SMS arrives later or you pick a transaction for the post, the bot deletes its own reply and gives the 👍.",
+  on: "On: such a post gets a 👎 and the reply after the wait.",
+  off: "Off: a post nobody knows gets nothing; it only waits on this page.",
+  wait: "Minutes to wait before replying (5 to 180). A late SMS usually arrives within this time.",
+  text: "The reply. {trx} is replaced by the TrxID. At most 400 characters. Empty = back to the default words.",
+  saved: "Saved. The next due post gets these words.",
+} as const;
+export const NOT_FOUND_WAIT = { min: 5, max: 180, fallback: 20 } as const;
+/** The minutes box: whole minutes 5..180, or the reason it cannot be saved. */
+export function notFoundWaitProblem(raw: string): string | null {
+  const t = raw.trim();
+  if (!/^[0-9]{1,3}$/.test(t)) return "Type whole minutes, 5 to 180";
+  const n = Number(t);
+  return n < NOT_FOUND_WAIT.min || n > NOT_FOUND_WAIT.max ? `Between ${NOT_FOUND_WAIT.min} and ${NOT_FOUND_WAIT.max} minutes` : null;
+}
+/** The reply's own mark on a claim row and in the History (words only; the message itself lives in the group).
+ *  `time` formats the sent time (the page passes Dhaka time). */
+export function notFoundMark(c: Pick<Claim, "nf_pending" | "nf_sent_at" | "nf_trx" | "nf_undone">, time: (iso: string) => string = (iso) => iso): { text: string; title: string; tone: "warn" | "idle" } | null {
+  if (c.nf_undone) return { text: "✉ taken back", title: `The bot replied "payment not received" for ${c.nf_trx ?? "this TrxID"} and later deleted that reply: the post turned out to mean a transaction`, tone: "idle" };
+  if (c.nf_sent_at) return { text: `✉ not received (sent ${time(c.nf_sent_at)})`, title: `The bot replied under this post that no payment with TrxID ${c.nf_trx ?? ""} reached us and asked to delete the screenshot`, tone: "warn" };
+  if (c.nf_pending) return { text: "✉ not received (sending)", title: `The bot is about to reply under this post that no payment with TrxID ${c.nf_trx ?? ""} reached us`, tone: "warn" };
   return null;
 }
 

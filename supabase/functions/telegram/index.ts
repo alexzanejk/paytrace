@@ -114,6 +114,31 @@ async function drainWarnings(): Promise<void> {
   }
 }
 
+/** Migration 127 (owner 2026-11-22): the "payment not received" reply under a screenshot whose TrxID nothing knows,
+ *  decided and worded by the database (tg_not_found_due / the owner's text with {trx} filled in); sent as a reply to the
+ *  post, plain text (no parse_mode, so the owner's words cannot be read as markup). When the post later means a
+ *  transaction (the SMS arrives, the owner picks one), tg_claim_judge2 asks for the reply to be taken back and the
+ *  bot deletes its own message. The 👎/👍 rides drainReactions. */
+async function drainNotFound(): Promise<void> {
+  try {
+    const { data } = await db.rpc("tg_nf_next", { p_limit: 5 });
+    for (const w of (data ?? []) as Array<{ id: string; chat_id: number; message_id: number; trx: string; text: string }>) {
+      const text = String(w.text ?? "").slice(0, 1000);
+      if (!text) { await db.rpc("tg_nf_sent", { p_claim: w.id, p_ok: false, p_message_id: null }); continue; }
+      const r = await tg("sendMessage", { chat_id: w.chat_id, text, reply_parameters: { message_id: w.message_id, allow_sending_without_reply: true } });
+      await db.rpc("tg_nf_sent", { p_claim: w.id, p_ok: r.ok, p_message_id: r.ok ? messageIdOf(r.result) : null });
+    }
+    const { data: gone } = await db.rpc("tg_nf_unsend_next", { p_limit: 5 });
+    for (const u of (gone ?? []) as Array<{ id: string; chat_id: number; nf_message_id: number }>) {
+      // Deleted or refused (too old, already gone): either way the reply is forgotten.
+      await tg("deleteMessage", { chat_id: u.chat_id, message_id: u.nf_message_id });
+      await db.rpc("tg_nf_unsent", { p_claim: u.id });
+    }
+  } catch (e) {
+    console.error("not-found replies failed", e instanceof Error ? e.name : "error");
+  }
+}
+
 async function reply(chatId: number, messageId: number, text: string): Promise<boolean> {
   const r = await tg("sendMessage", { chat_id: chatId, text: text.slice(0, 1000), reply_parameters: { message_id: messageId, allow_sending_without_reply: true }, disable_notification: true });
   return r.ok;
@@ -260,6 +285,7 @@ async function onUpdate(update: { message?: TgMessage; channel_post?: TgMessage 
   await maybeReply(data as Brief | null);
   await drainReactions();
   await drainWarnings();
+  await drainNotFound();
   await drainOutbox();
 }
 
@@ -318,6 +344,7 @@ async function ocrDone(body: Record<string, unknown>): Promise<Response> {
   await maybeReply(b);
   await drainReactions();
   await drainWarnings();
+  await drainNotFound();
   await drainOutbox();
   return json({ success: true, claim: data });
 }
@@ -353,6 +380,7 @@ async function handle(req: Request): Promise<Response> {
   if (action === "drain") {
     await drainReactions();
     await drainWarnings();
+    await drainNotFound();
     return json({ success: true, sent: await drainOutbox() });
   }
   if (action === "ocr_next" || action === "ocr_done") {

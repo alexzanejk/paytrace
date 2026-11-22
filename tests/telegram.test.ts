@@ -3,7 +3,7 @@ import { trxCandidates } from "../supabase/functions/telegram/candidates.ts";
 import { trxCandidates as workerCandidates } from "../ocr-worker/src/candidates.ts";
 import { conflictWarnText, ownerClaimText, replyFor, welcomeText } from "../supabase/functions/telegram/wording.ts";
 import {
-  CONFLICT_WARN_WORDS, DM_WORDS, OWNER_WORDS, STATUS_ORDER, STATUS_WORDS, claimDetail, reactionMark, cleanTrx, connectState, dmById, dmState, inviteText, needsOwner, needsYou, ownerCommand, ownerState, paymentLine, periodRange, personLabel, statusCounts, userLabel,
+  CONFLICT_WARN_WORDS, DM_WORDS, NOT_FOUND_DEFAULT_TEXT, NOT_FOUND_WORDS, OWNER_WORDS, STATUS_ORDER, notFoundMark, notFoundWaitProblem, STATUS_WORDS, claimDetail, reactionMark, cleanTrx, connectState, dmById, dmState, inviteText, needsOwner, needsYou, ownerCommand, ownerState, paymentLine, periodRange, personLabel, statusCounts, userLabel,
   type Claim,
 } from "../dashboard/src/lib/telegram.ts";
 
@@ -93,6 +93,20 @@ check("reaction mark: 👍 on a reacted match, 👎 on a reacted conflict (with 
   && /someone else/.test(reactionMark({ reacted: true, react_kind: "down", warned: true, warn_swapped: true })!.title)
   && reactionMark({ reacted: false, react_pending: true, react_kind: "down" })?.emoji === "👎"
   && reactionMark({ reacted: false }) === null);
+// migration 127: the "payment not received" reply
+check("not-found mark: nothing, sending, sent with the time, taken back",
+  notFoundMark({}) === null
+  && notFoundMark({ nf_pending: true, nf_trx: "DKL8QUSIOE" })?.text === "✉ not received (sending)"
+  && notFoundMark({ nf_sent_at: "2026-11-21T12:00:00Z", nf_trx: "DKL8QUSIOE" }, () => "6:00 PM")?.text === "✉ not received (sent 6:00 PM)"
+  && /DKL8QUSIOE/.test(notFoundMark({ nf_sent_at: "2026-11-21T12:00:00Z", nf_trx: "DKL8QUSIOE" })!.title)
+  && notFoundMark({ nf_sent_at: "2026-11-21T12:00:00Z", nf_undone: true, nf_trx: "DKL8QUSIOE" })?.text === "✉ taken back"
+  && notFoundMark({ nf_sent_at: "2026-11-21T12:00:00Z", nf_undone: true })?.tone === "idle");
+check("not-found wait: whole minutes 5..180", notFoundWaitProblem("20") === null && notFoundWaitProblem("5") === null && notFoundWaitProblem("180") === null
+  && notFoundWaitProblem("4") !== null && notFoundWaitProblem("181") !== null && notFoundWaitProblem("2.5") !== null && notFoundWaitProblem("") !== null && notFoundWaitProblem("-5") !== null);
+check("not-found default text names the TrxID placeholder and matches the migration's words",
+  NOT_FOUND_DEFAULT_TEXT.includes("{trx}") && NOT_FOUND_DEFAULT_TEXT.length <= 400
+  && readFileSync(new URL("../supabase/migrations/20261122_127_telegram_not_found_reply.sql", import.meta.url), "utf8").includes("select '" + NOT_FOUND_DEFAULT_TEXT + "'::text;"));
+check("not-found words say the bot takes the reply back", /deletes its own reply/.test(NOT_FOUND_WORDS.meaning) && /\{trx\}/.test(NOT_FOUND_WORDS.text));
 check("conflict-warn words exist for the switch", CONFLICT_WARN_WORDS.label.length > 0 && CONFLICT_WARN_WORDS.on.includes("👎") && CONFLICT_WARN_WORDS.off.includes("no reaction"));
 
 console.log(`\n${pass} passed, ${fail} failed`);

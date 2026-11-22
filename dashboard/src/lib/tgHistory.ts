@@ -14,6 +14,9 @@ export interface HistoryEvent {
   reacted?: boolean | null;
   react_kind?: string | null; // up | down (migration 124)
   warned?: boolean | null;    // the bot replied under a conflicting post asking to delete it
+  not_found?: boolean | null;        // migration 127: the bot replied that no payment with that TrxID reached us
+  not_found_undone?: boolean | null; // ... and later took that reply back
+  nf_trx?: string | null;
   reply?: string | null;
   where?: string | null;    // reply: private | group (migration 119)
   count?: number | null;
@@ -41,7 +44,8 @@ export function historyLine(e: HistoryEvent): { title: string; detail: string; t
     const what = POST[e.status ?? ""] ?? `posted (${e.status})`;
     const who = e.photo ? "a photo" : "a text";
     const tx = e.trx ? `${WALLET[e.provider ?? ""] ?? e.provider ?? ""} ${e.trx}${amount ? " · " + amount : ""}`.trim() : "";
-    const marks = [e.reacted ? (e.react_kind === "down" ? "👎 sent" : "👍 sent") : "", e.warned ? "warned to delete the post" : "", e.reply ? `replied (${e.reply})` : ""].filter(Boolean).join(" · ");
+    const nf = e.not_found_undone ? `replied "payment not received"${e.nf_trx ? " for " + e.nf_trx : ""}, then took it back` : e.not_found ? `replied "payment not received"${e.nf_trx ? " for " + e.nf_trx : ""}, asked to delete the screenshot` : "";
+    const marks = [e.reacted ? (e.react_kind === "down" ? "👎 sent" : "👍 sent") : "", e.warned ? "warned to delete the post" : "", nf, e.reply ? `replied (${e.reply})` : ""].filter(Boolean).join(" · ");
     return {
       title: `${what}: ${who}${tx ? " · " + tx : ""}`,
       detail: [e.detail ?? "", marks].filter(Boolean).join(" · "),

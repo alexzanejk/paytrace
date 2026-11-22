@@ -32,6 +32,8 @@ const MUST_KEEP: Record<string, { line: string; why: string }[]> = {
     { line: "perform public.payment_name_from_claim(c.id);", why: "the bot's @username on a matched transaction (114)" },
     { line: "update public.payment_names n set name = public.tg_person_name(c.tg_user_id)", why: "a changed name follows on the person's transactions (114)" },
     { line: "react_kind = coalesce(v_kind, react_kind)", why: "👍 / 👎 by state (124)" },
+    { line: "nf_unsend_pending = case when nf_message_id is not null then true else nf_unsend_pending end", why: "the 'payment not received' reply is taken back once the post means a transaction (127)" },
+    { line: "react_pending = (nf_trx is not null and react_kind = 'down' and reacted_at is null)", why: "a pending 👎 of that reply survives a re-judge that still finds nothing (127)" },
   ],
   resolve_payout: [
     { line: "v_checking", why: "the owner may decide while the wallet check runs (125)" },
