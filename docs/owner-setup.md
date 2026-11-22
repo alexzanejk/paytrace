@@ -853,3 +853,9 @@ reads **"Checking the wallet…"**. Two changes:
 
 Only say "NOT sent" after you looked at the wallet: a wrong answer pays the money twice. If an SMS for that send arrives
 later all the same, PayTrace marks the payout paid by itself, as before.
+
+## Names missing on the Payout page, 21-22 Nov (fixed 2026-11-22)
+
+From the morning of 21 Nov to the morning of 22 Nov a bot-matched post got its 👍 but the transaction on the Payout page
+showed "Set name" instead of the person's @username (a change of 21 Nov had dropped one line by mistake). Migration 126
+puts the line back and fills in every missing name of those two days at once; names you typed yourself are never changed.
