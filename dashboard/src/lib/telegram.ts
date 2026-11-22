@@ -79,7 +79,7 @@ export function reactionMark(c: Pick<Claim, "reacted" | "react_kind" | "warned" 
 export const NOT_FOUND_DEFAULT_TEXT = "ভাই, এই TrxID {trx} এর কোনো পেমেন্ট আমাদের কাছে আসেনি। স্ক্রিনশটটা ডিলিট করে দিন, আর ভুল করেও এই স্ক্রিনশট পেমেন্টের জন্য প্রাইম ভাইয়ের ইনবক্সে দিবেন না।";
 export const NOT_FOUND_WORDS = {
   label: "Answer a screenshot of a payment that never arrived",
-  meaning: "A post with one clean TrxID (bKash DK…, Nagad 76…) that nothing knows after the wait (no SMS, not in the wallet apps' lists, not typed on any deposit order, no TrxID within two misread letters) gets a 👎 and this reply under it. Never while a wallet of that kind is offline or silent. If the SMS arrives later or you pick a transaction for the post, the bot deletes its own reply and gives the 👍.",
+  meaning: "A post with one clean TrxID (bKash DK…, Nagad 76…; the wallet's own length or one character too long, which no wallet issues) that nothing knows after the wait (no SMS, not in the wallet apps' lists, not typed on any deposit order, no TrxID within two misread letters) gets a 👎 and this reply under it. Never while a wallet of that kind is offline or silent. If the SMS arrives later or you pick a transaction for the post, the bot deletes its own reply and gives the 👍.",
   on: "On: such a post gets a 👎 and the reply after the wait.",
   off: "Off: a post nobody knows gets nothing; it only waits on this page.",
   wait: "Minutes to wait before replying (5 to 180). A late SMS usually arrives within this time.",

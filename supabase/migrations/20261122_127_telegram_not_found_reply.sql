@@ -6,7 +6,8 @@
 -- when nothing knows it (payments of any status, the wallet apps' rows, typed deposit orders, and tg_find_payment's
 -- one-character-off search all return nothing), and only while the wallets of that kind are provably listening (an
 -- approved phone with such a wallet seen in the last 3 minutes and an SMS of that kind in the last 6 hours), and only for a
--- word with the wallet's own prefix (bKash DK…, Nagad 76…) that is not within two misread characters of a real TrxID. If the post
+-- word with the wallet's own prefix (bKash DK…, Nagad 76…), of the wallet's length or one character too long (which no wallet
+-- issues), that is not within two misread characters, or one dropped character, of a real TrxID. If the post
 -- later means a transaction (the SMS arrives, the owner picks one), tg_claim_judge2 takes the reply back (the bot
 -- deletes its own message) and the existing kind change turns the 👎 into a 👍. One reply per person + TrxID per day.
 -- No DROP, no DELETE (MCP rule). tg_claim_judge2 below = 126's text (md5-checked against the live function) + 2 lines.
@@ -87,8 +88,11 @@ grant execute on function public.tg_trx_prefixes(text) to service_role;
 create or replace function public.tg_clean_trx(p_cands text[], p_user bigint default null) returns text language sql stable security definer set search_path = public as $$
   with w as (
     select distinct upper(x) as t from unnest(coalesce(p_cands, '{}')) x
-     where (upper(x) ~ '^[A-Z0-9]{10}$' and upper(x) ~ '[A-Z]' and upper(x) ~ '[0-9]' and left(upper(x), 2) in (select public.tg_trx_prefixes('bkash')))
-        or (upper(x) ~ '^[0-9]{2}[A-Z0-9]{6}$' and left(upper(x), 2) in (select public.tg_trx_prefixes('nagad')))
+     -- the wallet's own length, or ONE character too long (bKash 11, Nagad 9): no wallet issues those, so such a word with
+     -- the wallet's prefix is a TrxID that cannot exist (owner's fake 76B7016F9, 2026-11-22). tg_trx_near below keeps a real
+     -- TrxID the OCR read with one extra character silent.
+     where (upper(x) ~ '^[A-Z0-9]{10,11}$' and upper(x) ~ '[A-Z]' and upper(x) ~ '[0-9]' and left(upper(x), 2) in (select public.tg_trx_prefixes('bkash')))
+        or (upper(x) ~ '^[0-9]{2}[A-Z0-9]{6,7}$' and left(upper(x), 2) in (select public.tg_trx_prefixes('nagad')))
   ), ok as (
     select t from w
      where t not in (select n from public.tg_noise_words() n)
@@ -100,15 +104,21 @@ $$;
 revoke all on function public.tg_clean_trx(text[], bigint) from public, anon, authenticated;
 grant execute on function public.tg_clean_trx(text[], bigint) to service_role;
 
--- A real TrxID within two misread characters (O/0, I/L/1, S/5, B/8, Z/2, G/6 folded) in the last 30 days: then the
+-- A real TrxID within two misread characters (O/0, I/L/1, S/5, B/8, Z/2, G/6 folded) in the last 30 days, or one that
+-- becomes the word when ONE extra character is dropped (the OCR can add a stray character to a real receipt): then the
 -- post may be a real receipt read wrongly, and the bot says nothing (the owner's Pick transaction settles it).
 create or replace function public.tg_trx_near(p_trx text) returns boolean language sql stable security definer set search_path = public as $$
-  select exists (
-    select 1 from public.payments p
-     where p.received_at > now() - interval '30 days' and length(p.trx_id) = length(p_trx)
+  with w as (select translate(upper(p_trx), 'OILSBZG', '0115826') as f),
+  known as (
+    select translate(upper(p.trx_id), 'OILSBZG', '0115826') as f, length(p.trx_id) as n from public.payments p
+     where p.received_at > now() - interval '30 days'
        and p.txn_type in ('cash_out', 'send_money_received', 'payment_received')
-       and (select count(*) from generate_series(1, length(p_trx)) i
-             where substr(translate(upper(p_trx), 'OILSBZG', '0115826'), i, 1) <> substr(translate(upper(p.trx_id), 'OILSBZG', '0115826'), i, 1)) <= 2);
+       and length(p.trx_id) between length(p_trx) - 1 and length(p_trx)
+  )
+  select exists (
+    select 1 from known r, w
+     where (r.n = length(w.f) and (select count(*) from generate_series(1, length(w.f)) i where substr(w.f, i, 1) <> substr(r.f, i, 1)) <= 2)
+        or (r.n = length(w.f) - 1 and exists (select 1 from generate_series(1, length(w.f)) i where overlay(w.f placing '' from i for 1) = r.f)));
 $$;
 revoke all on function public.tg_trx_near(text) from public, anon, authenticated;
 grant execute on function public.tg_trx_near(text) to service_role;
@@ -133,7 +143,7 @@ begin
   loop
     t := public.tg_clean_trx(r.candidates, r.tg_user_id);
     if t is null then continue; end if;
-    prov := case length(t) when 10 then 'bkash' when 8 then 'nagad' end;
+    prov := case when left(t, 2) in (select public.tg_trx_prefixes('bkash')) then 'bkash' else 'nagad' end;
     -- one reply per person + TrxID per day (a reposted fake gets one answer)
     if exists (select 1 from public.telegram_claims c2 where c2.tg_user_id = r.tg_user_id and c2.nf_trx = t
                   and (c2.nf_pending or c2.nf_sent_at > now() - interval '24 hours')) then continue; end if;
@@ -159,9 +169,13 @@ create or replace function public.tg_not_found_tick() returns int language plpgs
 declare r record; n int := 0;
 begin
   for r in select * from public.tg_not_found_due() loop
-    update public.telegram_claims
+    update public.telegram_claims c
        set nf_pending = true, nf_trx = r.trx, react_kind = 'down', react_pending = true, reacted_at = null
-     where id = r.claim_id and not nf_pending and nf_sent_at is null;
+     where c.id = r.claim_id and not c.nf_pending and c.nf_sent_at is null
+       -- the same person posting the same TrxID three times gets ONE reply (checked again here, because the due list
+       -- is one snapshot and would otherwise mark all three)
+       and not exists (select 1 from public.telegram_claims c2 where c2.tg_user_id = c.tg_user_id and c2.nf_trx = r.trx and c2.id <> c.id
+                          and (c2.nf_pending or c2.nf_sent_at > now() - interval '24 hours'));
     if found then
       n := n + 1;
       insert into public.events (kind, detail) values ('telegram_not_found', jsonb_build_object('claim_id', r.claim_id, 'trx', r.trx));
