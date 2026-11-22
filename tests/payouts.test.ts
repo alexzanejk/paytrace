@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import {
-  checkNumbers, droppedLine, settleTicks, tickedRows, toggleShown, MOST_TICKS, extraSplit, feeLine, parseMoney, keepPctFor, parseSendAmount, groupDigits, parseFee, liveItemsByPayment, paidTwiceLine, payoutWord, parsePct, payoutLine, payoutRefusal, tickableRefusal, recentNumbers, sendMethod, sendProblem, senderOptions, splitPayout, personalAccounts, accountName,
+  checkNumbers, droppedLine, settleTicks, tickedRows, toggleShown, MOST_TICKS, extraSplit, feeLine, parseMoney, keepPctFor, parseSendAmount, groupDigits, parseFee, liveItemsByPayment, paidTwiceLine, payoutWord, canDecide, isChecking, CHECKING_HELP, parsePct, payoutLine, payoutRefusal, tickableRefusal, recentNumbers, sendMethod, sendProblem, senderOptions, splitPayout, personalAccounts, accountName,
   type PayoutRow,
 } from "../dashboard/src/lib/payouts.ts";
 import { accountTitle, checkLine, figures, sourceLine, type DayMoneyRow } from "../dashboard/src/lib/dayMoney.ts";
@@ -218,6 +218,14 @@ check("a hand record names the transaction it paid on",
   check("a failed payout being checked reads 'Checking the wallet'", payoutWord({ status: "sending", check_since: "2026-11-19T06:00:00Z", check_done_at: null }).label === "Checking the wallet…");
   check("a normal send still reads Sending", payoutWord({ status: "sending" }).label === "Sending…");
   check("once the check is done the status speaks", payoutWord({ status: "failed", check_since: "x", check_done_at: "y" }).label === "Failed, not sent");
+  // 125: the owner may decide while the check runs, and on an unsure payout; never on a plain send or a settled one.
+  check("a payout being checked can be decided", canDecide({ status: "sending", check_since: "2026-11-21T10:53:00Z", check_done_at: null }) === true);
+  check("an unsure payout can be decided", canDecide({ status: "unsure", check_since: "x", check_done_at: "y" }) === true);
+  check("a plain send (no check) cannot be decided", canDecide({ status: "sending" }) === false);
+  check("a finished check with a settled status cannot be decided", canDecide({ status: "failed", check_since: "x", check_done_at: "y" }) === false);
+  check("a paid payout cannot be decided", canDecide({ status: "paid" }) === false);
+  check("isChecking is only the running check", isChecking({ status: "sending", check_since: "x", check_done_at: null }) && !isChecking({ status: "unsure", check_since: "x", check_done_at: null }));
+  check("the checking help says the answer ends the check", CHECKING_HELP.includes("ends the check"));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

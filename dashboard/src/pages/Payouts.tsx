@@ -8,7 +8,7 @@ import { tk, when } from "@/lib/format";
 import { PROVIDERS, PROVIDER_LABEL, type Payment } from "@/lib/types";
 import { rangeBounds, rangeLabel, periodRange } from "@/lib/period";
 import {
-  payoutWord, UNSURE_HELP, SENT_WARNING, NOT_SENT_WARNING, MOST_TICKS, droppedLine, settleTicks, tickedRows, toggleShown, checkNumbers, groupDigits, liveItemsByPayment, parsePct, parseSendAmount, keepPctFor, payoutLine, payoutRefusal, recentNumbers, tickableRefusal, HELD_REFUSAL,
+  payoutWord, UNSURE_HELP, CHECKING_HELP, canDecide, isChecking, SENT_WARNING, NOT_SENT_WARNING, MOST_TICKS, droppedLine, settleTicks, tickedRows, toggleShown, checkNumbers, groupDigits, liveItemsByPayment, parsePct, parseSendAmount, keepPctFor, payoutLine, payoutRefusal, recentNumbers, tickableRefusal, HELD_REFUSAL,
   parseFee, sendMethod, sendProblem, senderOptions, splitPayout, ROCKET_NOTE, METHOD_WORDS, type PayoutItemRow, type PayoutRow,
 } from "@/lib/payouts";
 import { nudgePhone } from "@/lib/wake";
@@ -637,14 +637,14 @@ function PayoutPanel({
 function LivePayout({ p, nameOf, onDone }: { p: PayoutRow; nameOf: (id: string | null | undefined) => string; onDone: () => void }) {
   const w = payoutWord(p);
   return (
-    <Card className={`p-3 text-sm ${p.status === "unsure" ? "border-status-warn" : ""}`}>
+    <Card className={`p-3 text-sm ${canDecide(p) ? "border-status-warn" : ""}`}>
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={w.tone}>{w.label}</Badge>
         <span>{payoutLine(p, nameOf)}</span>
         <span className="text-xs text-muted-foreground">started {when(p.created_at)}</span>
       </div>
       {p.check_note ? <p className="mt-1 text-xs text-muted-foreground">{p.check_note}</p> : null}
-      {p.status === "unsure" ? <UnsureControls p={p} onDone={onDone} /> : null}
+      {canDecide(p) ? <UnsureControls p={p} onDone={onDone} /> : null}
     </Card>
   );
 }
@@ -661,7 +661,7 @@ function UnsureControls({ p, onDone }: { p: PayoutRow; onDone: () => void }) {
   }
   return (
     <div className="mt-2 space-y-2">
-      <p className="text-xs text-muted-foreground">{UNSURE_HELP}</p>
+      <p className="text-xs text-muted-foreground">{isChecking(p) ? CHECKING_HELP : UNSURE_HELP}</p>
       <CommandWhy commandId={p.command_id} error={p.error} provider={p.provider} />
       <div className="flex flex-wrap items-center gap-2">
         <Input className="w-44" placeholder="TrxID, if you see it" value={trx} onChange={(e) => setTrx(e.target.value)} />
@@ -693,7 +693,7 @@ function PayoutDetails({ p, nameOf, onDone }: { p: PayoutRow; nameOf: (id: strin
       <p className="text-xs text-muted-foreground">
         Started {when(p.created_at)}{p.paid_at ? ` · paid ${when(p.paid_at)}` : ""}{p.balance_after != null ? ` · wallet balance after ${tk(Number(p.balance_after))}` : ""}{p.note ? ` · note: ${p.note}` : ""}
       </p>
-      {p.status === "unsure" ? <UnsureControls p={p} onDone={onDone} /> : null}
+      {canDecide(p) ? <UnsureControls p={p} onDone={onDone} /> : null}
       {p.status === "failed" ? <CommandWhy commandId={p.command_id} error={p.error} provider={p.provider} /> : null}
       {p.status === "paid" && p.method === "manual" ? (
         <Confirm title="Undo this payout recorded by hand?" description="Its transactions become payable again. Do this only if the money was not really paid." confirmLabel="Undo" onConfirm={undo}>
