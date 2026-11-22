@@ -293,6 +293,21 @@ export function payoutWord(p: { status: PayoutStatus; check_since?: string | nul
   return PAYOUT_WORDS[p.status];
 }
 
+/** A check is still running: a failed send whose transactions stay taken while the wallet is read (migration 108). */
+export function isChecking(p: { status: PayoutStatus | string; check_since?: string | null; check_done_at?: string | null }): boolean {
+  return p.status === "sending" && !!p.check_since && !p.check_done_at;
+}
+
+/** Whether the owner may say "sent" / "NOT sent" now: an unsure payout, or one PayTrace is still checking
+ *  (migration 125: the answer ends the check; a wallet PayTrace cannot read turns unsure on its own within a minute). */
+export function canDecide(p: { status: PayoutStatus | string; check_since?: string | null; check_done_at?: string | null }): boolean {
+  return p.status === "unsure" || isChecking(p);
+}
+
+/** Shown with the buttons while the check is still running. */
+export const CHECKING_HELP =
+  "PayTrace is still checking the wallet's own list. If you already know whether the money went, decide now: your answer ends the check.";
+
 /** What an unsure payout needs from the owner. */
 export const UNSURE_HELP =
   "The phone stopped after typing the PIN, so PayTrace cannot tell whether the money went. Check the wallet (its statement on the phone card, or the SMS), then say which. The transactions stay taken until you do, so they can never be paid twice.";

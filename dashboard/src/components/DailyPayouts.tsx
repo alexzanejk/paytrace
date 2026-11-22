@@ -10,7 +10,7 @@ import {
   type CommissionDayRow, type CommissionPayRow, type PayDayRow,
 } from "@/lib/commissionPays";
 import { nudgePhone } from "@/lib/wake";
-import { NOT_SENT_WARNING, ROCKET_NOTE, SENT_WARNING } from "@/lib/payouts";
+import { CHECKING_HELP, NOT_SENT_WARNING, ROCKET_NOTE, SENT_WARNING, canDecide, isChecking } from "@/lib/payouts";
 import { Confirm } from "@/components/Confirm";
 import { MoneyConfirm } from "@/components/MoneyConfirm";
 import { useQuery } from "@/hooks/useQuery";
@@ -269,13 +269,13 @@ function LivePay({ p, nameOf, onDone }: { p: CommissionPayRow; nameOf: (id: stri
     if (r.error) setProblem(r.error.message); else onDone();
   }
   return (
-    <div className={`rounded-lg border p-3 text-sm ${p.status === "unsure" ? "border-status-warn" : "border-border"}`}>
+    <div className={`rounded-lg border p-3 text-sm ${canDecide(p) ? "border-status-warn" : "border-border"}`}>
       <p><Badge tone={p.status === "unsure" ? "bad" : p.check_since && !p.check_done_at ? "warn" : "info"}>{p.status === "unsure" ? "Check the wallet" : p.check_since && !p.check_done_at ? "Checking the wallet…" : "Sending…"}</Badge>{" "}
         <b>{nameOf(p.device_id)}</b>: {payLine(p, nameOf)} <span className="text-xs text-muted-foreground">({when(p.created_at)})</span></p>
       {p.check_note ? <p className="mt-1 text-xs text-muted-foreground">{p.check_note}</p> : null}
-      {p.status === "unsure" ? (
+      {canDecide(p) ? (
         <div className="mt-2 space-y-2">
-          <p className="text-xs text-muted-foreground">{UNSURE_HELP}</p>
+          <p className="text-xs text-muted-foreground">{isChecking(p) ? CHECKING_HELP : UNSURE_HELP}</p>
           <CommandWhy commandId={p.command_id} error={p.error} provider={p.provider} />
           <div className="flex flex-wrap gap-2">
             <Input className="w-44" placeholder="TrxID, if you see it" value={trx} onChange={(e) => setTrx(e.target.value)} />
