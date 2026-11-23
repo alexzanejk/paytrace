@@ -79,7 +79,14 @@ create or replace function public.tg_trx_prefixes(p_provider text) returns setof
   select left(p.trx_id, 2) from public.payments p
    where p.provider = p_provider and p.received_at > now() - interval '60 days'
      and p.txn_type in ('cash_out', 'send_money_received', 'payment_received')
-   group by left(p.trx_id, 2) having count(*) >= 20;
+   group by left(p.trx_id, 2) having count(*) >= 20
+  union
+  -- Quick learn (owner 2026-11-23): the prefix moves with the month (bKash DJ in October, DK from 1 November), so a prefix the
+  -- wallet itself used 3 times in the last 24 hours counts at once instead of after 20 receipts (a few silent hours on the 1st).
+  select left(p.trx_id, 2) from public.payments p
+   where p.provider = p_provider and p.received_at > now() - interval '24 hours'
+     and p.txn_type in ('cash_out', 'send_money_received', 'payment_received')
+   group by left(p.trx_id, 2) having count(*) >= 3;
 $$;
 revoke all on function public.tg_trx_prefixes(text) from public, anon, authenticated;
 grant execute on function public.tg_trx_prefixes(text) to service_role;
