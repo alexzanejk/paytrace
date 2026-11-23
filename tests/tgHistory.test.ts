@@ -22,5 +22,9 @@ check("csv: header, one row per event, a formula-looking cell is made safe", csv
 check("summary", historySummary([post, { at: null, kind: "payout", status: "paid", amount: 400 }, { at: null, kind: "post", status: "unmatched" }]) === "2 posts, 1 matched · 1 payout paid (Tk 400.00)");
 const down = historyLine({ at: null, kind: "post", status: "conflict", trx: "76CQOWIY", amount: 1000, provider: "nagad", photo: true, reacted: true, react_kind: "down", warned: true });
 check("a conflicting post shows the thumbs-down and the warning (migration 124)", down.detail.includes("👎 sent") && down.detail.includes("warned to delete the post") && down.tone === "warn");
+const nf = historyLine({ at: null, kind: "post", status: "unmatched", photo: true, reacted: true, react_kind: "down", not_found: true, nf_trx: "DKL8QUSIOE" });
+check("a post answered 'payment not received' says so with the TrxID (migration 127)", nf.detail.includes("👎 sent") && nf.detail.includes('replied "payment not received" for DKL8QUSIOE, asked to delete the screenshot'));
+const nfu = historyLine({ at: null, kind: "post", status: "matched", photo: true, reacted: true, react_kind: "up", not_found: true, not_found_undone: true, nf_trx: "DKL8QUSIOE" });
+check("a taken-back reply says so", nfu.detail.includes("then took it back") && nfu.tone === "ok");
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

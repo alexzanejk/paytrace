@@ -13,10 +13,11 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { dhakaTime } from "@/lib/dayMoney";
 import {
-  CONFLICT_WARN_WORDS, DM_WORDS, OWNER_WORDS, REPLY_MODES, STATUS_ORDER, STATUS_WORDS, claimDetail, cleanTrx, connectState, dmById, dmState, inviteText, needsOwner, needsYou, ownerCommand, ownerState, paymentLine, periodRange, personLabel, reactionMark, statusCounts, taka,
+  CONFLICT_WARN_WORDS, DM_WORDS, NOT_FOUND_DEFAULT_TEXT, NOT_FOUND_WORDS, OWNER_WORDS, REPLY_MODES, notFoundMark, notFoundWaitProblem, STATUS_ORDER, STATUS_WORDS, claimDetail, cleanTrx, connectState, dmById, dmState, inviteText, needsOwner, needsYou, ownerCommand, ownerState, paymentLine, periodRange, personLabel, reactionMark, statusCounts, taka,
   type Claim, type ClaimStatus, type ReplyMode, type TelegramChat, type TelegramSettings, type TelegramUserDm, type UserSummary,
 } from "@/lib/telegram";
 
@@ -58,7 +59,7 @@ export function TelegramClaims() {
     async () => {
       const { from, to } = periodRange(period);
       const [settings, chats, claims, users, pay, dms] = await Promise.all([
-        sb.from("telegram_settings").select("group_chat_id,group_title,reply_mode,webhook_set_at,bot_username,payout_reply,owner_chat_id,owner_user_id,owner_set_at,owner_copy,payout_group_fallback,conflict_warn").eq("id", true).maybeSingle(),
+        sb.from("telegram_settings").select("group_chat_id,group_title,reply_mode,webhook_set_at,bot_username,payout_reply,owner_chat_id,owner_user_id,owner_set_at,owner_copy,payout_group_fallback,conflict_warn,not_found_reply,not_found_wait_min,not_found_text").eq("id", true).maybeSingle(),
         sb.from("telegram_chats").select("chat_id,title,kind,last_seen_at,messages").order("last_seen_at", { ascending: false }).limit(20),
         sb.rpc("tg_claims", { p_from: from.toISOString(), p_to: to.toISOString(), p_status: null }),
         sb.rpc("tg_user_summary", { p_from: from.toISOString() }),
@@ -197,6 +198,7 @@ export function TelegramClaims() {
             <span className="block text-xs text-muted-foreground">{CONFLICT_WARN_WORDS.meaning}</span>
           </span>
         </label>
+        <NotFoundCard settings={data?.settings ?? null} busy={busy} act={act} />
         <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3 text-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="font-medium">Invitation to pin in the group</span>
@@ -262,6 +264,7 @@ function ClaimRow({ claim: c, busy, act }: { claim: Claim; busy: string | null; 
   }
 
   const mark = reactionMark(c);
+  const nfm = notFoundMark(c, dhakaTime);
   return (
     <Card className="p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -269,6 +272,7 @@ function ClaimRow({ claim: c, busy, act }: { claim: Claim; busy: string | null; 
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={toneOf(c.status)} title={w.meaning}>{w.label}</Badge>
             {mark ? <span title={mark.title} aria-label={mark.emoji === "👍" ? "thumbs-up sent" : "thumbs-down sent"}>{mark.emoji}</span> : null}
+            {nfm ? <Badge tone={nfm.tone} title={nfm.title}>{nfm.text}</Badge> : null}
             <span className="font-medium">{personLabel(c)}</span>
             <span className="text-xs text-muted-foreground">id {c.tg_user_id} · {dhakaTime(c.sent_at)} · {c.kind === "photo" ? "photo" : "text"}</span>
           </div>
@@ -306,6 +310,61 @@ function ClaimRow({ claim: c, busy, act }: { claim: Claim; busy: string | null; 
 
 /** Copies of private notices to the owner (migration 121). Pairing is by a one-time code the owner sends to the bot from
  *  their own Telegram, never by picking a name: a wrong pick would send full numbers to a stranger. */
+/** Migration 127: the switch, the wait and the words of the "payment not received" reply. Saved together through
+ *  tg_set_not_found (null = unchanged; an empty text = the default words). */
+function NotFoundCard({ settings, busy, act }: {
+  settings: TelegramSettings | null; busy: string | null;
+  act: (key: string, run: () => PromiseLike<{ error: { message: string } | null } | void>, done: string) => Promise<void>;
+}) {
+  const on = settings?.not_found_reply !== false;
+  const [wait, setWait] = useState(String(settings?.not_found_wait_min ?? 20));
+  const [text, setText] = useState(settings?.not_found_text ?? NOT_FOUND_DEFAULT_TEXT);
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    if (editing) return;
+    setWait(String(settings?.not_found_wait_min ?? 20));
+    setText(settings?.not_found_text ?? NOT_FOUND_DEFAULT_TEXT);
+  }, [settings?.not_found_wait_min, settings?.not_found_text, editing]);
+  const waitProblem = notFoundWaitProblem(wait);
+  const textProblem = text.trim().length > 400 ? "At most 400 characters" : !text.includes("{trx}") && text.trim() ? "Keep {trx} in the text so the person sees which TrxID" : null;
+  const changed = wait !== String(settings?.not_found_wait_min ?? 20) || text !== (settings?.not_found_text ?? NOT_FOUND_DEFAULT_TEXT);
+  return (
+    <div className="mt-3 rounded-lg border border-border p-3 text-sm">
+      <label className="flex items-start gap-3">
+        <Switch checked={on} disabled={busy === "not_found"} aria-label={NOT_FOUND_WORDS.label}
+          onCheckedChange={(v) => act("not_found", () => sb.rpc("tg_set_not_found", { p_on: v, p_wait_min: null, p_text: null }), v ? NOT_FOUND_WORDS.on : NOT_FOUND_WORDS.off)} />
+        <span>
+          <span className="font-medium">{NOT_FOUND_WORDS.label}</span>
+          <span className="block text-xs text-muted-foreground">{NOT_FOUND_WORDS.meaning}</span>
+        </span>
+      </label>
+      <div className="mt-3 grid gap-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
+        <label className="block">
+          <span className="text-xs font-medium">Wait (minutes)</span>
+          <Input inputMode="numeric" value={wait} aria-label="Minutes to wait before replying" aria-invalid={!!waitProblem}
+            onChange={(e) => { setEditing(true); setWait(e.target.value); }} />
+          <span className="block text-xs text-muted-foreground">{waitProblem ?? NOT_FOUND_WORDS.wait}</span>
+        </label>
+        <label className="block">
+          <span className="text-xs font-medium">The reply</span>
+          <Textarea rows={3} value={text} aria-label="The reply text" aria-invalid={!!textProblem} maxLength={400}
+            onChange={(e) => { setEditing(true); setText(e.target.value); }} />
+          <span className="block text-xs text-muted-foreground">{textProblem ?? NOT_FOUND_WORDS.text} · {text.trim().length}/400</span>
+        </label>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Button size="sm" disabled={!changed || !!waitProblem || !!textProblem || busy === "not_found_save"} aria-label="Save the reply settings"
+          onClick={() => act("not_found_save", async () => {
+            const r = await sb.rpc("tg_set_not_found", { p_on: null, p_wait_min: Number(wait), p_text: text.trim() === NOT_FOUND_DEFAULT_TEXT ? "" : text });
+            if (!r.error) setEditing(false);
+            return r;
+          }, NOT_FOUND_WORDS.saved)}>Save</Button>
+        {text !== NOT_FOUND_DEFAULT_TEXT ? <Button size="sm" variant="outline" onClick={() => { setEditing(true); setText(NOT_FOUND_DEFAULT_TEXT); }}>Default words</Button> : null}
+      </div>
+    </div>
+  );
+}
+
 function OwnerCopyCard({ settings, dms, busy, act }: {
   settings: TelegramSettings | null; dms: Map<number, TelegramUserDm>; busy: string | null;
   act: (key: string, run: () => PromiseLike<{ error: { message: string } | null } | void>, done: string) => Promise<void>;

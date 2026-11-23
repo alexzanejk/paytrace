@@ -859,3 +859,10 @@ later all the same, PayTrace marks the payout paid by itself, as before.
 From the morning of 21 Nov to the morning of 22 Nov a bot-matched post got its 👍 but the transaction on the Payout page
 showed "Set name" instead of the person's @username (a change of 21 Nov had dropped one line by mistake). Migration 126
 puts the line back and fills in every missing name of those two days at once; names you typed yourself are never changed.
+
+## The bot answers a screenshot of a payment that never arrived (2026-11-22)
+
+When someone posts a screenshot (or types a TrxID) that PayTrace cannot find anywhere, the bot now waits 20 minutes and then puts a 👎 on the post and replies under it: "ভাই, এই TrxID … এর কোনো পেমেন্ট আমাদের কাছে আসেনি। স্ক্রিনশটটা ডিলিট করে দিন, আর ভুল করেও এই স্ক্রিনশট পেমেন্টের জন্য প্রাইম ভাইয়ের ইনবক্সে দিবেন না।" You can switch it off, change the wait (5 to 180 minutes) and change the words on the Telegram page's bot card (keep `{trx}` in the text; it becomes the TrxID). Empty words = the default ones again.
+
+It is careful on purpose. It replies only when the post has exactly one clean TrxID (bKash starting DK…, Nagad starting 76…), no SMS, wallet-app list or deposit order knows that TrxID, no real TrxID is within two misread letters of it, and the phones with that kind of wallet are online and have received an SMS in the last six hours. A TrxID that is one character too long (a 9-character "Nagad" or 11-character "bKash" one, which the wallets never issue) is answered too, unless dropping one character gives a real TrxID. Rocket screenshots, posts with two TrxIDs and posts whose "TrxID" has no digit get nothing. If the SMS arrives later, or you press "Pick transaction" on the post, the bot deletes its own reply and gives the 👍. On the claim row you see "✉ not received (sent …)" or "✉ taken back"; the person's History shows the same. The reply never credits or un-credits anything.
+
