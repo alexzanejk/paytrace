@@ -33,6 +33,7 @@ import { DefaultShare, ExtraPayoutForm, ExtraPayoutList, PaidTwiceCard } from "@
 import { PayoutName } from "@/components/PayoutName";
 import { nameOf as nameOf2, namesAmong, namesById, safeNameTerm, type PaymentName } from "@/lib/payNames";
 import { plannedByPayment, type PayoutPlan } from "@/lib/payoutPlans";
+import { NO_NAME, WIDE_LIMIT, capLine, groupByPerson, groupLine, peopleFrom, personOption, rowsOfPerson } from "@/lib/payoutPeople";
 
 /** Only money RECEIVED can be paid out (the database's payout_refusal says the same). */
 const PAYABLE_TYPES = ["cash_out", "send_money_received", "payment_received"];
@@ -48,6 +49,16 @@ const safeSearch = (q: string) => q.replace(/[^A-Za-z0-9*+\-]/g, "").slice(0, 40
 const safeName = safeNameTerm;
 
 type Show = "open" | "paid" | "all";
+/** Newest first (the old order, 200 a page), or by person: most transactions first, all of theirs together, no name last
+ *  (owner 2026-11-23). The choice is remembered in this browser only. */
+type Sort = "time" | "person";
+const SORT_KEY = "pt-payout-sort";
+function readSort(): Sort {
+  try { return localStorage.getItem(SORT_KEY) === "person" ? "person" : "time"; } catch { return "time"; }
+}
+function keepSort(s: Sort) {
+  try { localStorage.setItem(SORT_KEY, s); } catch { /* not remembered */ }
+}
 
 /** The Payout page (owner 2026-11-08): the same transactions as the Transactions page, but each can be ticked and paid on.
  *  Tick one or several, keep a share (20% unless changed), and send the rest in whole taka to a number you type twice.
@@ -59,6 +70,9 @@ export function Payouts() {
   const [device, setDevice] = useState(ALL);
   const [provider, setProvider] = useState(ALL);
   const [show, setShow] = useState<Show>("open");
+  const [sort, setSortState] = useState<Sort>(() => readSort());
+  const setSort = (s: Sort) => { keepSort(s); setSortState(s); };
+  const [person, setPerson] = useState(ALL);
   const [search, setSearch] = useState("");
   const [term, setTerm] = useState("");
   const [limit, setLimit] = useState(PAGE);
@@ -74,10 +88,13 @@ export function Payouts() {
     const id = setTimeout(() => setTerm(safeSearch(search)), 300);
     return () => clearTimeout(id);
   }, [search]);
-  useEffect(() => setLimit(PAGE), [device, provider, period, term]);
+  useEffect(() => { setLimit(PAGE); setPerson(ALL); }, [device, provider, period, term]);
 
   const range = periodRange(period.id, period.custom);
   const { startIso, endIso } = rangeBounds(range);
+  // A correct by-person order, or one person's own list, needs the whole period at once, not the newest page.
+  const wide = sort === "person" || person !== ALL;
+  const periodOr = `and(occurred_at.gte.${startIso},occurred_at.lt.${endIso}),and(occurred_at.is.null,received_at.gte.${startIso},received_at.lt.${endIso})`;
 
   const { data, error, loading, refresh: reload } = useQuery(
     async () => {
@@ -86,13 +103,19 @@ export function Payouts() {
         .select("*", { count: "exact" })
         .eq("source", "app")
         .in("txn_type", PAYABLE_TYPES)
-        .or(
-          `and(occurred_at.gte.${startIso},occurred_at.lt.${endIso}),and(occurred_at.is.null,received_at.gte.${startIso},received_at.lt.${endIso})`,
-        )
+        .or(periodOr)
         .order("received_at", { ascending: false })
-        .limit(limit);
+        .limit(wide ? WIDE_LIMIT : limit);
       if (device !== ALL) q = q.eq("device_id", device);
       if (provider !== ALL) q = q.eq("provider", provider);
+      // Who has transactions in this period, for the "All people" filter: every name of the period, whatever the page.
+      let pq = sb.from("payment_names").select("payment_id,name,source,tg_user_id,payments!inner(id)")
+        .not("name", "is", null)
+        .eq("payments.source", "app").in("payments.txn_type", PAYABLE_TYPES)
+        .or(periodOr, { referencedTable: "payments" })
+        .limit(2000);
+      if (device !== ALL) pq = pq.eq("payments.device_id", device);
+      if (provider !== ALL) pq = pq.eq("payments.provider", provider);
       if (term) {
         // A name typed in the box: the transactions named so (at most 200) join the TrxID / number match.
         const nameTerm = safeName(search);
@@ -104,6 +127,7 @@ export function Payouts() {
       const res = await q;
       if (res.error) throw new Error(res.error.message);
       const rows = (res.data ?? []) as Payment[];
+      const periodNames = must(await pq) as PaymentName[];
       const onList = new Set(rows.map((r) => r.id));
       // Ticked rows that are not on this list are read again, so a tick is never paid on stale information.
       const asked = [...ticked].filter((id) => !onList.has(id));
@@ -121,11 +145,11 @@ export function Payouts() {
       // Transactions already queued for a person from the Telegram page (step 4) wait there; they are not offered here.
       const plans = must(await sb.from("payout_plans").select("id,label,payment_ids,status,device_id,created_at").eq("status", "queued").limit(200)) as PayoutPlan[];
       return {
-        rows, picked, asked, total: res.count ?? 0, items, names, plans, payouts: [...recent, ...older], extras,
+        rows, picked, asked, total: res.count ?? 0, items, names, periodNames, plans, payouts: [...recent, ...older], extras,
         keepPct: Number(settings[0]?.keep_pct ?? 20), sendFee: Number(settings[0]?.send_money_fee ?? 10),
       };
     },
-    [device, provider, startIso, endIso, term, safeName(search), limit, [...ticked].join(",")],
+    [device, provider, startIso, endIso, term, safeName(search), limit, wide, [...ticked].join(",")],
     { refreshMs: 10000 },
   );
 
@@ -135,7 +159,11 @@ export function Payouts() {
   const names = useMemo(() => namesById(data?.names ?? []), [data]);
   const planned = useMemo(() => plannedByPayment(data?.plans ?? []), [data]);
   const taken = useMemo(() => new Set(liveOf.keys()), [liveOf]);
-  const shown = rows.filter((p) => (show === "all" ? true : show === "paid" ? taken.has(p.id) : !taken.has(p.id)));
+  const people = useMemo(() => peopleFrom(data?.periodNames ?? [], data?.total ?? 0), [data]);
+  const ofPerson = person === ALL ? rows : rowsOfPerson(rows, names, person);
+  const shown = ofPerson.filter((p) => (show === "all" ? true : show === "paid" ? taken.has(p.id) : !taken.has(p.id)));
+  const groups = useMemo(() => (sort === "person" ? groupByPerson(shown, names) : []), [sort, shown, names]);
+  const cap = wide ? capLine(data?.total ?? 0) : "";
 
   // Take a tick off only on fresh evidence that it cannot be paid any more (another tab paid it, a payout started).
   // A row that merely left the list (a search, other dates) keeps its tick.
@@ -187,6 +215,63 @@ export function Payouts() {
   const allTicked = tickable.length > 0 && tickable.every((r) => ticked.has(r.id));
 
   const phoneOptions = devices.list.filter((d) => d.status === "approved").map((d) => ({ value: d.id, label: devices.nameOf(d.id) }));
+
+  /** One transaction row: the same markup in the newest-first list and inside a person's group. */
+  const renderRow = (p: Payment) => {
+    const why = payoutRefusal(p, taken);
+    const payout = liveOf.has(p.id) ? payoutsById.get(liveOf.get(p.id)!) : undefined;
+    const isOpen = open === p.id;
+    return (
+      <li key={p.id} className="px-4 py-3">
+        <div className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            className="mt-1 h-4 w-4 accent-[var(--color-primary)]"
+            aria-label={`Tick ${p.trx_id}`}
+            checked={ticked.has(p.id)}
+            disabled={!tickableRefusal(why) || planned.has(p.id)}
+            title={planned.has(p.id) ? `Queued for a payout to ${planned.get(p.id)} (Telegram page)` : why === HELD_REFUSAL ? "Held for review: can only be marked paid by hand, and stays held" : why ?? "Tick to pay this out"}
+            onChange={() => toggle(p.id)}
+          />
+          <div className="min-w-0 flex-1">
+          {/* The expand button holds only the first line: the name chip below is a button of its own, and a button
+              may not sit inside another (the two read as one to a screen reader). */}
+          <button type="button" className="block w-full text-left" onClick={() => setOpen(isOpen ? null : p.id)} aria-expanded={isOpen} aria-label={`${p.trx_id}: ${isOpen ? "hide" : "show"} details`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                {isOpen ? <ChevronDown className="h-4 w-4 shrink-0" aria-hidden /> : <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />}
+                <ProviderChip provider={p.provider} />
+                <span className="font-mono text-xs">{p.trx_id}</span>
+              </div>
+              <span className="text-base font-semibold tabular">{tk(p.amount)}</span>
+            </div>
+          </button>
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <DeviceChip id={p.device_id} name={devices.nameOf(p.device_id)} />
+              <span>{when(p.occurred_at ?? p.received_at)}</span>
+              <PayoutName paymentId={p.id} name={names.get(p.id)} onChanged={reload} />
+              {planned.has(p.id) ? <Badge tone="idle">Queued for {planned.get(p.id)}</Badge> : null}
+              <StatusBadge status={p.status} />
+              {payout ? (
+                <Badge tone={payoutWord(payout).tone}>
+                  {payout.status === "paid" ? <CheckCircle2 className="mr-1 inline h-3 w-3" aria-hidden /> : null}
+                  {payoutWord(payout).label}
+                </Badge>
+              ) : why === HELD_REFUSAL ? <span className="text-status-warn">Held: mark paid by hand only</span>
+                : why && why !== "Already paid out" ? <span className="text-status-warn">{why}</span> : null}
+            </div>
+          </div>
+        </div>
+        {isOpen ? (
+          <div className="ml-7 mt-3 space-y-2 border-t border-border pt-3 text-sm">
+            {payout ? <PayoutDetails p={payout} nameOf={devices.nameOf} onDone={reload} /> : <p className="text-muted-foreground">Not paid out yet.</p>}
+            <OldPayouts paymentId={p.id} items={data?.items ?? []} byId={payoutsById} nameOf={devices.nameOf} />
+            <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-3 text-xs">{p.raw_message}</pre>
+          </div>
+        ) : null}
+      </li>
+    );
+  };
 
   return (
     <Screen loading={loading || devices.loading} error={error ?? devices.error} hasData={!!data}>
@@ -242,6 +327,27 @@ export function Payouts() {
             </button>
           ))}
         </div>
+        <FilterSelect
+          label="All people"
+          value={person}
+          onChange={setPerson}
+          options={people.map((p) => ({ value: p.key, label: personOption(p) }))}
+          className="w-[calc(50%-0.25rem)] sm:w-52"
+        />
+        <div className="flex rounded-lg border border-input p-0.5 text-sm" role="group" aria-label="Order">
+          {(["time", "person"] as const).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setSort(s)}
+              className={`rounded-md px-3 py-1.5 ${sort === s ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+              aria-pressed={sort === s}
+              title={s === "person" ? "The person with the most transactions first, all of theirs together; no name last" : "Newest first"}
+            >
+              {s === "time" ? "Newest first" : "By person"}
+            </button>
+          ))}
+        </div>
         <div className="relative w-full sm:w-64">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
           <Input className="pl-9" placeholder="Search TrxID, number or name" aria-label="Search" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -286,68 +392,25 @@ export function Payouts() {
           <span>{shown.length} transaction{shown.length === 1 ? "" : "s"}</span>
         </div>
         {shown.length === 0 ? <p className="py-8 text-center text-muted-foreground">No transactions here.</p> : null}
-        <ul className="divide-y divide-border">
-          {shown.map((p) => {
-            const why = payoutRefusal(p, taken);
-            const payout = liveOf.has(p.id) ? payoutsById.get(liveOf.get(p.id)!) : undefined;
-            const isOpen = open === p.id;
-            return (
-              <li key={p.id} className="px-4 py-3">
-                <div className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    className="mt-1 h-4 w-4 accent-[var(--color-primary)]"
-                    aria-label={`Tick ${p.trx_id}`}
-                    checked={ticked.has(p.id)}
-                    disabled={!tickableRefusal(why) || planned.has(p.id)}
-                    title={planned.has(p.id) ? `Queued for a payout to ${planned.get(p.id)} (Telegram page)` : why === HELD_REFUSAL ? "Held for review: can only be marked paid by hand, and stays held" : why ?? "Tick to pay this out"}
-                    onChange={() => toggle(p.id)}
-                  />
-                  <div className="min-w-0 flex-1">
-                  {/* The expand button holds only the first line: the name chip below is a button of its own, and a button
-                      may not sit inside another (the two read as one to a screen reader). */}
-                  <button type="button" className="block w-full text-left" onClick={() => setOpen(isOpen ? null : p.id)} aria-expanded={isOpen} aria-label={`${p.trx_id}: ${isOpen ? "hide" : "show"} details`}>
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex min-w-0 items-center gap-2">
-                        {isOpen ? <ChevronDown className="h-4 w-4 shrink-0" aria-hidden /> : <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />}
-                        <ProviderChip provider={p.provider} />
-                        <span className="font-mono text-xs">{p.trx_id}</span>
-                      </div>
-                      <span className="text-base font-semibold tabular">{tk(p.amount)}</span>
-                    </div>
-                  </button>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                      <DeviceChip id={p.device_id} name={devices.nameOf(p.device_id)} />
-                      <span>{when(p.occurred_at ?? p.received_at)}</span>
-                      <PayoutName paymentId={p.id} name={names.get(p.id)} onChanged={reload} />
-                      {planned.has(p.id) ? <Badge tone="idle">Queued for {planned.get(p.id)}</Badge> : null}
-                      <StatusBadge status={p.status} />
-                      {payout ? (
-                        <Badge tone={payoutWord(payout).tone}>
-                          {payout.status === "paid" ? <CheckCircle2 className="mr-1 inline h-3 w-3" aria-hidden /> : null}
-                          {payoutWord(payout).label}
-                        </Badge>
-                      ) : why === HELD_REFUSAL ? <span className="text-status-warn">Held: mark paid by hand only</span>
-                        : why && why !== "Already paid out" ? <span className="text-status-warn">{why}</span> : null}
-                    </div>
-                  </div>
-                </div>
-                {isOpen ? (
-                  <div className="ml-7 mt-3 space-y-2 border-t border-border pt-3 text-sm">
-                    {payout ? <PayoutDetails p={payout} nameOf={devices.nameOf} onDone={reload} /> : <p className="text-muted-foreground">Not paid out yet.</p>}
-                    <OldPayouts paymentId={p.id} items={data?.items ?? []} byId={payoutsById} nameOf={devices.nameOf} />
-                    <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-3 text-xs">{p.raw_message}</pre>
-                  </div>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
+        {sort !== "person" ? (
+          <ul className="divide-y divide-border">{shown.map(renderRow)}</ul>
+        ) : (
+          groups.map((g) => (
+            <section key={g.key} aria-label={g.label}>
+              <h3 className="border-y border-border bg-muted/50 px-4 py-1.5 text-xs font-medium text-muted-foreground">{groupLine(g, tk)}</h3>
+              <ul className="divide-y divide-border">{g.rows.map(renderRow)}</ul>
+            </section>
+          ))
+        )}
       </Card>
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
-        <span>Loaded {rows.length} of {data?.total ?? 0} received transactions</span>
-        {rows.length < (data?.total ?? 0) ? (
+        <span>
+          Loaded {rows.length} of {data?.total ?? 0} received transactions
+          {person !== ALL ? ` · showing ${person === NO_NAME ? "the ones with no name" : people.find((p) => p.key === person)?.label ?? "one person"}` : ""}
+        </span>
+        {cap ? <span className="text-status-warn" role="status">{cap}</span> : null}
+        {!wide && rows.length < (data?.total ?? 0) ? (
           <Button variant="outline" size="sm" onClick={() => setLimit((l) => l + PAGE)}>Load more</Button>
         ) : null}
       </div>
