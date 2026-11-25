@@ -83,7 +83,7 @@ export const NOT_FOUND_WORDS = {
   on: "On: such a post gets a 👎 and the reply after the wait.",
   off: "Off: a post nobody knows gets nothing; it only waits on this page.",
   wait: "Minutes to wait before replying (5 to 180). A late SMS usually arrives within this time.",
-  text: "The reply. {trx} is replaced by the TrxID. At most 400 characters. Empty = back to the default words.",
+  text: "The reply. {trx} is replaced by the TrxID; the person's @username is put in front, or where you write {user}. At most 400 characters. Empty = back to the default words.",
   saved: "Saved. The next due post gets these words.",
 } as const;
 export const NOT_FOUND_WAIT = { min: 5, max: 180, fallback: 20 } as const;
