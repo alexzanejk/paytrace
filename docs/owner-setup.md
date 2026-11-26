@@ -869,3 +869,12 @@ It is careful on purpose. It replies only when the post has exactly one clean Tr
 ## The Payout page by person (2026-11-23)
 
 The Payout page can now be ordered **By person**: the person with the most transactions in the period comes first with all of theirs together, then the next, down to people with one, and the transactions nobody is named on come last. The "All people" box lists everyone with their count ("@alice · 12", "No name · 7"); pick one to see only that person's transactions, and the tick box at the top then ticks exactly theirs, so paying one person is: pick them, tick all, pay out. "Newest first" is the old order and is remembered until you change it. With a person chosen or By person on, the page loads the whole period at once (up to 1,000 transactions; for more it asks you to shorten the period).
+
+## A site's "cash-out charge" is not a payment to you (2026-11-26)
+
+On 777bajii a player pays a cash-out charge before a withdrawal and types a TrxID for it. The site marks that charge
+"Approved" the second it is typed, without checking anything, so a made-up code looks approved on the player's screen.
+Only PayTrace knows whether the money came: if the code is in no SMS and in no wallet app list, nothing was paid. Admin
+Hub (after its pull request 17 is merged) will refuse to approve such a withdrawal until PayTrace has the charge; a Super
+Admin can still override with a reason. A quick check you can do yourself: the third letter of a bKash TrxID is the day
+(24 Nov codes start with DKO, 25 Nov with DKP, and so on), so a code from another day on today's "payment" is not today's.
