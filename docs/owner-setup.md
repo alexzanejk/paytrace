@@ -878,3 +878,11 @@ Only PayTrace knows whether the money came: if the code is in no SMS and in no w
 Hub (after its pull request 17 is merged) will refuse to approve such a withdrawal until PayTrace has the charge; a Super
 Admin can still override with a reason. A quick check you can do yourself: the third letter of a bKash TrxID is the day
 (24 Nov codes start with DKO, 25 Nov with DKP, and so on), so a code from another day on today's "payment" is not today's.
+
+## A 777bajii cash-out charge now says Pending until the money arrives (2026-11-26)
+
+When a player asks for a withdrawal on 777bajii and types the TrxID of the cash-out charge, the charge now shows
+**Pending** on the player's page. It turns **Approved** by itself, usually within a minute or two, once PayTrace has seen
+that payment with the right amount. A made-up code stays Pending, and Admin Hub will not let an operator approve the
+withdrawal. If one ever shows "Approved" straight away again, the site's withdrawal code was changed in its own editor:
+tell Claude, and it puts the one-line fix back.
