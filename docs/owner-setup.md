@@ -886,3 +886,7 @@ When a player asks for a withdrawal on 777bajii and types the TrxID of the cash-
 that payment with the right amount. A made-up code stays Pending, and Admin Hub will not let an operator approve the
 withdrawal. If one ever shows "Approved" straight away again, the site's withdrawal code was changed in its own editor:
 tell Claude, and it puts the one-line fix back.
+
+Your 777bajii operator can no longer approve a cash-out charge, or a withdrawal whose charge PayTrace has not confirmed,
+from the site's own admin page: the site now refuses and says to ask the admin. Your own admin login, which the Admin Hub
+uses, works as before, and the operator can still reject anything and approve deposits.
